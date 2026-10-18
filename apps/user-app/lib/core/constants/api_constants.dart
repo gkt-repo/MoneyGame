@@ -20,8 +20,8 @@ class ApiConstants {
       return 'http://localhost:4000';
     }
     if (Platform.isAndroid) {
-      // Current PC host IP on local Wi-Fi (connects directly from real phone or emulator)
-      return 'http://10.130.161.144:4000';
+      // Direct connection to Oracle Cloud production VM
+      return 'http://132.226.186.196:4000';
     }
     return 'http://localhost:4000';
   }

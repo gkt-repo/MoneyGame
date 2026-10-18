@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core/constants/colors.dart';
+import 'core/constants/api_constants.dart';
 import 'core/network/admin_api_client.dart';
 import 'core/storage/admin_secure_storage.dart';
 import 'screens/auth/admin_login_screen.dart';
@@ -15,6 +16,11 @@ void main() async {
       statusBarIconBrightness: Brightness.dark,
     ),
   );
+
+  final savedUrl = await AdminSecureStorage.getCustomBaseUrl();
+  if (savedUrl != null && savedUrl.isNotEmpty) {
+    ApiConstants.setRuntimeUrl(savedUrl);
+  }
 
   AdminApiClient.init();
 

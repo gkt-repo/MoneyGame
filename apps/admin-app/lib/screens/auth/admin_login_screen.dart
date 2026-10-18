@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/colors.dart';
+import '../../core/constants/api_constants.dart';
 import '../../core/network/admin_api_client.dart';
+import '../../core/storage/admin_secure_storage.dart';
 
 class AdminLoginScreen extends StatefulWidget {
   final Function(AdminProfileModel admin) onLoginSuccess;
@@ -253,12 +255,87 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                               ),
                       ),
                     ),
+                    const SizedBox(height: 20),
+
+                    // Server Endpoint Link & Dialog Trigger
+                    Center(
+                      child: InkWell(
+                        onTap: _showServerConfigDialog,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.wifi_tethering, size: 12, color: AppColors.slate400),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Server: ${ApiConstants.baseUrl}',
+                                style: const TextStyle(fontSize: 11, color: AppColors.slate400, fontFamily: 'monospace'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showServerConfigDialog() {
+    final controller = TextEditingController(text: ApiConstants.baseUrl);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text('Admin API Server URL', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Specify your backend server URL (e.g. Oracle Cloud VM IP):',
+              style: TextStyle(fontSize: 12, color: AppColors.slate600),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'http://132.226.186.196:4000',
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.slate500)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newUrl = controller.text.trim();
+              if (newUrl.isNotEmpty) {
+                ApiConstants.setRuntimeUrl(newUrl);
+                await AdminSecureStorage.saveCustomBaseUrl(newUrl);
+                AdminApiClient.init();
+                if (ctx.mounted) Navigator.pop(ctx);
+                setState(() {});
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.slate900),
+            child: const Text('Save & Connect', style: TextStyle(color: AppColors.white)),
+          ),
+        ],
       ),
     );
   }

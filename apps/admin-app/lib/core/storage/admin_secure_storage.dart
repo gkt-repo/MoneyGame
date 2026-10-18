@@ -31,6 +31,16 @@ class AdminSecureStorage {
     return _storage.read(key: _keyAdminProfile);
   }
 
+  static const _keyCustomBaseUrl = 'mg_admin_custom_base_url';
+
+  static Future<void> saveCustomBaseUrl(String url) async {
+    await _storage.write(key: _keyCustomBaseUrl, value: url);
+  }
+
+  static Future<String?> getCustomBaseUrl() async {
+    return _storage.read(key: _keyCustomBaseUrl);
+  }
+
   static Future<void> clearSession() async {
     await _storage.delete(key: _keyAccessToken);
     await _storage.delete(key: _keyRefreshToken);

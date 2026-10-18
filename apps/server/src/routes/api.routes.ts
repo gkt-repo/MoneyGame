@@ -13,6 +13,11 @@ import {
 
 export const router = Router();
 
+// Health check endpoint
+router.get('/health', (_req: Request, res: Response): void => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // ─── Authentication Endpoints ────────────────────────────────────────────────
 // Mount public auth routers
 router.use('/auth', authRouter);

@@ -3,8 +3,16 @@ import 'package:flutter/foundation.dart';
 
 class ApiConstants {
   static const String _customUrl = String.fromEnvironment('API_URL');
+  static String? _runtimeOverride;
+
+  static void setRuntimeUrl(String url) {
+    _runtimeOverride = url.trim();
+  }
 
   static String get baseUrl {
+    if (_runtimeOverride != null && _runtimeOverride!.isNotEmpty) {
+      return _runtimeOverride!;
+    }
     if (_customUrl.isNotEmpty) {
       return _customUrl;
     }
@@ -12,9 +20,8 @@ class ApiConstants {
       return 'http://localhost:4000';
     }
     if (Platform.isAndroid) {
-      // 10.0.2.2 points to host machine on Android emulator
-      // Use 127.0.0.1 if running with 'adb reverse tcp:4000 tcp:4000'
-      return 'http://10.0.2.2:4000';
+      // Direct connection to Oracle Cloud production VM
+      return 'http://132.226.186.196:4000';
     }
     return 'http://localhost:4000';
   }
