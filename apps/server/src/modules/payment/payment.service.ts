@@ -92,7 +92,7 @@ export class PaymentService {
     // 7. Generate UPI URI & QR Code
     const upiUri = `upi://pay?pa=${receivingUpi.trim()}&pn=${encodeURIComponent(
       receivingName.trim()
-    )}&am=${totalAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Deposit #${deposit.id.slice(0, 8)}`)}`;
+    )}&am=${totalAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Deposit ${deposit.id.slice(0, 8)}`)}`;
 
     const qrCodeDataUrl = await QRCode.toDataURL(upiUri, {
       margin: 2,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/colors.dart';
 import '../../core/network/api_client.dart';
@@ -164,18 +165,40 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
     if (_deposit == null) return;
     final uri = Uri.parse(_deposit!.upiDeepLink);
     try {
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      bool launched = false;
+      // 1. Try launching with externalNonBrowserApplication to force native UPI chooser
+      try {
+        launched = await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
+      } catch (_) {
+        launched = false;
+      }
+
+      // 2. Fallback to externalApplication if mode 1 did not trigger
       if (!launched) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No supported UPI app found. Please copy UPI address.')),
-          );
+        try {
+          launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } catch (_) {
+          launched = false;
         }
+      }
+
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('UPI app could not open directly. Please scan the QR code below or take a screenshot to upload in GPay/PhonePe.'),
+            backgroundColor: AppColors.amber700,
+            duration: Duration(seconds: 4),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not launch UPI app: $e')),
+          const SnackBar(
+            content: Text('Could not open UPI app directly. Please scan the QR code below or copy the UPI ID.'),
+            backgroundColor: AppColors.amber700,
+            duration: Duration(seconds: 4),
+          ),
         );
       }
     }
@@ -416,7 +439,59 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                     'Includes ${_deposit!.offsetPaise} paise unique offset for instant verification',
                     style: const TextStyle(fontSize: 11, color: AppColors.slate500),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 18),
+
+                  // Dynamic UPI QR Code Card
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.slate200, width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        QrImageView(
+                          data: _deposit!.upiDeepLink,
+                          version: QrVersions.auto,
+                          size: 190.0,
+                          backgroundColor: Colors.white,
+                          padding: const EdgeInsets.all(4),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.slate100,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.qr_code_scanner, size: 13, color: AppColors.slate600),
+                              SizedBox(width: 5),
+                              Text(
+                                'Scan or Screenshot to pay in UPI app',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.slate700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
 
                   // 1-Tap UPI Intent CTA
                   SizedBox(
@@ -432,7 +507,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                       onPressed: _launchUpiIntent,
                       icon: const Icon(Icons.open_in_new, size: 18),
                       label: const Text(
-                        'Pay via UPI App (GPay / PhonePe / Paytm)',
+                        'Open UPI App (GPay / PhonePe / Paytm)',
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                       ),
                     ),
