@@ -169,6 +169,7 @@ class AdminApiClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
+          options.baseUrl = ApiConstants.baseUrl;
           final token = await AdminSecureStorage.getAccessToken();
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';

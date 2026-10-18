@@ -18,6 +18,11 @@ void main() async {
     ),
   );
 
+  final savedUrl = await SecureStorageService.getCustomBaseUrl();
+  if (savedUrl != null && savedUrl.isNotEmpty) {
+    ApiConstants.setRuntimeUrl(savedUrl);
+  }
+
   ApiClient.init();
 
   runApp(const MoneyGameUserApp());

@@ -18,8 +18,9 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 
-// Mount API routes first
+// Mount API routes (supported both at /api and root / for robust client compatibility)
 app.use('/api', apiRouter);
+app.use(apiRouter);
 
 // Serve Admin Web Portal on /admin
 const adminPublicPath = path.join(__dirname, '../public/admin');
