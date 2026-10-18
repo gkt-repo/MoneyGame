@@ -75,6 +75,20 @@ io.on('connection', (socket) => {
     socket.join(`user:${userId}`);
   });
 
+  // Listen for deposit-specific channel subscription (for instant payment confirmation)
+  socket.on('join_deposit_channel', (depositId: string) => {
+    socket.join(`deposit:${depositId}`);
+  });
+
+  socket.on('leave_deposit_channel', (depositId: string) => {
+    socket.leave(`deposit:${depositId}`);
+  });
+
+  // Listen for admin channel subscription
+  socket.on('join_admin_channel', () => {
+    socket.join('admin_channel');
+  });
+
   // Listen for room game updates
   socket.on('join_room_channel', (roomId: string) => {
     socket.join(roomId);

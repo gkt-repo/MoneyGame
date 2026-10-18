@@ -11,7 +11,8 @@
     "prisma:push": "prisma db push",
     "test:auth": "ts-node tests/auth.test.ts",
     "test:admin": "ts-node tests/admin_user_control.test.ts",
-    "test": "npm run test:auth && npm run test:admin"
+    "test:payment": "ts-node tests/payment_system.test.ts",
+    "test": "npm run test:auth && npm run test:admin && npm run test:payment"
   },
   "keywords": [],
   "type": "commonjs",

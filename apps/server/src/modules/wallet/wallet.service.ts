@@ -14,7 +14,18 @@ export class WalletService {
     return prisma.withdrawal.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      take: 30,
+      take: 50,
+    });
+  }
+
+  /**
+   * Fetch complete financial transaction ledger/passbook for a user
+   */
+  async getUserTransactions(userId: string, limit = 50) {
+    return prisma.transaction.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
     });
   }
 
@@ -251,15 +262,29 @@ export class WalletService {
 
   /**
    * Request withdrawal: locks balance immediately to prevent double spending
+   * Enforces single active pending request limit and strict UPI address format
    */
   async requestWithdrawal(userId: string, amount: number, upiId: string) {
     const roundedAmount = parseFloat(amount.toFixed(2));
     if (isNaN(roundedAmount) || roundedAmount <= 0) {
       throw new Error('Withdrawal amount must be greater than 0');
     }
+    if (roundedAmount < 10) {
+      throw new Error('Minimum withdrawal limit is ₹10.00');
+    }
+
     const cleanUpi = upiId.trim();
-    if (!cleanUpi || !cleanUpi.includes('@')) {
-      throw new Error('Valid UPI ID is required (e.g., name@upi)');
+    const vpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+    if (!vpaRegex.test(cleanUpi)) {
+      throw new Error('Valid UPI ID is required (e.g., 9876543210@paytm or user@okhdfcbank)');
+    }
+
+    // Prevent multiple pending withdrawal spam
+    const existingPending = await prisma.withdrawal.findFirst({
+      where: { userId, status: 'PENDING' },
+    });
+    if (existingPending) {
+      throw new Error('You already have a pending withdrawal request under review. Please wait for it to be cleared.');
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -319,8 +344,19 @@ export class WalletService {
 
   /**
    * Admin approves & completes withdrawal after sending money via UPI
+   * Verifies UTR uniqueness to prevent duplicate settlements
    */
   async completeWithdrawal(withdrawalId: string, payoutUtr: string) {
+    const cleanUtr = payoutUtr.trim();
+    if (!cleanUtr) throw new Error('Bank payout UTR is required');
+
+    const duplicateUtr = await prisma.withdrawal.findFirst({
+      where: { payoutUtr: cleanUtr, status: 'COMPLETED' },
+    });
+    if (duplicateUtr && duplicateUtr.id !== withdrawalId) {
+      throw new Error(`Bank payout UTR ${cleanUtr} has already been recorded for a previous withdrawal (#${duplicateUtr.id.slice(0, 8)})`);
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const withdrawal = await tx.withdrawal.findUnique({
         where: { id: withdrawalId },
@@ -341,7 +377,7 @@ export class WalletService {
         where: { id: withdrawalId },
         data: {
           status: 'COMPLETED',
-          payoutUtr,
+          payoutUtr: cleanUtr,
         },
       });
 

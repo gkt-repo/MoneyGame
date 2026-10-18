@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { userApi, UserProfile, DepositResponse } from '../services/api';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { userApi, UserProfile, DepositResponse, DepositItem } from '../services/api';
 import { QRCodeSVG } from 'qrcode.react';
+import confetti from 'canvas-confetti';
+import { io, Socket } from 'socket.io-client';
 import {
   QrCode,
   Copy,
@@ -11,12 +13,38 @@ import {
   AlertCircle,
   Loader2,
   ShieldCheck,
+  RotateCcw,
+  Receipt,
+  Send,
+  Zap,
 } from 'lucide-react';
 
 interface AddCashViewProps {
   user: UserProfile;
   onPaymentSuccess: () => void;
 }
+
+// Play pleasant web audio chime on payment approval
+const playSuccessChime = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+    osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15); // A5
+
+    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.5);
+  } catch (_) {}
+};
 
 export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess }) => {
   const [selectedBase, setSelectedBase] = useState('100');
@@ -28,26 +56,221 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [copiedAmount, setCopiedAmount] = useState(false);
 
-  // Polling for confirmation
-  const [checking, setChecking] = useState(false);
+  // Approval state
   const [isApproved, setIsApproved] = useState(false);
+  const [approvedDetails, setApprovedDetails] = useState<{ amount: number; utr?: string } | null>(null);
 
+  // Countdown timer state
+  const [timeLeft, setTimeLeft] = useState<number>(600);
+  const [isExpired, setIsExpired] = useState(false);
+
+  // User "I Have Paid" 1-minute verification countdown
+  const [hasTappedPaid, setHasTappedPaid] = useState(false);
+  const [paidCountdown, setPaidCountdown] = useState(60);
+
+  // Fallback UTR Claim state
+  const [showUtrModal, setShowUtrModal] = useState(false);
+  const [manualUtr, setManualUtr] = useState('');
+  const [submittingUtr, setSubmittingUtr] = useState(false);
+  const [utrSuccessMsg, setUtrSuccessMsg] = useState<string | null>(null);
+  const [utrErrorMsg, setUtrErrorMsg] = useState<string | null>(null);
+
+  // Deposit history list
+  const [history, setHistory] = useState<DepositItem[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const socketRef = useRef<Socket | null>(null);
   const presets = ['50', '100', '200', '500', '1000'];
 
+  const loadHistory = useCallback(async () => {
+    try {
+      setLoadingHistory(true);
+      const items = await userApi.getMyDeposits();
+      setHistory(items);
+    } catch (_) {
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  // Handle successful approval trigger
+  const handleApprovalSuccess = useCallback(
+    (details: { amount: number; utr?: string }) => {
+      setIsApproved(true);
+      setApprovedDetails(details);
+      playSuccessChime();
+      confetti({
+        particleCount: 80,
+        spread: 60,
+        origin: { y: 0.6 },
+      });
+      onPaymentSuccess();
+      loadHistory();
+    },
+    [onPaymentSuccess, loadHistory]
+  );
+
+  // Check deposit status on demand
+  const checkStatus = useCallback(async () => {
+    if (!deposit || isApproved) return;
+    try {
+      const res = await userApi.getDepositStatus(deposit.depositId);
+      if (res.deposit?.status === 'APPROVED') {
+        handleApprovalSuccess({
+          amount: res.deposit.baseAmount || deposit.baseAmount,
+          utr: res.deposit.utr,
+        });
+      } else if (res.deposit?.status === 'EXPIRED') {
+        setIsExpired(true);
+      }
+    } catch (_) {}
+  }, [deposit, isApproved, handleApprovalSuccess]);
+
+  // Generate new deposit QR
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setDeposit(null);
     setIsApproved(false);
+    setIsExpired(false);
+    setApprovedDetails(null);
+    setShowUtrModal(false);
+    setManualUtr('');
+    setUtrSuccessMsg(null);
+    setUtrErrorMsg(null);
+    setHasTappedPaid(false);
+    setPaidCountdown(60);
 
     try {
       const res = await userApi.createDeposit(user.id, parseFloat(selectedBase));
       setDeposit(res);
+      setTimeLeft(res.expiresInSeconds || 600);
     } catch (err: any) {
       setError(err.message || 'Failed to generate deposit request.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Direct WebSocket Connection for <100ms Instant Approval
+  useEffect(() => {
+    if (!deposit || isApproved) return;
+
+    const socket = io('/', { transports: ['websocket', 'polling'] });
+    socketRef.current = socket;
+
+    // Join deposit-specific channel AND personal user channel
+    socket.emit('join_deposit_channel', deposit.depositId);
+    socket.emit('join_user_channel', user.id);
+
+    socket.on('deposit_approved', (data: any) => {
+      if (!data || data.depositId === deposit.depositId || Number(data.amount) === Number(deposit.baseAmount)) {
+        handleApprovalSuccess({
+          amount: data.amount || deposit.baseAmount,
+          utr: data.utr,
+        });
+      }
+    });
+
+    return () => {
+      socket.emit('leave_deposit_channel', deposit.depositId);
+      socket.disconnect();
+    };
+  }, [deposit, isApproved, user.id, handleApprovalSuccess]);
+
+  // Countdown Timer
+  useEffect(() => {
+    if (!deposit || isApproved || isExpired) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setIsExpired(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [deposit, isApproved, isExpired]);
+
+  // 1-Minute Post-Payment Verification Countdown
+  useEffect(() => {
+    if (!deposit || isApproved || isExpired || !hasTappedPaid || paidCountdown <= 0) return;
+
+    const timer = setInterval(() => {
+      setPaidCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [deposit, isApproved, isExpired, hasTappedPaid, paidCountdown]);
+
+  const handlePaidClicked = () => {
+    setHasTappedPaid(true);
+    setPaidCountdown(60);
+    checkStatus();
+  };
+
+  // Fast Background Poller & Instant Window-Focus / Visibility-Change Resume
+  useEffect(() => {
+    if (!deposit || isApproved || isExpired) return;
+
+    // 1. Regular 3s poll as fallback
+    const interval = setInterval(checkStatus, 3000);
+
+    // 2. INSTANT CHECK the exact millisecond user returns from GPay/PhonePe to browser
+    const onVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        checkStatus();
+      }
+    };
+
+    window.addEventListener('focus', onVisibilityOrFocus);
+    document.addEventListener('visibilitychange', onVisibilityOrFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
+    };
+  }, [deposit, isApproved, isExpired, checkStatus]);
+
+  // User Manual UTR Claim Handler
+  const handleClaimUtr = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deposit || !manualUtr.trim()) return;
+
+    setSubmittingUtr(true);
+    setUtrErrorMsg(null);
+    setUtrSuccessMsg(null);
+
+    try {
+      const res = await userApi.claimDepositUtr(deposit.depositId, manualUtr.trim());
+      if (res.instantApproval) {
+        handleApprovalSuccess({
+          amount: deposit.baseAmount,
+          utr: manualUtr.trim(),
+        });
+      } else {
+        setUtrSuccessMsg(res.message || 'UTR recorded! Verifying against bank records...');
+      }
+    } catch (err: any) {
+      setUtrErrorMsg(err.message || 'Failed to submit UTR. Please recheck your reference number.');
+    } finally {
+      setSubmittingUtr(false);
     }
   };
 
@@ -65,34 +288,18 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
     setTimeout(() => setCopiedAmount(false), 2000);
   };
 
-  // Poll deposit status
-  useEffect(() => {
-    if (!deposit || isApproved) return;
-
-    const interval = setInterval(async () => {
-      try {
-        setChecking(true);
-        const res = await userApi.getDepositStatus(deposit.depositId);
-        if (res.deposit?.status === 'APPROVED') {
-          setIsApproved(true);
-          onPaymentSuccess();
-        }
-      } catch (err) {
-        // quiet poll
-      } finally {
-        setChecking(false);
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [deposit, isApproved, onPaymentSuccess]);
+  const formatTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="max-w-xl mx-auto space-y-6">
       <div>
         <h2 className="text-xl font-bold text-slate-900 tracking-tight">Add Cash via UPI</h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          Zero payment gateway fees. Instant auto-credit using unique paise offset.
+          Zero payment gateway deductions. Instant auto-credit with real-time bank sync.
         </p>
       </div>
 
@@ -103,99 +310,219 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
         </div>
       )}
 
+      {/* State 1: Payment Approved Celebration View */}
       {isApproved ? (
-        <div className="bg-white border border-emerald-300 rounded-xl p-8 text-center space-y-4 shadow-xs">
-          <div className="w-14 h-14 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600 border border-emerald-200">
-            <CheckCircle2 className="w-8 h-8" />
+        <div className="bg-white border border-emerald-300 rounded-xl p-8 text-center space-y-4 shadow-sm animate-fade-in">
+          <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600 border border-emerald-200 shadow-xs">
+            <CheckCircle2 className="w-9 h-9" />
           </div>
-          <h3 className="text-xl font-bold text-slate-900">Payment Verified & Credited!</h3>
-          <p className="text-xs text-slate-500">
-            ₹{deposit?.totalAmount.toFixed(2)} has been added to your balance.
-          </p>
-          <button
-            onClick={() => setDeposit(null)}
-            className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition"
-          >
-            Add More Cash
-          </button>
+          <div>
+            <h3 className="text-xl font-bold text-slate-900">Payment Verified & Credited!</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              ₹{(approvedDetails?.amount || deposit?.baseAmount || 0).toFixed(2)} has been added to your balance.
+            </p>
+            {approvedDetails?.utr && (
+              <span className="inline-block mt-2 font-mono text-xs px-2.5 py-1 bg-slate-100 text-slate-700 rounded border border-slate-200">
+                Bank UTR: {approvedDetails.utr}
+              </span>
+            )}
+          </div>
+
+          <div className="pt-2">
+            <button
+              onClick={() => {
+                setDeposit(null);
+                setIsApproved(false);
+                setHasTappedPaid(false);
+                setPaidCountdown(60);
+              }}
+              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-xs"
+            >
+              Add More Cash
+            </button>
+          </div>
         </div>
       ) : deposit ? (
-        /* Render Generated QR and Instructions */
-        <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 space-y-6 shadow-xs text-center">
-          <div>
-            <span className="inline-block px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded text-xs font-semibold mb-2">
-              Step 2 of 2: Scan & Pay Exact Amount
+        /* State 2: Active Deposit QR & Intent Screen */
+        <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 space-y-5 shadow-xs text-center">
+          {/* Header & Live Timer Pill */}
+          <div className="flex items-center justify-between">
+            <span className="inline-block px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded text-xs font-semibold">
+              Step 2 of 2: Scan & Pay
             </span>
-            <div className="text-2xl font-bold mono-num text-slate-900">
-              ₹{deposit.totalAmount.toFixed(2)}
-            </div>
-            <p className="text-xs text-amber-700 font-medium mt-1">
-              ⚠️ Important: Please pay the exact amount including paise ({deposit.offsetPaise}p) for instant verification.
-            </p>
-          </div>
 
-          {/* QR Code Canvas */}
-          <div className="inline-block p-4 bg-white border border-slate-200 rounded-xl shadow-xs">
-            <QRCodeSVG value={deposit.upiDeepLink || deposit.upiUri || ''} size={190} level="M" />
-          </div>
-
-          {/* Direct Pay Link for Mobile */}
-          <div>
-            <a
-              href={deposit.upiDeepLink || deposit.upiUri || '#'}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition shadow-xs"
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold mono-num border ${
+                isExpired
+                  ? 'bg-red-50 text-red-700 border-red-200'
+                  : timeLeft < 120
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : 'bg-slate-50 text-slate-700 border-slate-200'
+              }`}
             >
-              <ExternalLink className="w-4 h-4" />
-              <span>Open in UPI App (GPay / PhonePe / Paytm)</span>
-            </a>
-          </div>
-
-          {/* Copyable Details */}
-          <div className="space-y-2 text-left pt-2 border-t border-slate-100">
-            <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-              <div>
-                <span className="text-slate-500 block text-[11px]">Receiving UPI ID</span>
-                <span className="font-mono font-semibold text-slate-800">{deposit.receivingUpi}</span>
-              </div>
-              <button
-                onClick={handleCopyUpi}
-                className="p-1.5 text-slate-500 hover:text-emerald-600 transition"
-                title="Copy UPI ID"
-              >
-                {copiedUpi ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-              <div>
-                <span className="text-slate-500 block text-[11px]">Exact Payable Amount</span>
-                <span className="font-mono font-bold text-slate-900">₹{deposit.totalAmount.toFixed(2)}</span>
-              </div>
-              <button
-                onClick={handleCopyAmount}
-                className="p-1.5 text-slate-500 hover:text-emerald-600 transition"
-                title="Copy Amount"
-              >
-                {copiedAmount ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-              </button>
+              <Clock className="w-3.5 h-3.5" />
+              <span>{isExpired ? 'Expired' : formatTimer(timeLeft)}</span>
             </div>
           </div>
 
-          {/* Live Polling Status Indicator */}
-          <div className="flex items-center justify-center gap-2 text-xs text-slate-500 pt-2">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
-            <span>Awaiting bank payment confirmation...</span>
-          </div>
+          {isExpired ? (
+            <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-center space-y-3">
+              <AlertCircle className="w-8 h-8 text-red-600 mx-auto" />
+              <h4 className="text-base font-bold text-red-900">Payment Request Expired</h4>
+              <p className="text-xs text-red-700">
+                This dynamic paise slot has expired. If you already transferred money from your bank, submit your UTR below and we will credit it immediately!
+              </p>
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <button
+                  onClick={() => setShowUtrModal(true)}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition"
+                >
+                  I Already Paid (Submit UTR)
+                </button>
+                <button
+                  onClick={() => setDeposit(null)}
+                  className="px-4 py-2 bg-white border border-red-200 text-red-700 rounded-lg text-xs font-semibold hover:bg-red-100 transition"
+                >
+                  Generate New QR
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div>
+                <div className="text-3xl font-extrabold mono-num text-slate-900">
+                  ₹{deposit.totalAmount.toFixed(2)}
+                </div>
+                <p className="text-xs text-amber-700 font-semibold mt-1">
+                  ⚠️ Pay exact amount with paise ({deposit.offsetPaise}p) for instant verification.
+                </p>
+              </div>
 
-          <button
-            onClick={() => setDeposit(null)}
-            className="text-xs text-slate-500 hover:underline"
-          >
-            Cancel & Change Amount
-          </button>
+              {/* QR Code Canvas */}
+              <div className="inline-block p-4 bg-white border border-slate-200 rounded-2xl shadow-xs">
+                <QRCodeSVG value={deposit.upiDeepLink || deposit.upiUri || ''} size={190} level="M" />
+              </div>
+
+              {/* Direct Pay Link for Mobile */}
+              <div>
+                <a
+                  href={deposit.upiDeepLink || deposit.upiUri || '#'}
+                  className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold transition shadow-xs"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Open in UPI App (GPay / PhonePe / Paytm)</span>
+                </a>
+              </div>
+
+              {/* Copyable Details */}
+              <div className="space-y-2 text-left pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Receiving UPI ID</span>
+                    <span className="font-mono font-bold text-slate-900">{deposit.receivingUpi}</span>
+                  </div>
+                  <button
+                    onClick={handleCopyUpi}
+                    className="p-1.5 text-slate-500 hover:text-emerald-600 transition"
+                    title="Copy UPI ID"
+                  >
+                    {copiedUpi ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Exact Payable Amount</span>
+                    <span className="font-mono font-bold text-emerald-700">₹{deposit.totalAmount.toFixed(2)}</span>
+                  </div>
+                  <button
+                    onClick={handleCopyAmount}
+                    className="p-1.5 text-slate-500 hover:text-emerald-600 transition"
+                    title="Copy Amount"
+                  >
+                    {copiedAmount ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Post-Payment 1-Minute Verification Workflow */}
+              {!hasTappedPaid ? (
+                /* Stage A: User has not yet tapped "I Have Paid" */
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handlePaidClicked}
+                    className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold transition shadow-xs cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>I Have Paid via UPI</span>
+                  </button>
+                  <p className="text-[11px] text-slate-500 text-center">
+                    Tap above after completing payment in your UPI app. 1-minute automated bank verification will begin.
+                  </p>
+                </div>
+              ) : paidCountdown > 0 ? (
+                /* Stage B: User tapped "I Have Paid", 1-minute countdown actively verifying */
+                <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-2.5 text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+                    <span className="text-xs font-bold text-emerald-900">
+                      Verifying with bank... ({paidCountdown}s remaining)
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800">
+                    Listening for automated bank confirmation. Your wallet balance will update instantaneously the moment the notification arrives.
+                  </p>
+                  <div className="w-full bg-emerald-200/60 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-emerald-600 h-full transition-all duration-1000 ease-linear rounded-full"
+                      style={{ width: `${((60 - paidCountdown) / 60) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* Stage C: 1 Minute Elapsed Without Notification -> Option appears to enter UTR */
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-left space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <Clock className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-900">
+                        Bank confirmation taking longer than 1 minute
+                      </h4>
+                      <p className="text-[11px] text-amber-800 mt-0.5">
+                        If money was debited from your UPI app, enter your 12-digit bank UTR / Reference No. to verify manually.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowUtrModal(true)}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Paid? Enter 12-Digit UTR</span>
+                  </button>
+                </div>
+              )}
+
+              <div>
+                <button
+                  onClick={() => {
+                    setDeposit(null);
+                    setHasTappedPaid(false);
+                    setPaidCountdown(60);
+                  }}
+                  className="text-xs text-slate-400 hover:text-slate-600 hover:underline cursor-pointer"
+                >
+                  Cancel & Change Amount
+                </button>
+              </div>
+            </>
+          )}
         </div>
       ) : (
-        /* Amount Selection Form */
+        /* State 3: Deposit Amount Selection */
         <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 space-y-5 shadow-xs">
           <form onSubmit={handleGenerate} className="space-y-5">
             <div>
@@ -239,7 +566,7 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 flex items-start gap-2.5">
               <ShieldCheck className="w-4 h-4 flex-shrink-0 text-emerald-600 mt-0.5" />
               <span>
-                Payments are deposited directly into our official merchant bank account with zero middleman deductions.
+                100% direct bank deposit. Zero commission deducted. Your deposit is automatically verified within seconds.
               </span>
             </div>
 
@@ -260,6 +587,146 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
           </form>
         </div>
       )}
+
+      {/* Manual UTR Submission Modal */}
+      {showUtrModal && deposit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900">Verify Payment with UTR</h3>
+              <button
+                onClick={() => setShowUtrModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Enter the 12-digit UPI Reference Number / UTR shown on your Google Pay, PhonePe, or Paytm receipt.
+            </p>
+
+            {utrErrorMsg && (
+              <div className="p-2.5 bg-red-50 border border-red-200 rounded text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{utrErrorMsg}</span>
+              </div>
+            )}
+
+            {utrSuccessMsg && (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded text-emerald-800 text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+                <span>{utrSuccessMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleClaimUtr} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  12-Digit Bank UTR / UPI Ref ID
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  maxLength={18}
+                  value={manualUtr}
+                  onChange={(e) => setManualUtr(e.target.value.trim())}
+                  placeholder="e.g. 429384729182"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm mono-num font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-600 tracking-wider"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowUtrModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingUtr || manualUtr.length < 8}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {submittingUtr ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  <span>Verify UTR</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* User Deposit Ledger & Passbook Section */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Your Deposit History</h3>
+            <p className="text-[11px] text-slate-500">Track all your past top-ups, receipts, and bank UTRs</p>
+          </div>
+          <button
+            type="button"
+            onClick={loadHistory}
+            className="p-1.5 text-slate-400 hover:text-slate-700 transition rounded hover:bg-slate-50"
+            title="Refresh history"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 ${loadingHistory ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+
+        {history.length === 0 ? (
+          <div className="text-center py-6 text-slate-400 text-xs">
+            {loadingHistory ? 'Loading history...' : 'No deposits recorded yet.'}
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {history.map((d) => (
+              <div key={d.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="mono-num font-bold text-sm text-slate-900">
+                      ₹{d.baseAmount.toFixed(2)}
+                    </span>
+                    {d.utr && (
+                      <span className="font-mono text-[11px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                        UTR: {d.utr}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    {new Date(d.createdAt).toLocaleString()}
+                  </span>
+                </div>
+
+                <div>
+                  {d.status === 'APPROVED' ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      Credited
+                    </span>
+                  ) : d.status === 'CLAIMED' ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                      <Clock className="w-3 h-3 text-blue-600" />
+                      UTR Under Review
+                    </span>
+                  ) : d.status === 'PENDING' ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                      <Clock className="w-3 h-3 text-amber-600" />
+                      Awaiting Payment
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-500">
+                      {d.status}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

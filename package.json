@@ -18,10 +18,11 @@
     "dev:admin-web": "npm --prefix apps/admin-web run dev",
     "test:auth": "npm --prefix apps/server run test:auth",
     "test:admin": "npm --prefix apps/server run test:admin",
+    "test:payment": "npm --prefix apps/server run test:payment",
     "test:user-app": "(cd apps/user-app && flutter test)",
     "test:admin-app": "(cd apps/admin-app && flutter test)",
     "analyze:flutter": "(cd apps/user-app && flutter analyze) && (cd apps/admin-app && flutter analyze)",
-    "test": "npm run test:auth && npm run test:admin && npm run test:user-app && npm run test:admin-app"
+    "test": "npm run test:auth && npm run test:admin && npm run test:payment && npm run test:user-app && npm run test:admin-app"
   },
   "devDependencies": {
     "typescript": "^6.0.3"

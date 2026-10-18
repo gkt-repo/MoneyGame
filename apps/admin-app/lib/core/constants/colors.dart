@@ -20,13 +20,16 @@ class AppColors {
   static const Color slate600 = Color(0xFF475569);
   static const Color slate500 = Color(0xFF64748B); // Secondary Text
   static const Color slate400 = Color(0xFF94A3B8);
+  static const Color slate300 = Color(0xFFCBD5E1);
   static const Color slate200 = Color(0xFFE2E8F0); // Subtle Border
   static const Color slate100 = Color(0xFFF1F5F9);
   static const Color slate50 = Color(0xFFF8FAFC);  // Canvas Background
   static const Color white = Color(0xFFFFFFFF);    // Surface Card
 
   // Status Colors
+  static const Color amber900 = Color(0xFF78350F);
   static const Color amber800 = Color(0xFF92400E);
+  static const Color amber700 = Color(0xFFB45309);
   static const Color amber600 = Color(0xFFD97706); // Pending
   static const Color amber50 = Color(0xFFFFFBEB);
 

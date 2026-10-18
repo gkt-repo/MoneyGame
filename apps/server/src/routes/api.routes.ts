@@ -56,13 +56,28 @@ router.get('/wallet/:userId', async (req: Request, res: Response): Promise<void>
 
 router.post('/deposits/create', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { userId, amount } = req.body;
+    const userId = (req as any).user?.id || req.body.userId;
+    const amount = req.body.amount;
     if (!userId || !amount) {
       res.status(400).json({ error: 'userId and amount are required' });
       return;
     }
     const depositData = await paymentService.createDepositRequest(userId, parseFloat(amount));
     res.json({ success: true, ...depositData });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/deposits/claim-utr', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { depositId, utr } = req.body;
+    if (!depositId || !utr) {
+      res.status(400).json({ error: 'depositId and utr are required' });
+      return;
+    }
+    const result = await paymentService.claimDepositUtr(req.user!.id, depositId, utr);
+    res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
@@ -78,11 +93,39 @@ router.get('/deposits/status/:depositId', async (req: Request, res: Response): P
   }
 });
 
+router.get('/deposits/my', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const deposits = await paymentService.getUserDeposits(req.user!.id);
+    res.json({ success: true, deposits });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/user/deposits/my', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const deposits = await paymentService.getUserDeposits(req.user!.id);
+    res.json({ success: true, deposits });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/user/transactions', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const transactions = await walletService.getUserTransactions(req.user!.id);
+    res.json({ success: true, transactions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Withdrawals ──────────────────────────────────────────────────────────────
 
 router.post('/withdrawals/request', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { userId, amount, upiId } = req.body;
+    const userId = (req as any).user?.id || req.body.userId;
+    const { amount, upiId } = req.body;
     if (!userId || !amount || !upiId) {
       res.status(400).json({ error: 'userId, amount, and upiId are required' });
       return;
@@ -185,18 +228,17 @@ router.post('/webhooks/upi-notify', async (req: Request, res: Response): Promise
       return;
     }
 
-    const { amount, utr } = req.body;
+    const { amount, utr, senderUpi, senderName } = req.body;
     if (!amount) {
       res.status(400).json({ error: 'Payment amount is required' });
       return;
     }
 
-    const result = await paymentService.verifyIncomingPayment(parseFloat(amount), utr);
-
-    if (!result.success) {
-      res.status(404).json(result);
-      return;
-    }
+    const result = await paymentService.verifyIncomingPayment(parseFloat(amount), utr, {
+      senderUpi,
+      senderName,
+      rawPayload: req.body,
+    });
 
     res.json(result);
   } catch (err: any) {
@@ -231,6 +273,57 @@ router.get('/admin/deposits', authenticateAdmin, async (_req: Request, res: Resp
     res.json({ success: true, deposits });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/admin/deposits/:depositId/approve', authenticateAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const depositId = Array.isArray(req.params.depositId) ? req.params.depositId[0] : req.params.depositId;
+    const { utr } = req.body;
+    if (!utr) {
+      res.status(400).json({ error: 'Bank UTR is required' });
+      return;
+    }
+    const result = await adminService.approveDeposit(depositId, utr, req.user!.id);
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/admin/deposits/:depositId/reject', authenticateAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const depositId = Array.isArray(req.params.depositId) ? req.params.depositId[0] : req.params.depositId;
+    const { reason } = req.body;
+    const result = await adminService.rejectDeposit(depositId, reason || 'Invalid payment', req.user!.id);
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/admin/unmatched-payments', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { status } = req.query;
+    const items = await adminService.getUnmatchedPayments(status as string);
+    res.json({ success: true, unmatchedPayments: items });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/admin/unmatched-payments/:id/assign', authenticateAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { userId } = req.body;
+    if (!userId) {
+      res.status(400).json({ error: 'userId is required' });
+      return;
+    }
+    const result = await adminService.assignUnmatchedPayment(id, userId, req.user!.id);
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
   }
 });
 

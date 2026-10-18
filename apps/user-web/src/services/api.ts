@@ -29,6 +29,32 @@ export interface DepositResponse {
   expiresInSeconds?: number;
 }
 
+export interface DepositItem {
+  id: string;
+  userId: string;
+  baseAmount: number;
+  offsetPaise: number;
+  totalAmount: number;
+  receivingUpi: string;
+  status: 'PENDING' | 'CLAIMED' | 'APPROVED' | 'EXPIRED' | 'REJECTED';
+  utr?: string | null;
+  userClaimedUtr?: string | null;
+  claimStatus?: string | null;
+  approvedAt?: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface TransactionItem {
+  id: string;
+  userId: string;
+  amount: number;
+  type: string;
+  referenceId?: string | null;
+  description?: string | null;
+  createdAt: string;
+}
+
 export interface WithdrawalItem {
   id: string;
   userId: string;
@@ -195,6 +221,23 @@ class UserApiService {
 
   async getDepositStatus(depositId: string): Promise<any> {
     return this.request(`/deposits/status/${depositId}`);
+  }
+
+  async claimDepositUtr(depositId: string, utr: string): Promise<{ success: boolean; message: string; instantApproval?: boolean; deposit?: any }> {
+    return this.request('/deposits/claim-utr', {
+      method: 'POST',
+      body: JSON.stringify({ depositId, utr }),
+    });
+  }
+
+  async getMyDeposits(): Promise<DepositItem[]> {
+    const res = await this.request<{ success: boolean; deposits: DepositItem[] }>('/user/deposits/my');
+    return res.deposits || [];
+  }
+
+  async getMyTransactions(): Promise<TransactionItem[]> {
+    const res = await this.request<{ success: boolean; transactions: TransactionItem[] }>('/user/transactions');
+    return res.transactions || [];
   }
 
   async requestWithdrawal(userId: string, amount: number, upiId: string): Promise<any> {

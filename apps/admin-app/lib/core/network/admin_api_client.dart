@@ -129,6 +129,7 @@ class AdminDepositModel {
   final String? utr;
   final String createdAt;
   final String username;
+  final String? userClaimedUtr;
 
   AdminDepositModel({
     required this.id,
@@ -138,6 +139,7 @@ class AdminDepositModel {
     required this.offsetPaise,
     required this.status,
     this.utr,
+    this.userClaimedUtr,
     required this.createdAt,
     required this.username,
   });
@@ -151,6 +153,7 @@ class AdminDepositModel {
       offsetPaise: json['offsetPaise'] ?? 0,
       status: json['status'] ?? 'PENDING',
       utr: json['utr'],
+      userClaimedUtr: json['userClaimedUtr'],
       createdAt: json['createdAt'] ?? '',
       username: json['user']?['username'] ?? 'Player',
     );
@@ -281,6 +284,32 @@ class AdminApiClient {
       return list.map((d) => AdminDepositModel.fromJson(d)).toList();
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to load deposits ledger';
+    }
+  }
+
+  static Future<void> approveDeposit({
+    required String depositId,
+    required String utr,
+  }) async {
+    try {
+      await _dio.post('/admin/deposits/$depositId/approve', data: {
+        'utr': utr,
+      });
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to approve deposit';
+    }
+  }
+
+  static Future<void> rejectDeposit({
+    required String depositId,
+    String? reason,
+  }) async {
+    try {
+      await _dio.post('/admin/deposits/$depositId/reject', data: {
+        'reason': reason ?? 'Declined by administrator',
+      });
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to reject deposit';
     }
   }
 

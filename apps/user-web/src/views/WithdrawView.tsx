@@ -63,8 +63,8 @@ export const WithdrawView: React.FC<WithdrawViewProps> = ({
       return;
     }
 
-    if (withdrawAmount < 1) {
-      setError('Minimum withdrawal limit is ₹1.00.');
+    if (withdrawAmount < 10) {
+      setError('Minimum withdrawal limit is ₹10.00.');
       return;
     }
 
@@ -235,7 +235,7 @@ export const WithdrawView: React.FC<WithdrawViewProps> = ({
               />
             </div>
             <span className="text-[11px] text-slate-400 mt-1 block">
-              Minimum withdrawal: ₹1.00
+              Minimum withdrawal: ₹10.00
             </span>
           </div>
 
@@ -253,24 +253,37 @@ export const WithdrawView: React.FC<WithdrawViewProps> = ({
             />
           </div>
 
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2">
-            <ShieldAlert className="w-4 h-4 flex-shrink-0 text-amber-600 mt-0.5" />
-            <span>
-              Requested funds will be locked until approved by the admin. If rejected for any reason, the funds will be automatically refunded back to your available balance.
-            </span>
-          </div>
+          {withdrawals.some((w) => w.status === 'PENDING') || lockedBalance > 0 ? (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start gap-2">
+              <Clock className="w-4 h-4 flex-shrink-0 text-amber-600 mt-0.5" />
+              <span>
+                You currently have a pending withdrawal request under review. Super Admin will credit your bank account via IMPS. A new request can be submitted once this is cleared.
+              </span>
+            </div>
+          ) : (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 flex-shrink-0 text-slate-500 mt-0.5" />
+              <span>
+                Requested funds will be locked until approved by the admin. If rejected for any reason, the funds will be automatically refunded back to your available balance.
+              </span>
+            </div>
+          )}
 
           <button
             type="submit"
-            disabled={loading || balance < 1}
-            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg text-sm flex items-center justify-center gap-2 transition disabled:opacity-50 shadow-xs"
+            disabled={loading || balance < 10 || withdrawals.some((w) => w.status === 'PENDING') || lockedBalance > 0}
+            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg text-sm flex items-center justify-center gap-2 transition disabled:opacity-50 shadow-xs cursor-pointer disabled:cursor-not-allowed"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <>
                 <ArrowUpRight className="w-4 h-4" />
-                <span>Submit Withdrawal Request</span>
+                <span>
+                  {withdrawals.some((w) => w.status === 'PENDING') || lockedBalance > 0
+                    ? 'Withdrawal Request Already Under Review'
+                    : 'Submit Withdrawal Request'}
+                </span>
               </>
             )}
           </button>

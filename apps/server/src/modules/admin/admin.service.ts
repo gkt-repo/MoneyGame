@@ -604,6 +604,34 @@ export class AdminService {
   }
 
   /**
+   * Manually approve a deposit with verified bank UTR
+   */
+  async approveDeposit(depositId: string, utr: string, adminId: string) {
+    return paymentService.adminApproveDeposit(depositId, utr, adminId);
+  }
+
+  /**
+   * Reject a deposit claim
+   */
+  async rejectDeposit(depositId: string, reason: string, adminId: string) {
+    return paymentService.adminRejectDeposit(depositId, reason, adminId);
+  }
+
+  /**
+   * Fetch all unmatched/orphan payments
+   */
+  async getUnmatchedPayments(statusFilter?: string) {
+    return paymentService.getUnmatchedPayments(statusFilter);
+  }
+
+  /**
+   * Assign an unmatched bank payment to a player's wallet
+   */
+  async assignUnmatchedPayment(unmatchedId: string, userId: string, adminId: string) {
+    return paymentService.assignUnmatchedPayment(unmatchedId, userId, adminId);
+  }
+
+  /**
    * Complete withdrawal
    */
   async completeWithdrawal(withdrawalId: string, payoutUtr: string) {

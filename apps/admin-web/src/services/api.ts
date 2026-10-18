@@ -37,6 +37,19 @@ export interface SupportContactSettings {
   upiHelpText?: string;
 }
 
+export interface UnmatchedPaymentItem {
+  id: string;
+  amount: number;
+  utr: string | null;
+  senderUpi: string | null;
+  senderName: string | null;
+  status: 'UNCLAIMED' | 'ASSIGNED' | 'REFUNDED';
+  assignedUserId: string | null;
+  assignedDepositId: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
 export interface DepositItem {
   id: string;
   userId: string;
@@ -46,6 +59,9 @@ export interface DepositItem {
   receivingUpi: string;
   status: string;
   utr: string | null;
+  userClaimedUtr?: string | null;
+  claimStatus?: string | null;
+  approvedAt?: string | null;
   createdAt: string;
   expiresAt: string;
   user?: {
@@ -264,6 +280,33 @@ class AdminApiService {
   async getDeposits(): Promise<DepositItem[]> {
     const res = await this.request<{ success: boolean; deposits: DepositItem[] }>('/admin/deposits');
     return res.deposits;
+  }
+
+  async approveDeposit(depositId: string, utr: string): Promise<any> {
+    return this.request(`/admin/deposits/${depositId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ utr }),
+    });
+  }
+
+  async rejectDeposit(depositId: string, reason?: string): Promise<any> {
+    return this.request(`/admin/deposits/${depositId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || 'Invalid or unverifiable payment' }),
+    });
+  }
+
+  async getUnmatchedPayments(status?: string): Promise<UnmatchedPaymentItem[]> {
+    const qs = status ? `?status=${status}` : '';
+    const res = await this.request<{ success: boolean; unmatchedPayments: UnmatchedPaymentItem[] }>(`/admin/unmatched-payments${qs}`);
+    return res.unmatchedPayments || [];
+  }
+
+  async assignUnmatchedPayment(id: string, userId: string): Promise<any> {
+    return this.request(`/admin/unmatched-payments/${id}/assign`, {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
   }
 
   async getWithdrawals(): Promise<WithdrawalItem[]> {

@@ -21,7 +21,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
   final _amountController = TextEditingController(text: '100');
   final _upiController = TextEditingController();
 
-  final List<String> _presets = ['50', '100', '200', '500'];
+  final List<String> _presets = ['10', '50', '100', '200', '500'];
 
   bool _loading = false;
   String? _error;
@@ -40,8 +40,8 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
     final amt = double.tryParse(_amountController.text.trim()) ?? 0;
     final upi = _upiController.text.trim();
 
-    if (amt < 50) {
-      setState(() => _error = 'Minimum withdrawal is ₹50');
+    if (amt < 10) {
+      setState(() => _error = 'Minimum withdrawal is ₹10');
       return;
     }
 
@@ -395,7 +395,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
               SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Minimum withdrawal is ₹50. Ensure your VPA/UPI ID is entered accurately. Funds sent to an incorrect UPI ID cannot be reversed.',
+                  'Minimum withdrawal is ₹10. Ensure your VPA/UPI ID is entered accurately. Funds sent to an incorrect UPI ID cannot be reversed.',
                   style: TextStyle(fontSize: 12, color: AppColors.slate600, height: 1.4),
                 ),
               ),

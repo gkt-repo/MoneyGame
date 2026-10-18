@@ -24,6 +24,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late UserProfileModel _user;
   int _currentIndex = 0;
+  List<TransactionModel> _transactions = [];
+  bool _loadingTransactions = false;
 
   @override
   void initState() {
@@ -41,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             _user = _user.copyWith(balance: newBalance);
           });
+          _loadTransactions();
         }
       },
       onDepositApproved: (newBalance) {
@@ -48,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             _user = _user.copyWith(balance: newBalance);
           });
+          _loadTransactions();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Payment approved! Wallet balance: ₹${newBalance.toStringAsFixed(2)}'),
@@ -66,6 +70,25 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() => _user = updated);
       }
     } catch (_) {}
+    _loadTransactions();
+  }
+
+  Future<void> _loadTransactions() async {
+    if (_loadingTransactions) return;
+    if (mounted) setState(() => _loadingTransactions = true);
+    try {
+      final list = await ApiClient.getMyTransactions(limit: 25);
+      if (mounted) {
+        setState(() {
+          _transactions = list;
+          _loadingTransactions = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _loadingTransactions = false);
+      }
+    }
   }
 
   void _openAddCash() {
@@ -353,6 +376,134 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 20),
 
+          // Transaction Passbook / Activity
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.slate200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'TRANSACTION PASSBOOK',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                        color: AppColors.slate500,
+                      ),
+                    ),
+                    IconButton(
+                      icon: _loadingTransactions
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh, size: 18, color: AppColors.slate500),
+                      onPressed: _loadTransactions,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (_transactions.isEmpty && !_loadingTransactions)
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    alignment: Alignment.center,
+                    child: const Column(
+                      children: [
+                        Icon(Icons.receipt_long_outlined, size: 36, color: AppColors.slate300),
+                        SizedBox(height: 8),
+                        Text(
+                          'No transactions recorded yet',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate500),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Add cash or enter a room to view ledger activity',
+                          style: TextStyle(fontSize: 11, color: AppColors.slate400),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _transactions.length,
+                    separatorBuilder: (context, index) => const Divider(height: 16, color: AppColors.slate100),
+                    itemBuilder: (context, index) {
+                      final tx = _transactions[index];
+                      final isCredit = tx.type == 'DEPOSIT' ||
+                          tx.type == 'ROOM_WIN' ||
+                          tx.type == 'REFUND' ||
+                          tx.type == 'MANUAL_CREDIT';
+                      final color = isCredit ? AppColors.emerald700 : AppColors.red600;
+                      final sign = isCredit ? '+' : '-';
+                      final icon = _getTransactionIcon(tx.type);
+
+                      return Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isCredit ? AppColors.emerald50 : AppColors.red50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(icon, size: 18, color: color),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  tx.description ?? tx.type,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.slate800,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _formatDate(tx.createdAt),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.slate400,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '$sign₹${tx.amount.toStringAsFixed(2)}',
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: color,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
           // User Profile Card
           Container(
             padding: const EdgeInsets.all(16),
@@ -437,5 +588,37 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
       ],
     );
+  }
+
+  IconData _getTransactionIcon(String type) {
+    switch (type) {
+      case 'DEPOSIT':
+        return Icons.arrow_downward;
+      case 'ROOM_WIN':
+        return Icons.emoji_events;
+      case 'ROOM_ENTRY':
+        return Icons.sports_esports;
+      case 'WITHDRAWAL_LOCK':
+      case 'WITHDRAWAL_COMPLETE':
+        return Icons.arrow_upward;
+      case 'REFUND':
+        return Icons.replay;
+      case 'MANUAL_CREDIT':
+        return Icons.add_circle;
+      case 'MANUAL_DEBIT':
+        return Icons.remove_circle;
+      default:
+        return Icons.payments;
+    }
+  }
+
+  String _formatDate(DateTime dt) {
+    final local = dt.toLocal();
+    final y = local.year.toString();
+    final m = local.month.toString().padLeft(2, '0');
+    final d = local.day.toString().padLeft(2, '0');
+    final hh = local.hour.toString().padLeft(2, '0');
+    final mm = local.minute.toString().padLeft(2, '0');
+    return '$d/$m/$y $hh:$mm';
   }
 }

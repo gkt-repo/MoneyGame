@@ -69,19 +69,44 @@ model Wallet {
 }
 
 model Deposit {
-  id           String   @id @default(uuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  baseAmount   Float
-  offsetPaise  Int
-  totalAmount  Float    @unique
-  receivingUpi String
-  status       String   @default("PENDING") // PENDING, APPROVED, EXPIRED, REJECTED
-  utr          String?  @unique
-  expiresAt    DateTime
-  createdAt    DateTime @default(now())
+  id               String            @id @default(uuid())
+  userId           String
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  baseAmount       Float
+  offsetPaise      Int
+  totalAmount      Float             @unique
+  receivingUpi     String
+  status           String            @default("PENDING") // PENDING, CLAIMED, APPROVED, EXPIRED, REJECTED
+  utr              String?           @unique
+  userClaimedUtr   String?
+  claimStatus      String?           // NONE, CLAIMED_BY_USER, AUTO_MATCHED, MANUALLY_VERIFIED
+  approvedAt       DateTime?
+  expiresAt        DateTime
+  createdAt        DateTime          @default(now())
+
+  unmatchedPayment UnmatchedPayment?
 
   @@index([userId])
+  @@index([userClaimedUtr])
+  @@index([status])
+}
+
+model UnmatchedPayment {
+  id                String    @id @default(uuid())
+  amount            Float
+  utr               String?   @unique
+  senderUpi         String?
+  senderName        String?
+  rawPayload        String?
+  status            String    @default("UNCLAIMED") // UNCLAIMED, ASSIGNED, REFUNDED
+  assignedDepositId String?   @unique
+  assignedDeposit   Deposit?  @relation(fields: [assignedDepositId], references: [id], onDelete: SetNull)
+  assignedUserId    String?
+  resolvedAt        DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([status])
+  @@index([utr])
 }
 
 model Withdrawal {
@@ -91,7 +116,7 @@ model Withdrawal {
   amount    Float
   upiId     String
   status    String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, REJECTED
-  payoutUtr String?
+  payoutUtr String?  @unique
   reason    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt

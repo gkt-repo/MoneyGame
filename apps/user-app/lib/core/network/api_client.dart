@@ -169,6 +169,40 @@ class RoomPlayerModel {
   }
 }
 
+class TransactionModel {
+  final String id;
+  final String userId;
+  final double amount;
+  final String type;
+  final String? referenceId;
+  final String? description;
+  final DateTime createdAt;
+
+  TransactionModel({
+    required this.id,
+    required this.userId,
+    required this.amount,
+    required this.type,
+    this.referenceId,
+    this.description,
+    required this.createdAt,
+  });
+
+  factory TransactionModel.fromJson(Map<String, dynamic> json) {
+    return TransactionModel(
+      id: json['id'] ?? '',
+      userId: json['userId'] ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      type: json['type'] ?? 'UNKNOWN',
+      referenceId: json['referenceId'],
+      description: json['description'],
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'])
+          : DateTime.now(),
+    );
+  }
+}
+
 class ApiClient {
   static final Dio _dio = Dio(BaseOptions(
     baseUrl: '${ApiConstants.baseUrl}/api',
@@ -342,6 +376,18 @@ class ApiClient {
     }
   }
 
+  static Future<Map<String, dynamic>> claimDepositUtr(String depositId, String utr) async {
+    try {
+      final res = await _dio.post('/deposits/claim-utr', data: {
+        'depositId': depositId,
+        'utr': utr,
+      });
+      return Map<String, dynamic>.from(res.data);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to submit UTR';
+    }
+  }
+
   static Future<void> requestWithdrawal(String userId, double amount, String upiId) async {
     try {
       await _dio.post('/withdrawals/request', data: {
@@ -351,6 +397,26 @@ class ApiClient {
       });
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to submit withdrawal request';
+    }
+  }
+
+  static Future<List<TransactionModel>> getMyTransactions({int limit = 50}) async {
+    try {
+      final res = await _dio.get('/user/transactions', queryParameters: {'limit': limit});
+      final list = res.data['transactions'] as List? ?? [];
+      return list.map((t) => TransactionModel.fromJson(t)).toList();
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to load transaction history';
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getMyDeposits() async {
+    try {
+      final res = await _dio.get('/deposits/my');
+      final list = res.data['deposits'] as List? ?? [];
+      return list.map((d) => Map<String, dynamic>.from(d)).toList();
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to load deposits';
     }
   }
 

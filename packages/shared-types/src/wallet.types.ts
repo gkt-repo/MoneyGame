@@ -6,7 +6,7 @@ export interface WalletDTO {
   updatedAt: string | Date;
 }
 
-export type DepositStatus = 'PENDING' | 'APPROVED' | 'EXPIRED' | 'REJECTED';
+export type DepositStatus = 'PENDING' | 'CLAIMED' | 'APPROVED' | 'EXPIRED' | 'REJECTED';
 
 export interface DepositDTO {
   id: string;
@@ -17,12 +17,33 @@ export interface DepositDTO {
   receivingUpi: string;
   status: DepositStatus;
   utr?: string | null;
+  userClaimedUtr?: string | null;
+  claimStatus?: string | null;
+  approvedAt?: string | Date | null;
   expiresAt: string | Date;
   createdAt: string | Date;
   user?: {
     username: string;
     phone?: string | null;
   };
+}
+
+export interface UnmatchedPaymentDTO {
+  id: string;
+  amount: number;
+  utr?: string | null;
+  senderUpi?: string | null;
+  senderName?: string | null;
+  status: 'UNCLAIMED' | 'ASSIGNED' | 'REFUNDED';
+  assignedUserId?: string | null;
+  assignedDepositId?: string | null;
+  resolvedAt?: string | Date | null;
+  createdAt: string | Date;
+}
+
+export interface ClaimDepositUtrDTO {
+  depositId: string;
+  utr: string;
 }
 
 export interface CreateDepositRequestDTO {

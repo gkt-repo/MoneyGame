@@ -14,7 +14,7 @@ class _DepositsLedgerScreenState extends State<DepositsLedgerScreen> {
   List<AdminDepositModel> _deposits = [];
   bool _loading = true;
   String? _error;
-  String _activeFilter = 'ALL'; // ALL, APPROVED, PENDING
+  String _activeFilter = 'ALL'; // ALL, CLAIMED, APPROVED, PENDING
 
   @override
   void initState() {
@@ -50,6 +50,145 @@ class _DepositsLedgerScreenState extends State<DepositsLedgerScreen> {
         content: Text('$label copied to clipboard'),
         duration: const Duration(seconds: 2),
         backgroundColor: AppColors.slate900,
+      ),
+    );
+  }
+
+  void _showApproveDialog(AdminDepositModel deposit) {
+    final utrController = TextEditingController(text: deposit.userClaimedUtr ?? '');
+    bool submitting = false;
+    String? submitError;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: AppColors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            title: const Text(
+              'Approve & Credit Deposit',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.slate900),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Player: ${deposit.username}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Base Amount: ₹${deposit.baseAmount.toStringAsFixed(2)}  (Payable: ₹${deposit.totalAmount.toStringAsFixed(2)})',
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.emerald700),
+                ),
+                if (deposit.userClaimedUtr != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'User Claimed UTR: ${deposit.userClaimedUtr}',
+                    style: const TextStyle(fontSize: 12, color: AppColors.amber800, fontWeight: FontWeight.w600),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                const Text(
+                  'Bank / UPI Reference Number (UTR):',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.slate900),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: utrController,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.w700),
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. 429381749281',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                ),
+                if (submitError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(submitError!, style: const TextStyle(color: AppColors.red600, fontSize: 12)),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel', style: TextStyle(color: AppColors.slate500)),
+              ),
+              ElevatedButton(
+                onPressed: submitting
+                    ? null
+                    : () async {
+                        final utr = utrController.text.trim();
+                        if (utr.isEmpty) {
+                          setDialogState(() => submitError = 'Please enter a valid bank UTR');
+                          return;
+                        }
+                        setDialogState(() {
+                          submitting = true;
+                          submitError = null;
+                        });
+                        try {
+                          await AdminApiClient.approveDeposit(
+                            depositId: deposit.id,
+                            utr: utr,
+                          );
+                          if (ctx.mounted) Navigator.of(ctx).pop();
+                          _fetchDeposits();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Deposit approved and credited to player!'),
+                                backgroundColor: AppColors.emerald700,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          setDialogState(() {
+                            submitting = false;
+                            submitError = e.toString();
+                          });
+                        }
+                      },
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.emerald600),
+                child: submitting
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white))
+                    : const Text('Confirm & Credit', style: TextStyle(color: AppColors.white)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showRejectDialog(AdminDepositModel deposit) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text('Reject Deposit', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.red600)),
+        content: Text('Are you sure you want to reject deposit #${deposit.id.substring(0, 8)}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                await AdminApiClient.rejectDeposit(depositId: deposit.id);
+                _fetchDeposits();
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red600),
+            child: const Text('Reject', style: TextStyle(color: AppColors.white)),
+          ),
+        ],
       ),
     );
   }
@@ -95,28 +234,31 @@ class _DepositsLedgerScreenState extends State<DepositsLedgerScreen> {
                     const SizedBox(height: 12),
 
                     // Filter Chips
-                    Row(
-                      children: ['ALL', 'APPROVED', 'PENDING'].map((filter) {
-                        final isSel = _activeFilter == filter;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: Text(filter),
-                            selected: isSel,
-                            onSelected: (selected) {
-                              if (selected) setState(() => _activeFilter = filter);
-                            },
-                            backgroundColor: AppColors.white,
-                            selectedColor: AppColors.slate900,
-                            labelStyle: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: isSel ? AppColors.white : AppColors.slate700,
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: ['ALL', 'CLAIMED', 'APPROVED', 'PENDING'].map((filter) {
+                          final isSel = _activeFilter == filter;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(filter),
+                              selected: isSel,
+                              onSelected: (selected) {
+                                if (selected) setState(() => _activeFilter = filter);
+                              },
+                              backgroundColor: AppColors.white,
+                              selectedColor: AppColors.slate900,
+                              labelStyle: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: isSel ? AppColors.white : AppColors.slate700,
+                              ),
+                              side: BorderSide(color: isSel ? AppColors.slate900 : AppColors.slate200),
                             ),
-                            side: BorderSide(color: isSel ? AppColors.slate900 : AppColors.slate200),
-                          ),
-                        );
-                      }).toList(),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ],
                 ),
@@ -194,6 +336,7 @@ class _DepositsLedgerScreenState extends State<DepositsLedgerScreen> {
 
   Widget _buildDepositCard(AdminDepositModel item) {
     final isApproved = item.status == 'APPROVED';
+    final isClaimed = item.status == 'CLAIMED';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -202,7 +345,11 @@ class _DepositsLedgerScreenState extends State<DepositsLedgerScreen> {
         color: AppColors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isApproved ? AppColors.emerald600.withValues(alpha: 0.2) : AppColors.slate200,
+          color: isApproved
+              ? AppColors.emerald600.withValues(alpha: 0.2)
+              : isClaimed
+                  ? AppColors.amber600
+                  : AppColors.slate200,
         ),
       ),
       child: Column(
@@ -244,7 +391,11 @@ class _DepositsLedgerScreenState extends State<DepositsLedgerScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isApproved ? AppColors.emerald50 : AppColors.amber50,
+                  color: isApproved
+                      ? AppColors.emerald50
+                      : isClaimed
+                          ? AppColors.amber50
+                          : AppColors.slate100,
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -252,7 +403,11 @@ class _DepositsLedgerScreenState extends State<DepositsLedgerScreen> {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
-                    color: isApproved ? AppColors.emerald700 : AppColors.amber800,
+                    color: isApproved
+                        ? AppColors.emerald700
+                        : isClaimed
+                            ? AppColors.amber800
+                            : AppColors.slate700,
                   ),
                 ),
               ),
@@ -303,11 +458,69 @@ class _DepositsLedgerScreenState extends State<DepositsLedgerScreen> {
             ),
           ],
 
+          if (item.userClaimedUtr != null && item.userClaimedUtr!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.amber50,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors.amber600.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Text('Player Claimed UTR: ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.amber900)),
+                  Expanded(
+                    child: Text(
+                      item.userClaimedUtr!,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.amber900),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => _copyToClipboard(item.userClaimedUtr!, 'User Claimed UTR'),
+                    child: const Icon(Icons.copy, size: 14, color: AppColors.amber900),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
           const SizedBox(height: 8),
           Text(
             item.createdAt.isNotEmpty ? item.createdAt.substring(0, 19).replaceAll('T', ' ') : '',
             style: const TextStyle(fontSize: 10, color: AppColors.slate400),
           ),
+
+          if (item.status == 'PENDING' || item.status == 'CLAIMED') ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => _showApproveDialog(item),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.emerald600,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                    ),
+                    child: const Text('Approve & Credit', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.white)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: () => _showRejectDialog(item),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.red600,
+                    side: const BorderSide(color: AppColors.slate300),
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                  child: const Text('Reject', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
