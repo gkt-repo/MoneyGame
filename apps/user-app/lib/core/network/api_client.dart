@@ -224,7 +224,15 @@ class ApiClient {
       await SecureStorageService.saveUserProfile(jsonEncode(user.toJson()));
       return user;
     } on DioException catch (e) {
-      throw e.response?.data['error'] ?? 'Registration failed';
+      if (e.response?.data is Map && e.response?.data['error'] != null) {
+        throw e.response!.data['error'].toString();
+      }
+      if (e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout ||
+          e.response == null) {
+        throw 'Cannot connect to server at ${ApiConstants.baseUrl}. Check if server is running.';
+      }
+      throw 'Registration failed: ${e.message}';
     }
   }
 
@@ -252,7 +260,15 @@ class ApiClient {
       await SecureStorageService.saveUserProfile(jsonEncode(user.toJson()));
       return user;
     } on DioException catch (e) {
-      throw e.response?.data['error'] ?? 'Invalid phone or password';
+      if (e.response?.data is Map && e.response?.data['error'] != null) {
+        throw e.response!.data['error'].toString();
+      }
+      if (e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout ||
+          e.response == null) {
+        throw 'Cannot connect to server at ${ApiConstants.baseUrl}. Check if server is running.';
+      }
+      throw 'Login failed: ${e.message}';
     }
   }
 
