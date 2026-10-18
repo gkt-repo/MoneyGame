@@ -1,34 +1,28 @@
 {
-  "name": "moneygame",
+  "name": "moneygame-monorepo",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "ts-node src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js",
-    "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push"
-  },
-  "keywords": [],
-  "type": "commonjs",
-  "dependencies": {
-    "@prisma/client": "^6.4.1",
-    "cors": "^2.8.6",
-    "dotenv": "^18.0.8",
-    "express": "^5.3.0",
-    "prisma": "^6.4.1",
-    "qrcode": "^1.5.4",
-    "socket.io": "^4.8.4",
-    "uuid": "^14.0.3"
+    "build:types": "npm --prefix packages/shared-types run build",
+    "build:server": "npm --prefix apps/server run build",
+    "build:admin-web": "npm --prefix apps/admin-web run build",
+    "build:user-web": "npm --prefix apps/user-web run build",
+    "build": "npm run build:types && npm run build:server && npm run build:admin-web && npm run build:user-web",
+    "dev:server": "npm --prefix apps/server run dev",
+    "dev:user-web": "npm --prefix apps/user-web run dev",
+    "dev:admin-web": "npm --prefix apps/admin-web run dev",
+    "test:auth": "npm --prefix apps/server run test:auth",
+    "test:admin": "npm --prefix apps/server run test:admin",
+    "test:user-app": "(cd apps/user-app && flutter test)",
+    "test:admin-app": "(cd apps/admin-app && flutter test)",
+    "analyze:flutter": "(cd apps/user-app && flutter analyze) && (cd apps/admin-app && flutter analyze)",
+    "test": "npm run test:auth && npm run test:admin && npm run test:user-app && npm run test:admin-app"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/node": "^26.6.5",
-    "@types/qrcode": "^1.5.6",
-    "@types/uuid": "^10.0.0",
-    "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
   }
 }

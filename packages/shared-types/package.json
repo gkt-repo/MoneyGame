@@ -1,0 +1,13 @@
+{
+  "name": "@moneygame/shared-types",
+  "version": "1.0.0",
+  "description": "Shared TypeScript definitions and contracts for MoneyGame",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

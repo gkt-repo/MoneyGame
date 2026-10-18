@@ -1,0 +1,607 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../core/constants/colors.dart';
+import '../../core/network/admin_api_client.dart';
+
+class WithdrawalsQueueScreen extends StatefulWidget {
+  final VoidCallback onQueueUpdated;
+
+  const WithdrawalsQueueScreen({super.key, required this.onQueueUpdated});
+
+  @override
+  State<WithdrawalsQueueScreen> createState() => _WithdrawalsQueueScreenState();
+}
+
+class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
+  List<AdminWithdrawalModel> _withdrawals = [];
+  bool _loading = true;
+  String? _error;
+  String _activeFilter = 'PENDING'; // PENDING, COMPLETED, REJECTED, ALL
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchWithdrawals();
+  }
+
+  Future<void> _fetchWithdrawals() async {
+    setState(() => _loading = true);
+    try {
+      final list = await AdminApiClient.getWithdrawals();
+      if (mounted) {
+        setState(() {
+          _withdrawals = list;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = e.toString());
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  void _copyToClipboard(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label copied to clipboard'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: AppColors.slate900,
+      ),
+    );
+  }
+
+  void _showCompleteDialog(AdminWithdrawalModel withdrawal) {
+    final utrController = TextEditingController(text: 'UTR${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}');
+    bool submitting = false;
+    String? submitError;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: AppColors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            title: const Text(
+              'Confirm Payout Clearance',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.slate900),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'User: ${withdrawal.username} (${withdrawal.phone ?? 'N/A'})',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Amount: ₹${withdrawal.amount.toStringAsFixed(2)}',
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.emerald700),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'UPI: ${withdrawal.upiId}',
+                        style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: AppColors.slate600),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.copy, size: 16),
+                      onPressed: () => _copyToClipboard(withdrawal.upiId, 'UPI ID'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Bank IMPS / UPI Reference UTR Number:',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.slate900),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: utrController,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.w700),
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. 429381749281',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                ),
+                if (submitError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(submitError!, style: const TextStyle(color: AppColors.red600, fontSize: 12)),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel', style: TextStyle(color: AppColors.slate500)),
+              ),
+              ElevatedButton(
+                onPressed: submitting
+                    ? null
+                    : () async {
+                        final utr = utrController.text.trim();
+                        if (utr.isEmpty) {
+                          setDialogState(() => submitError = 'Please enter a valid bank UTR');
+                          return;
+                        }
+                        setDialogState(() {
+                          submitting = true;
+                          submitError = null;
+                        });
+                        try {
+                          await AdminApiClient.completeWithdrawal(
+                            withdrawalId: withdrawal.id,
+                            payoutUtr: utr,
+                          );
+                          if (ctx.mounted) Navigator.of(ctx).pop();
+                          _fetchWithdrawals();
+                          widget.onQueueUpdated();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Withdrawal marked COMPLETED'),
+                                backgroundColor: AppColors.emerald700,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          setDialogState(() {
+                            submitting = false;
+                            submitError = e.toString();
+                          });
+                        }
+                      },
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.emerald600),
+                child: submitting
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white))
+                    : const Text('Mark Complete', style: TextStyle(color: AppColors.white)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showRejectDialog(AdminWithdrawalModel withdrawal) {
+    final reasonController = TextEditingController(text: 'Incorrect UPI VPA or name mismatch');
+    bool submitting = false;
+    String? submitError;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: AppColors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            title: const Text(
+              'Reject Withdrawal & Refund',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.red600),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Rejecting will instantly refund ₹${withdrawal.amount.toStringAsFixed(2)} back to ${withdrawal.username}\'s wallet.',
+                  style: const TextStyle(fontSize: 12, color: AppColors.slate600, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                const Text('Rejection Reason:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: reasonController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    hintText: 'Reason for rejection...',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.all(10),
+                  ),
+                ),
+                if (submitError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(submitError!, style: const TextStyle(color: AppColors.red600, fontSize: 12)),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel', style: TextStyle(color: AppColors.slate500)),
+              ),
+              ElevatedButton(
+                onPressed: submitting
+                    ? null
+                    : () async {
+                        setDialogState(() {
+                          submitting = true;
+                          submitError = null;
+                        });
+                        try {
+                          await AdminApiClient.rejectWithdrawal(
+                            withdrawalId: withdrawal.id,
+                            reason: reasonController.text.trim(),
+                          );
+                          if (ctx.mounted) Navigator.of(ctx).pop();
+                          _fetchWithdrawals();
+                          widget.onQueueUpdated();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Withdrawal rejected and refunded to user'),
+                                backgroundColor: AppColors.slate900,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          setDialogState(() {
+                            submitting = false;
+                            submitError = e.toString();
+                          });
+                        }
+                      },
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.red600),
+                child: submitting
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white))
+                    : const Text('Reject & Refund', style: TextStyle(color: AppColors.white)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _withdrawals.where((w) {
+      if (_activeFilter == 'ALL') return true;
+      return w.status == _activeFilter;
+    }).toList();
+
+    final pendingCount = _withdrawals.where((w) => w.status == 'PENDING').length;
+
+    return Scaffold(
+      backgroundColor: AppColors.slate50,
+      body: RefreshIndicator(
+        onRefresh: _fetchWithdrawals,
+        color: AppColors.slate900,
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'PAYOUT CLEARANCE QUEUE',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                            color: AppColors.slate500,
+                          ),
+                        ),
+                        if (pendingCount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppColors.red50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.red600.withValues(alpha: 0.3)),
+                            ),
+                            child: Text(
+                              '$pendingCount PENDING',
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.red600),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Filter Chips
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: ['PENDING', 'COMPLETED', 'REJECTED', 'ALL'].map((filter) {
+                          final isSel = _activeFilter == filter;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(filter),
+                              selected: isSel,
+                              onSelected: (selected) {
+                                if (selected) setState(() => _activeFilter = filter);
+                              },
+                              backgroundColor: AppColors.white,
+                              selectedColor: AppColors.slate900,
+                              labelStyle: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: isSel ? AppColors.white : AppColors.slate700,
+                              ),
+                              side: BorderSide(color: isSel ? AppColors.slate900 : AppColors.slate200),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            if (_loading && _withdrawals.isEmpty)
+              const SliverFillRemaining(
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.slate900),
+                ),
+              )
+            else if (_error != null && _withdrawals.isEmpty)
+              SliverFillRemaining(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, size: 36, color: AppColors.red600),
+                      const SizedBox(height: 12),
+                      Text(_error!, style: const TextStyle(color: AppColors.slate600)),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _fetchWithdrawals,
+                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.slate900),
+                        child: const Text('Retry', style: TextStyle(color: AppColors.white)),
+                      )
+                    ],
+                  ),
+                ),
+              )
+            else if (filtered.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.check_circle_outline, size: 48, color: AppColors.slate400),
+                        const SizedBox(height: 12),
+                        Text(
+                          _activeFilter == 'PENDING' ? 'All Payouts Cleared' : 'No records found for $_activeFilter',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'No pending withdrawal requests at this moment.',
+                          style: TextStyle(fontSize: 12, color: AppColors.slate500),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final item = filtered[index];
+                      return _buildWithdrawalCard(item);
+                    },
+                    childCount: filtered.length,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWithdrawalCard(AdminWithdrawalModel item) {
+    Color statusBg = AppColors.slate100;
+    Color statusText = AppColors.slate700;
+    if (item.status == 'PENDING') {
+      statusBg = AppColors.amber50;
+      statusText = AppColors.amber800;
+    } else if (item.status == 'COMPLETED') {
+      statusBg = AppColors.emerald50;
+      statusText = AppColors.emerald700;
+    } else if (item.status == 'REJECTED') {
+      statusBg = AppColors.red50;
+      statusText = AppColors.red600;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: item.status == 'PENDING' ? AppColors.amber600.withValues(alpha: 0.3) : AppColors.slate200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: Amount & Status
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '₹${item.amount.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.slate900,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusBg,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  item.status,
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: statusText),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // User details
+          Row(
+            children: [
+              const Icon(Icons.person_outline, size: 14, color: AppColors.slate500),
+              const SizedBox(width: 6),
+              Text(
+                item.username,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.slate800),
+              ),
+              if (item.phone != null) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '•  ${item.phone}',
+                  style: const TextStyle(fontSize: 12, color: AppColors.slate500),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+
+          // UPI ID row with 1-tap copy
+          Row(
+            children: [
+              const Icon(Icons.account_balance_wallet_outlined, size: 14, color: AppColors.slate500),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  item.upiId,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900),
+                ),
+              ),
+              InkWell(
+                onTap: () => _copyToClipboard(item.upiId, 'UPI ID'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.slate100,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text('COPY', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.slate800)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // UTR or Rejection Reason info
+          if (item.payoutUtr != null && item.payoutUtr!.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.slate50,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors.slate200),
+              ),
+              child: Row(
+                children: [
+                  const Text('Bank UTR: ', style: TextStyle(fontSize: 11, color: AppColors.slate500)),
+                  Expanded(
+                    child: Text(
+                      item.payoutUtr!,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.slate800),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => _copyToClipboard(item.payoutUtr!, 'UTR'),
+                    child: const Icon(Icons.copy, size: 14, color: AppColors.slate500),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+
+          if (item.rejectionReason != null && item.rejectionReason!.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.red50,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'Reason: ${item.rejectionReason}',
+                style: const TextStyle(fontSize: 11, color: AppColors.red700),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+
+          // Footer: Timestamp
+          Text(
+            item.createdAt.isNotEmpty ? item.createdAt.substring(0, 19).replaceAll('T', ' ') : '',
+            style: const TextStyle(fontSize: 10, color: AppColors.slate400),
+          ),
+
+          // Pending Action Buttons
+          if (item.status == 'PENDING') ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => _showCompleteDialog(item),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.emerald600,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                    ),
+                    child: const Text(
+                      'Clear & Input UTR',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.white),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: () => _showRejectDialog(item),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.red600,
+                    side: const BorderSide(color: AppColors.slate200),
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                  child: const Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}

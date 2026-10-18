@@ -1,6 +1,14 @@
 node_modules/
 dist/
+**/dist/
 .env
+**/.env
 *.db
 *.db-journal
 .DS_Store
+**/.dart_tool/
+**/build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+
