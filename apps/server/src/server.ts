@@ -25,7 +25,8 @@ app.use('/api', apiRouter);
 const adminPublicPath = path.join(__dirname, '../public/admin');
 if (fs.existsSync(adminPublicPath)) {
   app.use('/admin', express.static(adminPublicPath));
-  app.get(['/admin', '/admin/*'], (_req, res) => {
+  app.use('/admin', (req, res, next) => {
+    if (req.method !== 'GET') return next();
     res.sendFile(path.join(adminPublicPath, 'index.html'));
   });
 }
@@ -34,16 +35,26 @@ if (fs.existsSync(adminPublicPath)) {
 const userPublicPath = path.join(__dirname, '../public/user');
 if (fs.existsSync(userPublicPath)) {
   app.use(express.static(userPublicPath));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
-      return next();
-    }
-    res.sendFile(path.join(userPublicPath, 'index.html'));
-  });
 } else {
   const legacyPublic = path.join(__dirname, '../public');
   app.use(express.static(legacyPublic));
 }
+
+// SPA fallback for HTML5 History routing
+app.use((req, res, next) => {
+  if (req.method !== 'GET') return next();
+  if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+    return next();
+  }
+  if (fs.existsSync(userPublicPath)) {
+    return res.sendFile(path.join(userPublicPath, 'index.html'));
+  }
+  const legacyIndex = path.join(__dirname, '../public/index.html');
+  if (fs.existsSync(legacyIndex)) {
+    return res.sendFile(legacyIndex);
+  }
+  next();
+});
 
 // Initialize Socket.io
 const io = new Server(server, {
