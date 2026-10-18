@@ -24,14 +24,19 @@ echo "🔄 Synchronizing database schema (prisma db push)..."
 MAX_RETRIES=15
 RETRY_COUNT=0
 
-until npx prisma db push --skip-generate || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
-  RETRY_COUNT=$((RETRY_COUNT+1))
-  echo "⏳ Database not ready yet... Waiting 2s (Attempt $RETRY_COUNT/$MAX_RETRIES)"
-  sleep 2
-done
+if [ "${PRISMA_FORCE_RESET:-false}" = "true" ]; then
+  echo "⚠️ PRISMA_FORCE_RESET=true detected. Dropping and re-creating database schema..."
+  npx prisma db push --skip-generate --force-reset
+else
+  until npx prisma db push --skip-generate --accept-data-loss || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
+    RETRY_COUNT=$((RETRY_COUNT+1))
+    echo "⏳ Database not ready yet... Waiting 2s (Attempt $RETRY_COUNT/$MAX_RETRIES)"
+    sleep 2
+  done
 
-if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-  echo "⚠️ Warning: Database synchronization timed out after $MAX_RETRIES attempts. Attempting to start server..."
+  if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo "⚠️ Warning: Database synchronization timed out after $MAX_RETRIES attempts. Attempting to start server..."
+  fi
 fi
 
 echo "🚀 MoneyGame Server listening on port ${PORT:-4000}"
