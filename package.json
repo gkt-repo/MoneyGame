@@ -13,6 +13,7 @@
     "build:user-web": "npm --prefix apps/user-web run build",
     "build": "npm run build:types && npm run build:server && npm run build:admin-web && npm run build:user-web",
     "dev:server": "npm --prefix apps/server run dev",
+    "start:server": "npm --prefix apps/server run start",
     "dev:user-web": "npm --prefix apps/user-web run dev",
     "dev:admin-web": "npm --prefix apps/admin-web run dev",
     "test:auth": "npm --prefix apps/server run test:auth",

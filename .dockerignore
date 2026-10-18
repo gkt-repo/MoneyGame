@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+apps/user-app
+apps/admin-app
+.git
+.github
+*.db
+*.db-journal
+dist
+**/dist
+.dart_tool
+build
+**/build
+.env

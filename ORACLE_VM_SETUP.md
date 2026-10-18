@@ -59,10 +59,12 @@ WEBHOOK_SECRET="create-a-random-secret-key"
 PLATFORM_COMMISSION_PERCENT=10
 ```
 
-Switch Prisma to PostgreSQL schema:
+*(Note: If you use Docker, Docker automatically detects PostgreSQL from DATABASE_URL and configures the schema for you!)*
+
+If running directly on the host without Docker:
 ```bash
-cp prisma/schema.postgresql.prisma prisma/schema.prisma
-npx prisma db push
+cp apps/server/prisma/schema.postgresql.prisma apps/server/prisma/schema.prisma
+npx prisma db push --schema=apps/server/prisma/schema.prisma
 ```
 
 ---

@@ -6,8 +6,12 @@ services:
     container_name: money_game_app
     restart: unless-stopped
     network_mode: "host"
-    env_file:
-      - .env
     environment:
-      PORT: 4000
-      NODE_ENV: production
+      - PORT=${PORT:-4000}
+      - NODE_ENV=${NODE_ENV:-production}
+      - DATABASE_URL=${DATABASE_URL:-file:./dev.db}
+      - ADMIN_UPI_ID=${ADMIN_UPI_ID:-admin@okhdfcbank}
+      - ADMIN_UPI_NAME=${ADMIN_UPI_NAME:-MoneyGame}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-moneygame-secret-key-1234}
+      - PLATFORM_COMMISSION_PERCENT=${PLATFORM_COMMISSION_PERCENT:-10}
+      - JWT_SECRET=${JWT_SECRET:-moneygame-super-secret-jwt-key}
