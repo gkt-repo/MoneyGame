@@ -1,0 +1,100 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  createdAt DateTime @default(now())
+
+  wallet       Wallet?
+  deposits     Deposit[]
+  withdrawals  Withdrawal[]
+  roomPlayers  RoomPlayer[]
+  transactions Transaction[]
+  roomsWon     Room[]        @relation("RoomWinner")
+}
+
+model Wallet {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance       Float    @default(0.0)
+  lockedBalance Float    @default(0.0)
+  updatedAt     DateTime @updatedAt
+}
+
+model Deposit {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  baseAmount   Float
+  offsetPaise  Int
+  totalAmount  Float    @unique
+  receivingUpi String
+  status       String   @default("PENDING") // PENDING, APPROVED, EXPIRED
+  utr          String?  @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+}
+
+model Withdrawal {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Float
+  upiId     String
+  status    String   @default("PENDING") // PENDING, COMPLETED, REJECTED
+  payoutUtr String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Room {
+  id            String       @id @default(uuid())
+  roomCode      String       @unique
+  entryFee      Float
+  maxPlayers    Int          @default(2)
+  status        String       @default("WAITING") // WAITING, PLAYING, COMPLETED, CANCELLED
+  winningNumber Int?
+  winnerId      String?
+  winner        User?        @relation("RoomWinner", fields: [winnerId], references: [id])
+  players       RoomPlayer[]
+  createdAt     DateTime     @default(now())
+}
+
+model RoomPlayer {
+  id          String   @id @default(uuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guessNumber Int
+  joinedAt    DateTime @default(now())
+
+  @@unique([roomId, userId])
+  @@unique([roomId, guessNumber])
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount      Float
+  type        String // DEPOSIT, ROOM_ENTRY, ROOM_WIN, WITHDRAWAL_LOCK, WITHDRAWAL_COMPLETE, REFUND
+  referenceId String?
+  description String?
+  createdAt   DateTime @default(now())
+}
+
+model SystemSetting {
+  key   String @id
+  value String
+}

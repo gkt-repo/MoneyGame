@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MoneyGame - 1v1 & Multi-Player Real-Time Pool</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Socket.io Client -->
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <style>
+    @keyframes pulse-slow {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    .animate-dice {
+      animation: pulse-slow 0.4s infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans">
+
+  <!-- ─── HEADER / NAVBAR ─────────────────────────────────────────────────── -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40 px-4 py-3">
+    <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      
+      <!-- Brand -->
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-amber-500 to-emerald-400 flex items-center justify-center font-black text-slate-950 text-xl shadow-lg shadow-emerald-500/20">
+          🎲
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-amber-300 bg-clip-text text-transparent">
+            MoneyGame
+          </h1>
+          <p class="text-xs text-slate-400">1v1 & Multi-Player Pool Arena</p>
+        </div>
+      </div>
+
+      <!-- User Profile & Wallet -->
+      <div class="flex items-center gap-3 flex-wrap">
+        <!-- Switch Identity -->
+        <div class="flex items-center bg-slate-800 rounded-lg p-1 text-xs border border-slate-700">
+          <span class="text-slate-400 px-2">Player:</span>
+          <button onclick="switchUser('alex')" id="btn-alex" class="px-2.5 py-1 rounded font-medium bg-emerald-500 text-slate-950 transition">Alex</button>
+          <button onclick="switchUser('bob')" id="btn-bob" class="px-2.5 py-1 rounded font-medium text-slate-300 hover:text-white transition">Bob</button>
+          <button onclick="switchUser('charlie')" id="btn-charlie" class="px-2.5 py-1 rounded font-medium text-slate-300 hover:text-white transition">Charlie</button>
+        </div>
+
+        <!-- Wallet Box -->
+        <div class="bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg flex items-center gap-3">
+          <div>
+            <div class="text-[10px] uppercase tracking-wider text-slate-400">Wallet Balance</div>
+            <div class="text-sm font-bold text-emerald-400" id="wallet-balance">₹0.00</div>
+          </div>
+          <div class="text-slate-600">|</div>
+          <div>
+            <div class="text-[10px] uppercase tracking-wider text-slate-400">Locked</div>
+            <div class="text-sm font-medium text-amber-400" id="wallet-locked">₹0.00</div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <button onclick="openDepositModal()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-3 py-1.5 rounded-lg text-xs shadow-md shadow-emerald-500/20 transition flex items-center gap-1.5">
+          <span>+ Add ₹</span>
+        </button>
+        <button onclick="openWithdrawModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-lg text-xs transition">
+          Withdraw
+        </button>
+        <button onclick="openAdminModal()" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1">
+          <span>🛡️ Admin</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ─── MAIN CONTENT ────────────────────────────────────────────────────── -->
+  <main class="max-w-6xl w-full mx-auto p-4 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- LEFT: Create Room -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl h-fit">
+      <h2 class="text-base font-bold text-white flex items-center gap-2 mb-4">
+        <span class="text-emerald-400">➕</span> Create New Room
+      </h2>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Entry Fee (₹)</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button onclick="setEntryFee(20)" class="fee-btn bg-slate-800 border border-slate-700 hover:border-emerald-500 py-1.5 rounded-lg text-xs font-semibold text-slate-300">₹20</button>
+            <button onclick="setEntryFee(50)" class="fee-btn bg-emerald-500/20 border border-emerald-500 py-1.5 rounded-lg text-xs font-semibold text-emerald-400">₹50</button>
+            <button onclick="setEntryFee(100)" class="fee-btn bg-slate-800 border border-slate-700 hover:border-emerald-500 py-1.5 rounded-lg text-xs font-semibold text-slate-300">₹100</button>
+          </div>
+          <input type="number" id="custom-entry-fee" value="50" min="1" class="mt-2 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" placeholder="Or enter custom fee" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Max Players (2 to 4)</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button onclick="setMaxPlayers(2)" class="player-btn bg-emerald-500/20 border border-emerald-500 py-1.5 rounded-lg text-xs font-semibold text-emerald-400">2 (1v1)</button>
+            <button onclick="setMaxPlayers(3)" class="player-btn bg-slate-800 border border-slate-700 hover:border-emerald-500 py-1.5 rounded-lg text-xs font-semibold text-slate-300">3 Players</button>
+            <button onclick="setMaxPlayers(4)" class="player-btn bg-slate-800 border border-slate-700 hover:border-emerald-500 py-1.5 rounded-lg text-xs font-semibold text-slate-300">4 Players</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Pick Your Lucky Guess (1 - 10)</label>
+          <div class="grid grid-cols-5 gap-2" id="create-guess-grid">
+            <!-- 1 to 10 buttons dynamically inserted -->
+          </div>
+        </div>
+
+        <button onclick="submitCreateRoom()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold py-2.5 rounded-xl text-sm shadow-lg shadow-emerald-500/20 transition mt-2">
+          Create Room & Lock Fee
+        </button>
+      </div>
+    </div>
+
+    <!-- RIGHT: Active Rooms & Lobby -->
+    <div class="lg:col-span-2 space-y-6">
+      
+      <!-- Current Active Room Screen (If in room) -->
+      <div id="active-room-card" class="hidden bg-gradient-to-br from-slate-900 to-slate-900/90 border-2 border-emerald-500/40 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+        <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold" id="room-code-tag">R-0000</span>
+              <span class="text-xs font-semibold text-slate-400" id="room-status-tag">WAITING FOR PLAYERS</span>
+            </div>
+            <h3 class="text-lg font-bold text-white mt-1">
+              Prize Pool: <span class="text-emerald-400" id="room-pool-text">₹0.00</span> 
+              <span class="text-xs font-normal text-slate-400">(Entry: <span id="room-entry-text">₹0</span>)</span>
+            </h3>
+          </div>
+          <button onclick="leaveActiveRoom()" class="text-xs text-rose-400 hover:text-rose-300 bg-rose-500/10 px-2.5 py-1.5 rounded-lg border border-rose-500/20">
+            Leave Room
+          </button>
+        </div>
+
+        <!-- Players List in Room -->
+        <div class="mb-5">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Players Joined</div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="room-players-list">
+            <!-- Players render here -->
+          </div>
+        </div>
+
+        <!-- Join / Pick Guess (for non-joined viewer) -->
+        <div id="join-room-action-box" class="hidden border-t border-slate-800 pt-4 mt-4">
+          <label class="block text-xs font-medium text-slate-400 mb-2">Pick an Available Number to Join:</label>
+          <div class="grid grid-cols-5 sm:grid-cols-10 gap-2 mb-3" id="join-number-grid"></div>
+          <button onclick="submitJoinRoom()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2 rounded-xl text-sm transition">
+            Join & Lock Entry Fee
+          </button>
+        </div>
+
+        <!-- Live Roll Stage / Animation -->
+        <div id="game-stage-box" class="hidden text-center py-6 bg-slate-950/80 rounded-xl border border-slate-800 mt-4">
+          <div id="countdown-banner" class="hidden text-amber-400 text-2xl font-black mb-2 animate-bounce">
+            ROLLING IN: <span id="countdown-val">5</span>s
+          </div>
+          
+          <div id="dice-container" class="my-3">
+            <div id="dice-display" class="inline-flex items-center justify-center h-20 w-20 rounded-2xl bg-gradient-to-tr from-amber-500 to-emerald-400 text-slate-950 text-4xl font-black shadow-xl shadow-amber-500/20">
+              ?
+            </div>
+          </div>
+          <div id="roll-status-text" class="text-xs text-slate-400 font-medium">Rolling random number...</div>
+        </div>
+
+      </div>
+
+      <!-- Available Rooms Lobby -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <span>🏟️</span> Open Battle Rooms
+          </h2>
+          <button onclick="loadRooms()" class="text-xs text-slate-400 hover:text-white flex items-center gap-1">
+            <span>🔄</span> Refresh
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" id="lobby-rooms-container">
+          <div class="text-slate-500 text-sm py-8 text-center col-span-2">Loading active rooms...</div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ─── DEPOSIT MODAL (DYNAMIC PAISE OFFSET) ────────────────────────────── -->
+  <div id="deposit-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+      <button onclick="closeDepositModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">✕</button>
+
+      <!-- Step 1: Input Amount -->
+      <div id="deposit-step-1">
+        <h3 class="text-lg font-bold text-white mb-1">Add Money to Wallet</h3>
+        <p class="text-xs text-slate-400 mb-4">Auto-verified via Dynamic UPI QR Code (0% fees).</p>
+
+        <label class="block text-xs font-medium text-slate-300 mb-1">Amount to Add (₹)</label>
+        <div class="grid grid-cols-3 gap-2 mb-3">
+          <button onclick="setDepositAmount(50)" class="bg-slate-800 hover:bg-slate-700 py-1.5 rounded-lg text-xs font-semibold text-slate-200">₹50</button>
+          <button onclick="setDepositAmount(100)" class="bg-slate-800 hover:bg-slate-700 py-1.5 rounded-lg text-xs font-semibold text-slate-200">₹100</button>
+          <button onclick="setDepositAmount(500)" class="bg-slate-800 hover:bg-slate-700 py-1.5 rounded-lg text-xs font-semibold text-slate-200">₹500</button>
+        </div>
+        <input type="number" id="deposit-input-amount" value="100" min="1" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 mb-4" />
+
+        <button onclick="generateDynamicQr()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-xl text-sm transition">
+          Generate Dynamic UPI QR
+        </button>
+      </div>
+
+      <!-- Step 2: Dynamic QR & Auto-Detection -->
+      <div id="deposit-step-2" class="hidden text-center">
+        <div class="inline-block bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs px-2.5 py-1 rounded-full font-medium mb-3">
+          Pay Exact: <span id="qr-exact-amount" class="font-bold text-sm">₹100.14</span>
+        </div>
+
+        <p class="text-xs text-slate-400 mb-3">
+          Scan using PhonePe, GPay, or Paytm.<br>
+          <span class="text-emerald-400 font-medium">Do not change the amount!</span> Paise offset auto-matches your account.
+        </p>
+
+        <!-- QR Image -->
+        <div class="bg-white p-3 rounded-2xl inline-block shadow-lg mx-auto mb-3">
+          <img id="qr-image" src="" alt="Dynamic UPI QR" class="w-48 h-48 mx-auto" />
+        </div>
+
+        <div class="flex items-center justify-center gap-2 text-xs text-slate-400 mb-3">
+          <span>Expires in:</span>
+          <span id="qr-timer" class="font-mono text-amber-400 font-bold">10:00</span>
+        </div>
+
+        <!-- Direct UPI Intent Link for Mobile -->
+        <a id="upi-intent-link" href="#" class="block bg-slate-800 hover:bg-slate-700 text-emerald-400 font-semibold py-2 rounded-xl text-xs mb-3 border border-slate-700 transition">
+          📱 Tap to Pay on Mobile UPI App
+        </a>
+
+        <!-- Fast Testing Simulator Button -->
+        <button onclick="simulateCurrentDepositPayment()" class="w-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold py-2 rounded-xl transition">
+          ⚡ 1-Click Simulate Android Webhook (For Testing)
+        </button>
+      </div>
+
+      <!-- Step 3: Success Screen -->
+      <div id="deposit-step-3" class="hidden text-center py-6">
+        <div class="h-16 w-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-3xl mx-auto mb-3">
+          ✓
+        </div>
+        <h3 class="text-lg font-bold text-white mb-1">Payment Verified!</h3>
+        <p class="text-xs text-slate-400 mb-4">Funds have been credited to your wallet balance instantly.</p>
+        <button onclick="closeDepositModal()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-6 py-2 rounded-xl text-xs transition">
+          Done
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ─── WITHDRAWAL MODAL ────────────────────────────────────────────────── -->
+  <div id="withdraw-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+      <button onclick="closeWithdrawModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">✕</button>
+
+      <h3 class="text-lg font-bold text-white mb-1">Withdraw Winnings</h3>
+      <p class="text-xs text-slate-400 mb-4">Funds will be sent to your UPI ID via Admin.</p>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Your UPI ID (VPA)</label>
+          <input type="text" id="withdraw-upi-id" placeholder="e.g. yourname@okhdfcbank" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Amount to Withdraw (₹)</label>
+          <input type="number" id="withdraw-amount" min="1" placeholder="e.g. 100" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+        </div>
+
+        <button onclick="submitWithdrawal()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-xl text-sm transition mt-2">
+          Request Withdrawal
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── ADMIN CONTROL PANEL MODAL ───────────────────────────────────────── -->
+  <div id="admin-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+      <button onclick="closeAdminModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">✕</button>
+
+      <h3 class="text-xl font-bold text-white mb-1 flex items-center gap-2">
+        <span>🛡️</span> Admin Dashboard
+      </h3>
+      <p class="text-xs text-slate-400 mb-4">Manage receiving UPI, verify incoming deposits & approve payouts.</p>
+
+      <!-- Stats Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6" id="admin-stats-grid">
+        <!-- Rendered by JS -->
+      </div>
+
+      <!-- UPI Config Form -->
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Live Receiving UPI Configuration</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Receiving UPI ID</label>
+            <input type="text" id="admin-config-upi-id" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400" />
+          </div>
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Payee Name</label>
+            <input type="text" id="admin-config-upi-name" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400" />
+          </div>
+        </div>
+        <button onclick="updateAdminUpi()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-1.5 rounded-lg text-xs transition">
+          Save UPI Settings
+        </button>
+      </div>
+
+      <!-- Pending Withdrawals -->
+      <div class="mb-6">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Pending User Withdrawals</h4>
+        <div id="admin-withdrawals-table" class="space-y-2">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+
+      <!-- Recent Deposits & Simulator -->
+      <div>
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Recent Deposits & Webhook Logs</h4>
+        <div id="admin-deposits-table" class="space-y-2">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ─── CLIENT APPLICATION JAVASCRIPT ───────────────────────────────────── -->
+  <script>
+    let currentUser = null;
+    let currentWallet = null;
+    let currentRoomId = null;
+    let selectedCreateGuess = 1;
+    let selectedJoinGuess = null;
+    let activeDeposit = null;
+    let depositPollInterval = null;
+
+    const socket = io();
+
+    // ─── INIT & AUTH ──────────────────────────────────────────────────────────
+
+    async function switchUser(username) {
+      document.querySelectorAll('#btn-alex, #btn-bob, #btn-charlie').forEach(btn => {
+        btn.className = 'px-2.5 py-1 rounded font-medium text-slate-300 hover:text-white transition';
+      });
+      const activeBtn = document.getElementById(`btn-${username}`);
+      if (activeBtn) {
+        activeBtn.className = 'px-2.5 py-1 rounded font-medium bg-emerald-500 text-slate-950 transition';
+      }
+
+      const res = await fetch('/api/users/login-or-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username })
+      });
+      const data = await res.json();
+      currentUser = data.user;
+
+      // Subscribe to user personal channel
+      socket.emit('join_user_channel', currentUser.id);
+
+      await refreshWallet();
+      await loadRooms();
+    }
+
+    async function refreshWallet() {
+      if (!currentUser) return;
+      const res = await fetch(`/api/wallet/${currentUser.id}`);
+      const data = await res.json();
+      currentWallet = data.wallet;
+      document.getElementById('wallet-balance').innerText = `₹${currentWallet.balance.toFixed(2)}`;
+      document.getElementById('wallet-locked').innerText = `₹${currentWallet.lockedBalance.toFixed(2)}`;
+    }
+
+    socket.on('wallet_updated', (wallet) => {
+      currentWallet = wallet;
+      document.getElementById('wallet-balance').innerText = `₹${wallet.balance.toFixed(2)}`;
+      document.getElementById('wallet-locked').innerText = `₹${wallet.lockedBalance.toFixed(2)}`;
+    });
+
+    // ─── GUESS NUMBER GRIDS ───────────────────────────────────────────────────
+
+    function renderCreateGuessGrid() {
+      const container = document.getElementById('create-guess-grid');
+      container.innerHTML = '';
+      for (let i = 1; i <= 10; i++) {
+        const btn = document.createElement('button');
+        btn.innerText = i;
+        btn.className = `py-2 rounded-lg text-sm font-bold border transition ${
+          selectedCreateGuess === i
+            ? 'bg-emerald-500 border-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20'
+            : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+        }`;
+        btn.onclick = () => {
+          selectedCreateGuess = i;
+          renderCreateGuessGrid();
+        };
+        container.appendChild(btn);
+      }
+    }
+
+    function setEntryFee(fee) {
+      document.getElementById('custom-entry-fee').value = fee;
+    }
+
+    let selectedMaxPlayers = 2;
+    function setMaxPlayers(n) {
+      selectedMaxPlayers = n;
+      document.querySelectorAll('.player-btn').forEach((btn, idx) => {
+        if (idx === (n - 2)) {
+          btn.className = 'player-btn bg-emerald-500/20 border border-emerald-500 py-1.5 rounded-lg text-xs font-semibold text-emerald-400';
+        } else {
+          btn.className = 'player-btn bg-slate-800 border border-slate-700 hover:border-emerald-500 py-1.5 rounded-lg text-xs font-semibold text-slate-300';
+        }
+      });
+    }
+
+    async function submitCreateRoom() {
+      if (!currentUser) return alert('Please select a player profile');
+      const entryFee = parseFloat(document.getElementById('custom-entry-fee').value);
+
+      if (currentWallet.balance < entryFee) {
+        alert(`Insufficient balance (₹${currentWallet.balance.toFixed(2)}). Please click "+ Add ₹" to deposit.`);
+        openDepositModal();
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/rooms/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUser.id,
+            entryFee,
+            maxPlayers: selectedMaxPlayers,
+            guessNumber: selectedCreateGuess
+          })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        await refreshWallet();
+        enterRoom(data.room.id);
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    // ─── ROOM LOBBY & GAMEPLAY ────────────────────────────────────────────────
+
+    async function loadRooms() {
+      const res = await fetch('/api/rooms');
+      const data = await res.json();
+      const container = document.getElementById('lobby-rooms-container');
+
+      if (!data.rooms || data.rooms.length === 0) {
+        container.innerHTML = '<div class="text-slate-500 text-sm py-8 text-center col-span-2">No active rooms right now. Create one on the left!</div>';
+        return;
+      }
+
+      container.innerHTML = data.rooms.map(room => {
+        const isJoined = room.players.some(p => p.userId === currentUser?.id);
+        const isFull = room.players.length >= room.maxPlayers;
+        return `
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col justify-between hover:border-slate-700 transition">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono font-bold">${room.roomCode}</span>
+                <span class="text-xs font-semibold ${room.status === 'WAITING' ? 'text-amber-400' : 'text-emerald-400'}">${room.status}</span>
+              </div>
+              <div class="text-sm font-bold text-white mb-1">
+                Pool: <span class="text-emerald-400">₹${(room.entryFee * room.players.length).toFixed(2)}</span>
+                <span class="text-xs text-slate-400 font-normal">(Fee: ₹${room.entryFee})</span>
+              </div>
+              <div class="text-xs text-slate-400 mb-3">
+                Players: ${room.players.length}/${room.maxPlayers}
+              </div>
+            </div>
+
+            <button onclick="enterRoom('${room.id}')" class="w-full ${isJoined ? 'bg-amber-500 text-slate-950 font-bold' : isFull ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold'} py-2 rounded-lg text-xs transition">
+              ${isJoined ? 'View Room' : isFull ? 'Room Full' : 'Join Room'}
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    socket.on('lobby_rooms_updated', () => {
+      loadRooms();
+    });
+
+    async function enterRoom(roomId) {
+      if (currentRoomId) {
+        socket.emit('leave_room_channel', currentRoomId);
+      }
+      currentRoomId = roomId;
+      socket.emit('join_room_channel', roomId);
+
+      const res = await fetch(`/api/rooms/${roomId}`);
+      const data = await res.json();
+      renderActiveRoom(data.room);
+    }
+
+    function renderActiveRoom(room) {
+      const card = document.getElementById('active-room-card');
+      card.classList.remove('hidden');
+
+      document.getElementById('room-code-tag').innerText = room.roomCode;
+      document.getElementById('room-status-tag').innerText = room.status;
+      document.getElementById('room-pool-text').innerText = `₹${(room.entryFee * room.players.length).toFixed(2)}`;
+      document.getElementById('room-entry-text').innerText = `₹${room.entryFee}`;
+
+      // Render players list
+      const playersList = document.getElementById('room-players-list');
+      playersList.innerHTML = room.players.map(p => `
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-center">
+          <div class="text-xs font-semibold text-white mb-1 truncate">${p.user.username}</div>
+          <div class="h-10 w-10 mx-auto rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center font-bold text-sm">
+            #${p.guessNumber}
+          </div>
+        </div>
+      `).join('');
+
+      const isUserInRoom = room.players.some(p => p.userId === currentUser?.id);
+      const joinBox = document.getElementById('join-room-action-box');
+
+      if (!isUserInRoom && room.status === 'WAITING' && room.players.length < room.maxPlayers) {
+        joinBox.classList.remove('hidden');
+        renderJoinNumberGrid(room);
+      } else {
+        joinBox.classList.add('hidden');
+      }
+
+      // If room is rolling or completed
+      const stageBox = document.getElementById('game-stage-box');
+      if (room.status === 'COUNTDOWN' || room.status === 'ROLLING' || room.status === 'COMPLETED') {
+        stageBox.classList.remove('hidden');
+      } else {
+        stageBox.classList.add('hidden');
+      }
+
+      if (room.status === 'COMPLETED' && room.winningNumber) {
+        document.getElementById('dice-display').innerText = room.winningNumber;
+        document.getElementById('roll-status-text').innerText = `Winner: ${room.winner?.username || 'Player'}!`;
+      }
+    }
+
+    function renderJoinNumberGrid(room) {
+      const container = document.getElementById('join-number-grid');
+      container.innerHTML = '';
+      const taken = new Set(room.players.map(p => p.guessNumber));
+
+      for (let i = 1; i <= 10; i++) {
+        const isTaken = taken.has(i);
+        const btn = document.createElement('button');
+        btn.innerText = i;
+        btn.disabled = isTaken;
+        btn.className = `py-2 rounded-lg text-xs font-bold border transition ${
+          isTaken
+            ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed line-through'
+            : selectedJoinGuess === i
+            ? 'bg-emerald-500 border-emerald-400 text-slate-950'
+            : 'bg-slate-800 border-slate-700 text-slate-200 hover:border-slate-500'
+        }`;
+        btn.onclick = () => {
+          selectedJoinGuess = i;
+          renderJoinNumberGrid(room);
+        };
+        container.appendChild(btn);
+      }
+    }
+
+    async function submitJoinRoom() {
+      if (!selectedJoinGuess) return alert('Please pick a number to guess');
+      const roomRes = await fetch(`/api/rooms/${currentRoomId}`);
+      const roomData = await roomRes.json();
+
+      if (currentWallet.balance < roomData.room.entryFee) {
+        alert('Insufficient wallet balance to join this room.');
+        openDepositModal();
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/rooms/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUser.id,
+            roomCode: roomData.room.roomCode,
+            guessNumber: selectedJoinGuess
+          })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        await refreshWallet();
+        renderActiveRoom(data.room);
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function leaveActiveRoom() {
+      if (currentRoomId) {
+        socket.emit('leave_room_channel', currentRoomId);
+      }
+      currentRoomId = null;
+      document.getElementById('active-room-card').classList.add('hidden');
+    }
+
+    // ─── SOCKET GAME EVENTS ───────────────────────────────────────────────────
+
+    socket.on('room_updated', (room) => {
+      if (currentRoomId === room.id) {
+        renderActiveRoom(room);
+      }
+    });
+
+    socket.on('game_countdown', (data) => {
+      document.getElementById('game-stage-box').classList.remove('hidden');
+      const banner = document.getElementById('countdown-banner');
+      banner.classList.remove('hidden');
+      document.getElementById('countdown-val').innerText = data.countdown;
+    });
+
+    socket.on('roll_started', () => {
+      document.getElementById('countdown-banner').classList.add('hidden');
+      const dice = document.getElementById('dice-display');
+      dice.classList.add('animate-dice');
+      document.getElementById('roll-status-text').innerText = 'Rolling random number...';
+    });
+
+    socket.on('roll_tick', (data) => {
+      document.getElementById('dice-display').innerText = data.number;
+    });
+
+    socket.on('game_finished', (data) => {
+      const dice = document.getElementById('dice-display');
+      dice.classList.remove('animate-dice');
+      dice.innerText = data.winningNumber;
+
+      const isWinner = data.winnerId === currentUser?.id;
+      document.getElementById('roll-status-text').innerHTML = `
+        <span class="text-sm font-bold ${isWinner ? 'text-emerald-400' : 'text-amber-400'}">
+          ${isWinner ? '🎉 YOU WON!' : `Winner: ${data.winnerUsername}!`} (Rolled: #${data.winningNumber})
+        </span>
+        <div class="text-xs text-slate-300 mt-1">Prize Awarded: ₹${data.winnerPrize.toFixed(2)}</div>
+      `;
+
+      if (isWinner) {
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      }
+
+      refreshWallet();
+    });
+
+    // ─── DEPOSITS (METHOD 3 DYNAMIC PAISE) ─────────────────────────────────────
+
+    function openDepositModal() {
+      document.getElementById('deposit-modal').classList.remove('hidden');
+      document.getElementById('deposit-step-1').classList.remove('hidden');
+      document.getElementById('deposit-step-2').classList.add('hidden');
+      document.getElementById('deposit-step-3').classList.add('hidden');
+    }
+
+    function closeDepositModal() {
+      document.getElementById('deposit-modal').classList.add('hidden');
+      if (depositPollInterval) clearInterval(depositPollInterval);
+    }
+
+    function setDepositAmount(amt) {
+      document.getElementById('deposit-input-amount').value = amt;
+    }
+
+    async function generateDynamicQr() {
+      if (!currentUser) return alert('Select user first');
+      const amount = parseFloat(document.getElementById('deposit-input-amount').value);
+
+      try {
+        const res = await fetch('/api/deposits/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUser.id, amount })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        activeDeposit = data;
+
+        document.getElementById('deposit-step-1').classList.add('hidden');
+        document.getElementById('deposit-step-2').classList.remove('hidden');
+        document.getElementById('qr-exact-amount').innerText = `₹${data.totalAmount.toFixed(2)}`;
+        document.getElementById('qr-image').src = data.qrCodeDataUrl;
+        document.getElementById('upi-intent-link').href = data.upiUri;
+
+        // Start countdown & status polling
+        startDepositWatcher(data.depositId, data.expiresInSeconds);
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function startDepositWatcher(depositId, totalSeconds) {
+      let secondsLeft = totalSeconds;
+      const timerEl = document.getElementById('qr-timer');
+
+      if (depositPollInterval) clearInterval(depositPollInterval);
+
+      depositPollInterval = setInterval(async () => {
+        secondsLeft--;
+        const mins = Math.floor(secondsLeft / 60);
+        const secs = secondsLeft % 60;
+        timerEl.innerText = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
+        // Poll status every 2 seconds
+        if (secondsLeft % 2 === 0) {
+          const res = await fetch(`/api/deposits/status/${depositId}`);
+          const data = await res.json();
+          if (data.status === 'APPROVED') {
+            clearInterval(depositPollInterval);
+            document.getElementById('deposit-step-2').classList.add('hidden');
+            document.getElementById('deposit-step-3').classList.remove('hidden');
+            confetti({ particleCount: 50, spread: 60 });
+            await refreshWallet();
+          } else if (data.status === 'EXPIRED') {
+            clearInterval(depositPollInterval);
+            alert('Deposit request expired. Please generate a new QR.');
+            closeDepositModal();
+          }
+        }
+
+        if (secondsLeft <= 0) {
+          clearInterval(depositPollInterval);
+          alert('Time expired. Please generate a fresh deposit request.');
+          closeDepositModal();
+        }
+      }, 1000);
+    }
+
+    async function simulateCurrentDepositPayment() {
+      if (!activeDeposit) return;
+      await fetch('/api/admin/simulate-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: activeDeposit.totalAmount })
+      });
+      // The poller will catch it on the next 2s tick!
+    }
+
+    // ─── WITHDRAWALS ──────────────────────────────────────────────────────────
+
+    function openWithdrawModal() {
+      document.getElementById('withdraw-modal').classList.remove('hidden');
+    }
+
+    function closeWithdrawModal() {
+      document.getElementById('withdraw-modal').classList.add('hidden');
+    }
+
+    async function submitWithdrawal() {
+      const upiId = document.getElementById('withdraw-upi-id').value.trim();
+      const amount = parseFloat(document.getElementById('withdraw-amount').value);
+
+      if (!upiId || !amount) return alert('Enter valid UPI ID and amount');
+      if (amount > currentWallet.balance) return alert('Withdrawal amount exceeds available balance.');
+
+      try {
+        const res = await fetch('/api/withdrawals/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUser.id, amount, upiId })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        alert(`Withdrawal request of ₹${amount} submitted! It is now pending admin approval.`);
+        closeWithdrawModal();
+        await refreshWallet();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    // ─── ADMIN DASHBOARD ──────────────────────────────────────────────────────
+
+    function openAdminModal() {
+      document.getElementById('admin-modal').classList.remove('hidden');
+      loadAdminDashboard();
+    }
+
+    function closeAdminModal() {
+      document.getElementById('admin-modal').classList.add('hidden');
+    }
+
+    async function loadAdminDashboard() {
+      const statsRes = await fetch('/api/admin/stats');
+      const statsData = await statsRes.json();
+      const s = statsData.stats;
+
+      document.getElementById('admin-config-upi-id').value = s.adminUpiId;
+      document.getElementById('admin-config-upi-name').value = s.adminUpiName;
+
+      document.getElementById('admin-stats-grid').innerHTML = `
+        <div class="bg-slate-950 border border-slate-800 p-3 rounded-xl">
+          <div class="text-[10px] text-slate-400 uppercase">Total Deposits</div>
+          <div class="text-base font-bold text-emerald-400">₹${s.totalDepositVolume.toFixed(2)}</div>
+        </div>
+        <div class="bg-slate-950 border border-slate-800 p-3 rounded-xl">
+          <div class="text-[10px] text-slate-400 uppercase">Total Payouts</div>
+          <div class="text-base font-bold text-amber-400">₹${s.totalPayoutVolume.toFixed(2)}</div>
+        </div>
+        <div class="bg-slate-950 border border-slate-800 p-3 rounded-xl">
+          <div class="text-[10px] text-slate-400 uppercase">Pending Cashouts</div>
+          <div class="text-base font-bold text-rose-400">${s.pendingWithdrawalsCount}</div>
+        </div>
+        <div class="bg-slate-950 border border-slate-800 p-3 rounded-xl">
+          <div class="text-[10px] text-slate-400 uppercase">Games Completed</div>
+          <div class="text-base font-bold text-blue-400">${s.completedRoomsCount}</div>
+        </div>
+      `;
+
+      // Load Withdrawals
+      const wRes = await fetch('/api/admin/withdrawals');
+      const wData = await wRes.json();
+      const wContainer = document.getElementById('admin-withdrawals-table');
+
+      if (!wData.withdrawals || wData.withdrawals.length === 0) {
+        wContainer.innerHTML = '<div class="text-xs text-slate-500 py-3 text-center">No withdrawal requests yet.</div>';
+      } else {
+        wContainer.innerHTML = wData.withdrawals.map(w => `
+          <div class="bg-slate-950 border border-slate-800 p-2.5 rounded-lg flex items-center justify-between text-xs">
+            <div>
+              <span class="font-bold text-white">${w.user.username}</span> requested 
+              <span class="font-bold text-emerald-400">₹${w.amount.toFixed(2)}</span> to 
+              <span class="font-mono text-amber-300">${w.upiId}</span>
+              <span class="text-[10px] text-slate-500 ml-1">(${w.status})</span>
+            </div>
+            ${w.status === 'PENDING' ? `
+              <button onclick="approveWithdrawalPrompt('${w.id}', ${w.amount})" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-2.5 py-1 rounded text-[11px] transition">
+                Mark as Paid
+              </button>
+            ` : `<span class="text-slate-500 text-[11px]">${w.payoutUtr || 'Paid'}</span>`}
+          </div>
+        `).join('');
+      }
+
+      // Load Deposits
+      const dRes = await fetch('/api/admin/deposits');
+      const dData = await dRes.json();
+      const dContainer = document.getElementById('admin-deposits-table');
+
+      if (!dData.deposits || dData.deposits.length === 0) {
+        dContainer.innerHTML = '<div class="text-xs text-slate-500 py-3 text-center">No deposits logged yet.</div>';
+      } else {
+        dContainer.innerHTML = dData.deposits.map(d => `
+          <div class="bg-slate-950 border border-slate-800 p-2.5 rounded-lg flex items-center justify-between text-xs">
+            <div>
+              <span class="font-bold text-white">${d.user.username}</span>: 
+              Exact Amount: <span class="font-bold text-emerald-400">₹${d.totalAmount.toFixed(2)}</span>
+              <span class="text-[10px] text-slate-400 ml-1">(Base: ₹${d.baseAmount} + ₹0.${d.offsetPaise < 10 ? '0' : ''}${d.offsetPaise})</span>
+              <span class="text-[10px] ${d.status === 'APPROVED' ? 'text-emerald-400' : 'text-amber-400'} font-semibold ml-1">[${d.status}]</span>
+            </div>
+            ${d.status === 'PENDING' ? `
+              <button onclick="simulateAdminPayment(${d.totalAmount})" class="bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 px-2.5 py-1 rounded text-[11px] transition">
+                Simulate Webhook
+              </button>
+            ` : `<span class="text-slate-500 text-[10px] font-mono">${d.utr}</span>`}
+          </div>
+        `).join('');
+      }
+    }
+
+    async function updateAdminUpi() {
+      const upiId = document.getElementById('admin-config-upi-id').value.trim();
+      const upiName = document.getElementById('admin-config-upi-name').value.trim();
+      await fetch('/api/admin/upi-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ upiId, upiName })
+      });
+      alert('Receiving UPI updated successfully!');
+      loadAdminDashboard();
+    }
+
+    async function approveWithdrawalPrompt(id, amount) {
+      const utr = prompt(`Enter Payout Bank UTR / Reference ID after sending ₹${amount}:`, `UTR-${Date.now().toString().slice(-8)}`);
+      if (!utr) return;
+
+      await fetch('/api/admin/withdrawals/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ withdrawalId: id, payoutUtr: utr })
+      });
+      alert('Withdrawal marked as completed!');
+      loadAdminDashboard();
+      refreshWallet();
+    }
+
+    async function simulateAdminPayment(amount) {
+      await fetch('/api/admin/simulate-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount })
+      });
+      loadAdminDashboard();
+      refreshWallet();
+    }
+
+    // ─── BOOTSTRAP ────────────────────────────────────────────────────────────
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderCreateGuessGrid();
+      switchUser('alex');
+    });
+  </script>
+</body>
+</html>
