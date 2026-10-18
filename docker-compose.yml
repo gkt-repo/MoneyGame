@@ -16,3 +16,8 @@ services:
       - PLATFORM_COMMISSION_PERCENT=${PLATFORM_COMMISSION_PERCENT:-10}
       - JWT_SECRET=${JWT_SECRET:-moneygame-super-secret-jwt-key}
       - PRISMA_FORCE_RESET=${PRISMA_FORCE_RESET:-false}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-MoneyGame <no-reply@moneygame.com>}
