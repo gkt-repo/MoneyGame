@@ -5,6 +5,7 @@ import cors from 'cors';
 import { Server } from 'socket.io';
 import { config } from './config';
 import { initDbDefaults } from './db';
+import fs from 'fs';
 import { router as apiRouter } from './routes/api.routes';
 import { gameManager } from './modules/game/game.manager';
 import { walletService } from './modules/wallet/wallet.service';
@@ -17,12 +18,32 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 
-// Serve static frontend UI
-const publicPath = path.join(__dirname, '../public');
-app.use(express.static(publicPath));
-
-// Mount API routes
+// Mount API routes first
 app.use('/api', apiRouter);
+
+// Serve Admin Web Portal on /admin
+const adminPublicPath = path.join(__dirname, '../public/admin');
+if (fs.existsSync(adminPublicPath)) {
+  app.use('/admin', express.static(adminPublicPath));
+  app.get(['/admin', '/admin/*'], (_req, res) => {
+    res.sendFile(path.join(adminPublicPath, 'index.html'));
+  });
+}
+
+// Serve User Web Portal on /
+const userPublicPath = path.join(__dirname, '../public/user');
+if (fs.existsSync(userPublicPath)) {
+  app.use(express.static(userPublicPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+      return next();
+    }
+    res.sendFile(path.join(userPublicPath, 'index.html'));
+  });
+} else {
+  const legacyPublic = path.join(__dirname, '../public');
+  app.use(express.static(legacyPublic));
+}
 
 // Initialize Socket.io
 const io = new Server(server, {

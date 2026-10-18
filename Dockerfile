@@ -30,6 +30,14 @@ COPY apps/server/src ./apps/server/src
 COPY apps/server/tsconfig.json ./apps/server/tsconfig.json
 RUN npm --prefix apps/server run build
 
+# Copy and build User Web Portal
+COPY apps/user-web ./apps/user-web
+RUN npm --prefix apps/user-web run build
+
+# Copy and build Admin Web Portal
+COPY apps/admin-web ./apps/admin-web
+RUN npm --prefix apps/admin-web run build
+
 # ─── Stage 2: Production Runner ───────────────────────────────────────────────────
 FROM node:22-alpine AS runner
 
@@ -59,6 +67,8 @@ COPY apps/server/prisma ./apps/server/prisma
 # Copy compiled server code and static assets
 COPY --from=builder /app/apps/server/dist ./apps/server/dist
 COPY apps/server/public ./apps/server/public
+COPY --from=builder /app/apps/user-web/dist ./apps/server/public/user
+COPY --from=builder /app/apps/admin-web/dist ./apps/server/public/admin
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
