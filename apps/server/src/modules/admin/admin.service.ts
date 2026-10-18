@@ -465,6 +465,35 @@ export class AdminService {
   }
 
   /**
+   * Delete a user by ID, username, or phone
+   */
+  async deleteUser(userIdOrIdentifier: string) {
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: userIdOrIdentifier },
+          { username: userIdOrIdentifier },
+          { phone: userIdOrIdentifier },
+        ],
+      },
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (user.role === 'SUPER_ADMIN') {
+      throw new Error('Cannot delete a SUPER_ADMIN account');
+    }
+
+    await prisma.user.delete({
+      where: { id: user.id },
+    });
+
+    return { success: true, message: `User ${user.username} deleted successfully` };
+  }
+
+  /**
    * Get user's own feedback tickets
    */
   async getUserFeedbacks(userId: string) {

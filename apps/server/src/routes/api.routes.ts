@@ -375,6 +375,16 @@ router.post('/admin/users/:userId/adjust-balance', authenticateAdmin, async (req
   }
 });
 
+router.delete('/admin/users/:userId', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
+    const result = await adminService.deleteUser(userId);
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.get('/admin/feedback', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     const { status } = req.query;
