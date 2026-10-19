@@ -35,6 +35,14 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
     }>;
   } | null>(null);
 
+  const [myBalance, setMyBalance] = useState<number>(user.wallet?.balance ?? 0);
+
+  useEffect(() => {
+    if (typeof user.wallet?.balance === 'number') {
+      setMyBalance(user.wallet.balance);
+    }
+  }, [user.wallet?.balance]);
+
   // Sync initial game state from props if changed
   useEffect(() => {
     if (room.gameState) {
@@ -105,6 +113,20 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
       onRefreshBalance();
     });
 
+    socket.on('balance_updated', (data: any) => {
+      if (data && typeof data.balance === 'number') {
+        setMyBalance(data.balance);
+      }
+      onRefreshBalance();
+    });
+
+    socket.on('wallet_updated', (data: any) => {
+      if (data && typeof data.balance === 'number') {
+        setMyBalance(data.balance);
+      }
+      onRefreshBalance();
+    });
+
     return () => {
       socket.emit('leave_room_channel', room.id);
       socket.disconnect();
@@ -144,12 +166,13 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
       if (!res.success) {
         setActionError(res.message || 'Action failed');
       } else {
+        if (res.wallet && typeof res.wallet.balance === 'number') {
+          setMyBalance(res.wallet.balance);
+        }
         if (res.gameState) {
           setLocalGameState(res.gameState);
         }
-        if (action === 'SHOW' || action === 'PACK') {
-          onRefreshBalance();
-        }
+        onRefreshBalance();
       }
     } catch (err: any) {
       setActionError(err.message || 'Failed to submit action');
@@ -163,9 +186,19 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
   const winnerUserId = finishData?.winnerId || room.winnerId;
   const isWinner = winnerUserId === user.id;
 
+  const blindCost = gameState?.currentChaalAmount || room.entryFee;
   const currentChaalCost = myPlayerState?.isSeen
     ? (gameState?.currentChaalAmount || room.entryFee) * 2
     : (gameState?.currentChaalAmount || room.entryFee);
+  const showCost = currentChaalCost;
+
+  const hasEnoughForBlind = myBalance >= blindCost;
+  const hasEnoughForChaal = myBalance >= currentChaalCost;
+  const hasEnoughForShow = myBalance >= showCost;
+  const insufficientFundsForTurn = isMyTurn && !myPlayerState?.isPacked && (
+    (!myPlayerState?.isSeen && !hasEnoughForBlind) ||
+    (myPlayerState?.isSeen && !hasEnoughForChaal)
+  );
 
   return (
     <div className="space-y-4">
@@ -183,6 +216,10 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
             </span>
             <span className="px-2 py-0.5 bg-emerald-900/80 border border-emerald-700/50 rounded font-mono text-[11px]">
               Boot: ₹{room.entryFee.toFixed(2)}
+            </span>
+            <span className="px-2.5 py-0.5 bg-emerald-800/90 border border-emerald-600/70 rounded-full font-mono text-[11px] text-emerald-200 flex items-center gap-1 font-bold shadow-xs">
+              <span className="text-amber-400">💰</span>
+              <span>₹{myBalance.toFixed(2)}</span>
             </span>
           </div>
 
@@ -327,6 +364,11 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
                 <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-300/80">
                   <span>Bet: ₹{(pState?.totalBet || room.entryFee).toFixed(2)}</span>
+                  {isMe && (
+                    <span className="text-emerald-300 font-mono font-bold text-[10px] bg-emerald-900/80 px-1.5 py-0.5 rounded border border-emerald-600/50">
+                      Bal: ₹{myBalance.toFixed(2)}
+                    </span>
+                  )}
                   {isTurn && !isPacked && (
                     <span className="text-amber-400 font-mono font-bold animate-pulse text-[10px]">
                       Thinking...
@@ -352,6 +394,12 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
           {actionError && (
             <p className="text-red-300 text-xs mb-2 text-center bg-red-950/80 py-1.5 px-3 rounded-lg border border-red-700 shadow-xs">
               {actionError}
+            </p>
+          )}
+
+          {insufficientFundsForTurn && (
+            <p className="text-amber-300 text-xs mb-2 text-center bg-amber-950/80 py-1.5 px-3 rounded-lg border border-amber-600/60 shadow-xs">
+              ⚠️ Insufficient balance (₹{myBalance.toFixed(2)}) for next bet. Please Pack (Fold).
             </p>
           )}
 
@@ -407,30 +455,48 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                 {/* Blind or Chaal */}
                 {!myPlayerState.isSeen ? (
                   <button
-                    disabled={!isMyTurn || submittingAction}
+                    disabled={!isMyTurn || submittingAction || !hasEnoughForBlind}
                     onClick={() => handleAction('BLIND')}
-                    className="flex-1 sm:flex-none px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md"
+                    className="flex-1 sm:flex-none px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-1.5"
+                    title={!hasEnoughForBlind ? `Insufficient balance. Required: ₹${blindCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
                   >
-                    Blind (₹{(gameState?.currentChaalAmount || room.entryFee).toFixed(2)})
+                    <span>Blind (₹{blindCost.toFixed(2)})</span>
+                    {!hasEnoughForBlind && (
+                      <span className="text-[10px] bg-red-800/80 px-1.5 py-0.2 rounded font-normal text-red-200">
+                        Low Bal
+                      </span>
+                    )}
                   </button>
                 ) : (
                   <button
-                    disabled={!isMyTurn || submittingAction}
+                    disabled={!isMyTurn || submittingAction || !hasEnoughForChaal}
                     onClick={() => handleAction('CHAAL')}
-                    className="flex-1 sm:flex-none px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md"
+                    className="flex-1 sm:flex-none px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-1.5"
+                    title={!hasEnoughForChaal ? `Insufficient balance. Required: ₹${currentChaalCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
                   >
-                    Chaal (₹{currentChaalCost.toFixed(2)})
+                    <span>Chaal (₹{currentChaalCost.toFixed(2)})</span>
+                    {!hasEnoughForChaal && (
+                      <span className="text-[10px] bg-red-800/80 px-1.5 py-0.2 rounded font-normal text-red-200">
+                        Low Bal
+                      </span>
+                    )}
                   </button>
                 )}
 
                 {/* Show (Showdown) */}
                 {canShow && (
                   <button
-                    disabled={submittingAction}
+                    disabled={submittingAction || !hasEnoughForShow}
                     onClick={() => handleAction('SHOW')}
-                    className="flex-1 sm:flex-none px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-extrabold transition shadow-md animate-bounce"
+                    className="flex-1 sm:flex-none px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-extrabold transition shadow-md animate-bounce disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                    title={!hasEnoughForShow ? `Insufficient balance. Required: ₹${showCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
                   >
-                    Show!
+                    <span>Show (₹{showCost.toFixed(2)})!</span>
+                    {!hasEnoughForShow && (
+                      <span className="text-[10px] bg-red-800/80 px-1.5 py-0.2 rounded font-normal text-red-200">
+                        Low Bal
+                      </span>
+                    )}
                   </button>
                 )}
               </div>

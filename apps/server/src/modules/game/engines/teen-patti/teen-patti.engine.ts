@@ -271,11 +271,20 @@ export class TeenPattiEngine implements IGameEngine {
       }
 
       const betAmount = game.currentChaalAmount;
+      let updatedWallet: any;
+      try {
+        updatedWallet = await walletService.lockGameBet(userId, roomId, betAmount, 'BLIND');
+      } catch (err: any) {
+        return { success: false, message: err.message || 'Insufficient wallet balance for Blind' };
+      }
+
       game.pot += betAmount;
       player.totalBet += betAmount;
       player.lastAction = 'BLIND';
 
       if (io) {
+        io.to(`user:${userId}`).emit('balance_updated', updatedWallet);
+        io.to(`user:${userId}`).emit('wallet_updated', updatedWallet);
         io.to(`room:${roomId}`).emit('player_acted', {
           userId,
           action: 'BLIND',
@@ -285,17 +294,27 @@ export class TeenPattiEngine implements IGameEngine {
       }
 
       this.advanceToNextTurn(roomId, io);
-      return { success: true, message: 'Blind placed' };
+      return { success: true, message: 'Blind placed', wallet: updatedWallet };
     }
 
     // 4. CHAAL
     if (act === 'CHAAL') {
       const betAmount = player.isSeen ? game.currentChaalAmount * 2 : game.currentChaalAmount;
+
+      let updatedWallet: any;
+      try {
+        updatedWallet = await walletService.lockGameBet(userId, roomId, betAmount, 'CHAAL');
+      } catch (err: any) {
+        return { success: false, message: err.message || 'Insufficient wallet balance for Chaal' };
+      }
+
       game.pot += betAmount;
       player.totalBet += betAmount;
       player.lastAction = 'CHAAL';
 
       if (io) {
+        io.to(`user:${userId}`).emit('balance_updated', updatedWallet);
+        io.to(`user:${userId}`).emit('wallet_updated', updatedWallet);
         io.to(`room:${roomId}`).emit('player_acted', {
           userId,
           action: 'CHAAL',
@@ -305,7 +324,7 @@ export class TeenPattiEngine implements IGameEngine {
       }
 
       this.advanceToNextTurn(roomId, io);
-      return { success: true, message: 'Chaal placed' };
+      return { success: true, message: 'Chaal placed', wallet: updatedWallet };
     }
 
     // 5. SHOW
@@ -317,8 +336,22 @@ export class TeenPattiEngine implements IGameEngine {
 
       // Show cost
       const showCost = player.isSeen ? game.currentChaalAmount * 2 : game.currentChaalAmount;
+
+      let updatedWallet: any;
+      try {
+        updatedWallet = await walletService.lockGameBet(userId, roomId, showCost, 'SHOW');
+      } catch (err: any) {
+        return { success: false, message: err.message || 'Insufficient wallet balance for Show' };
+      }
+
       game.pot += showCost;
       player.totalBet += showCost;
+      player.lastAction = 'SHOW';
+
+      if (io) {
+        io.to(`user:${userId}`).emit('balance_updated', updatedWallet);
+        io.to(`user:${userId}`).emit('wallet_updated', updatedWallet);
+      }
 
       // Evaluate hands of all active players
       const evaluations = activePlayers.map(p => ({
@@ -374,6 +407,11 @@ export class TeenPattiEngine implements IGameEngine {
     const winner = game.players[winnerId];
     const totalPool = game.pot;
 
+    const playerBets: Record<string, number> = {};
+    for (const p of Object.values(game.players)) {
+      playerBets[p.userId] = p.totalBet;
+    }
+
     try {
       // Settle in DB via wallet ledger
       const settlement = await walletService.settleRoomWinner(
@@ -381,7 +419,8 @@ export class TeenPattiEngine implements IGameEngine {
         winnerId,
         0, // Card games do not use guess number
         totalPool,
-        config.platformCommissionPercent
+        config.platformCommissionPercent,
+        playerBets
       );
 
       const finalRoom = await prisma.room.findUnique({
@@ -418,6 +457,7 @@ export class TeenPattiEngine implements IGameEngine {
         for (const p of Object.values(game.players)) {
           const wallet = await walletService.getWallet(p.userId);
           io.to(`user:${p.userId}`).emit('wallet_updated', wallet);
+          io.to(`user:${p.userId}`).emit('balance_updated', wallet);
         }
       }
     } catch (err: any) {

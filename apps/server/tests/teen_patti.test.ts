@@ -3,6 +3,8 @@ import express from 'express';
 import { evaluateTeenPattiHand } from '../src/modules/game/engines/teen-patti/hand-evaluator';
 import { createDeck, shuffleDeck } from '../src/modules/game/engines/teen-patti/deck';
 import { PlayingCard } from '@moneygame/shared-types';
+import { prisma } from '../src/db';
+import { walletService } from '../src/modules/wallet/wallet.service';
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -122,6 +124,53 @@ async function run() {
   assert(sColor > sPair, 'Color beats Pair');
   assert(sPair > sHigh, 'Pair beats High Card');
   console.log('Test 4: Complete hand hierarchy (Trail > Pure > Seq > Color > Pair > High) ✅ PASS');
+
+  // Test 5: Real-time game bet deduction & balance locking
+  const testUser = await prisma.user.create({
+    data: {
+      username: `tp_bettor_${Date.now()}`,
+      phone: `999${Math.floor(1000000 + Math.random() * 9000000)}`,
+      passwordHash: 'dummy',
+      wallet: {
+        create: {
+          balance: 100.0,
+          lockedBalance: 0.0,
+        },
+      },
+    },
+    include: { wallet: true },
+  });
+
+  const roomId = 'test_room_chaal_1';
+  // 1. Lock a chaal bet of 20
+  const afterChaal1 = await walletService.lockGameBet(testUser.id, roomId, 20.0, 'CHAAL');
+  assert(Math.abs(afterChaal1.balance - 80.0) < 0.001, 'Available balance should reduce from 100 to 80');
+  assert(Math.abs(afterChaal1.lockedBalance - 20.0) < 0.001, 'Locked balance should increase from 0 to 20');
+
+  // 2. Attempt bet exceeding available balance
+  let caughtError = false;
+  try {
+    await walletService.lockGameBet(testUser.id, roomId, 150.0, 'CHAAL');
+  } catch (err: any) {
+    caughtError = true;
+    assert(err.message.includes('Insufficient balance'), 'Must throw Insufficient balance error');
+  }
+  assert(caughtError, 'Should have thrown error on insufficient balance');
+
+  // 3. Lock another bet of 30
+  const afterChaal2 = await walletService.lockGameBet(testUser.id, roomId, 30.0, 'BLIND');
+  assert(Math.abs(afterChaal2.balance - 50.0) < 0.001, 'Available balance should reduce from 80 to 50');
+  assert(Math.abs(afterChaal2.lockedBalance - 50.0) < 0.001, 'Locked balance should increase from 20 to 50');
+
+  // 4. Verify transaction ledger entries
+  const txs = await prisma.transaction.findMany({
+    where: { userId: testUser.id, type: 'ROOM_BET' },
+  });
+  assert(txs.length === 2, 'Should have 2 ROOM_BET transaction records');
+  assert(txs[0].amount === -20.0, 'First transaction should be -20.0');
+  assert(txs[1].amount === -30.0, 'Second transaction should be -30.0');
+
+  console.log('Test 5: Real-time game bet deduction & balance locking ✅ PASS');
 
   console.log('\n🎉 ALL TEEN PATTI UNIT TESTS PASSED SUCCESSFULLY!\n');
 }

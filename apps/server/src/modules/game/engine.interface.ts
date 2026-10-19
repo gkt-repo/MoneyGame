@@ -36,6 +36,7 @@ export interface ActionResult {
   success: boolean;
   message?: string;
   gameState?: any;
+  wallet?: any;
 }
 
 export interface IGameEngine {

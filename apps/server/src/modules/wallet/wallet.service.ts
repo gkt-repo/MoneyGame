@@ -143,6 +143,34 @@ export class WalletService {
   }
 
   /**
+   * Deducts in-game bet (Chaal, Blind, Show) from available balance and moves to lockedBalance in real-time.
+   */
+  async lockGameBet(userId: string, roomId: string, amount: number, actionName: string) {
+    return serializable(async (tx) => {
+      const wallet = await tx.wallet.findUnique({ where: { userId } });
+      if (!wallet || toPaise(wallet.balance) < toPaise(amount)) {
+        throw new Error(
+          `Insufficient balance for ${actionName}. Available: ₹${wallet?.balance.toFixed(2) || '0.00'}, Required: ₹${amount.toFixed(2)}`
+        );
+      }
+
+      const updatedWallet = await moveWallet(tx, userId, -amount, amount);
+
+      await tx.transaction.create({
+        data: {
+          userId,
+          amount: -amount,
+          type: 'ROOM_BET',
+          referenceId: roomId,
+          description: `Placed ${actionName} bet in Table #${roomId.slice(0, 8)}: ₹${amount.toFixed(2)}`,
+        },
+      });
+
+      return updatedWallet;
+    });
+  }
+
+  /**
    * Settle room: Release locked balances from all players, deduct platform commission,
    * and credit the net pool to the winner's wallet.
    */
@@ -151,7 +179,8 @@ export class WalletService {
     winnerId: string,
     winningNumber: number | null,
     totalPool: number,
-    commissionPercent: number
+    commissionPercent: number,
+    playerBets?: Record<string, number>
   ) {
     return serializable(async (tx) => {
       const room = await tx.room.findUnique({
@@ -188,7 +217,10 @@ export class WalletService {
 
       // 1. Release locked balances for all participating players
       for (const p of room.players) {
-        await moveWallet(tx, p.userId, 0, -entryFee);
+        const lockedToRelease = playerBets && typeof playerBets[p.userId] === 'number'
+          ? playerBets[p.userId]
+          : entryFee;
+        await moveWallet(tx, p.userId, 0, -lockedToRelease);
       }
 
       // 2. Credit the winner's available balance
