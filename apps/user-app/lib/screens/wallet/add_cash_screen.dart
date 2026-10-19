@@ -512,67 +512,9 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-
-                  // UPI App Fallback Guidance
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.amber50,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppColors.amber700.withValues(alpha: 0.2)),
-                    ),
-                    child: const Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.info_outline, size: 14, color: AppColors.amber700),
-                        SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'If your UPI app shows "request not supported" or fails, please scan the QR code above or copy the UPI ID below to pay.',
-                            style: TextStyle(fontSize: 11, color: AppColors.amber900, height: 1.3),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                   const SizedBox(height: 12),
 
-                  // Copyable Details
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.slate50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.slate200),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('UPI ID', style: TextStyle(fontSize: 10, color: AppColors.slate500)),
-                            Text(
-                              _deposit!.receivingUpi,
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.copy, size: 18, color: AppColors.slate600),
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: _deposit!.receivingUpi));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('UPI ID copied to clipboard')),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
+                  // Exact Payable Amount Card
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -601,6 +543,30 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                               const SnackBar(content: Text('Amount copied to clipboard')),
                             );
                           },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Payment Guidance
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.emerald50,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.emerald700.withValues(alpha: 0.2)),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.verified_user_outlined, size: 14, color: AppColors.emerald700),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Tap the button above to pay directly via your UPI app, or scan the QR code. Your balance is auto-credited once payment is received.',
+                            style: TextStyle(fontSize: 11, color: AppColors.emerald900, height: 1.3),
+                          ),
                         ),
                       ],
                     ),

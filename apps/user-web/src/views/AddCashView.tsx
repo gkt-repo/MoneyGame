@@ -54,7 +54,6 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
   const [error, setError] = useState<string | null>(null);
 
   // Copy states
-  const [copiedUpi, setCopiedUpi] = useState(false);
   const [copiedAmount, setCopiedAmount] = useState(false);
 
   // Approval state
@@ -313,13 +312,6 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
     }
   };
 
-  const handleCopyUpi = () => {
-    if (!deposit) return;
-    navigator.clipboard.writeText(deposit.receivingUpi);
-    setCopiedUpi(true);
-    setTimeout(() => setCopiedUpi(false), 2000);
-  };
-
   const handleCopyAmount = () => {
     if (!deposit) return;
     navigator.clipboard.writeText(deposit.totalAmount.toFixed(2));
@@ -454,22 +446,8 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
                 </button>
               </div>
 
-              {/* Copyable Details */}
+              {/* Payable Amount & Guidance Details */}
               <div className="space-y-2 text-left pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                  <div>
-                    <span className="text-slate-500 block text-[11px]">Receiving UPI ID</span>
-                    <span className="font-mono font-bold text-slate-900">{deposit.receivingUpi}</span>
-                  </div>
-                  <button
-                    onClick={handleCopyUpi}
-                    className="p-1.5 text-slate-500 hover:text-emerald-600 transition"
-                    title="Copy UPI ID"
-                  >
-                    {copiedUpi ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
-
                 <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
                   <div>
                     <span className="text-slate-500 block text-[11px]">Exact Payable Amount</span>
@@ -482,6 +460,11 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
                   >
                     {copiedAmount ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
                   </button>
+                </div>
+
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex items-start gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Tap the button above to pay directly via your UPI app, or scan the QR code. Your balance is auto-credited once payment is received.</span>
                 </div>
               </div>
 
