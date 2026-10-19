@@ -83,7 +83,7 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const socketRef = useRef<Socket | null>(null);
-  const presets = ['50', '100', '200', '500', '1000'];
+  const presets = ['100', '200', '500', '1000', '2000', '5000'];
 
   const loadHistory = useCallback(async () => {
     try {
@@ -573,7 +573,7 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
               <label className="block text-xs font-semibold text-slate-700 mb-2">
                 Select Deposit Amount
               </label>
-              <div className="grid grid-cols-5 gap-2 mb-3">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
                 {presets.map((val) => (
                   <button
                     key={val}
@@ -610,7 +610,7 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 flex items-start gap-2.5">
               <ShieldCheck className="w-4 h-4 flex-shrink-0 text-emerald-600 mt-0.5" />
               <span>
-                100% direct bank deposit. Zero commission deducted. Your deposit is automatically verified within seconds.
+                Direct peer bank deposit. Your payment is automatically verified within seconds.
               </span>
             </div>
 

@@ -267,11 +267,11 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.wifi_tethering, size: 12, color: AppColors.slate400),
+                              const Icon(Icons.security, size: 12, color: AppColors.slate400),
                               const SizedBox(width: 4),
-                              Text(
-                                'Server: ${ApiConstants.baseUrl}',
-                                style: const TextStyle(fontSize: 11, color: AppColors.slate400, fontFamily: 'monospace'),
+                              const Text(
+                                'MoneyGame Admin Console • Secure',
+                                style: TextStyle(fontSize: 11, color: AppColors.slate400),
                               ),
                             ],
                           ),

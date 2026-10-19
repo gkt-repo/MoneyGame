@@ -221,6 +221,35 @@ class ApiClient {
   static Future<String?> getValidAccessToken({bool forceRefresh = false}) =>
       _session.validAccessToken(forceRefresh: forceRefresh);
 
+  static String _extractDioError(DioException e, {required String defaultMessage}) {
+    if (e.response?.data != null) {
+      if (e.response!.data is Map && e.response!.data['error'] != null) {
+        return e.response!.data['error'].toString();
+      }
+      if (e.response!.data is String) {
+        try {
+          final decoded = jsonDecode(e.response!.data as String);
+          if (decoded is Map && decoded['error'] != null) {
+            return decoded['error'].toString();
+          }
+        } catch (_) {}
+      }
+    }
+    if (e.type == DioExceptionType.receiveTimeout) {
+      return 'Server response timed out. If your account was already created, please try signing in.';
+    }
+    if (e.type == DioExceptionType.connectionTimeout) {
+      return 'Connection timed out. Please check your internet connection.';
+    }
+    if (e.type == DioExceptionType.sendTimeout) {
+      return 'Send request timed out. Please check your internet connection.';
+    }
+    if (e.type == DioExceptionType.connectionError) {
+      return 'Unable to connect to game servers. Please check your internet connection.';
+    }
+    return e.message?.isNotEmpty == true ? e.message! : defaultMessage;
+  }
+
   // ─── AUTHENTICATION ────────────────────────────────────────────────────────
 
   static Future<UserProfileModel> register({
@@ -237,25 +266,22 @@ class ApiClient {
         'password': password,
       });
 
-      final tokens = res.data['tokens'];
-      await SecureStorageService.saveTokens(
-        accessToken: tokens['accessToken'],
-        refreshToken: tokens['refreshToken'],
-      );
+      final tokens = res.data['tokens'] ?? res.data;
+      final accessToken = tokens?['accessToken'] ?? res.data['accessToken'];
+      final refreshToken = tokens?['refreshToken'] ?? res.data['refreshToken'];
+
+      if (accessToken != null && refreshToken != null) {
+        await SecureStorageService.saveTokens(
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+        );
+      }
 
       final user = UserProfileModel.fromJson(res.data['user']);
       await SecureStorageService.saveUserProfile(jsonEncode(user.toJson()));
       return user;
     } on DioException catch (e) {
-      if (e.response?.data is Map && e.response?.data['error'] != null) {
-        throw e.response!.data['error'].toString();
-      }
-      if (e.type == DioExceptionType.connectionError ||
-          e.type == DioExceptionType.connectionTimeout ||
-          e.response == null) {
-        throw 'Cannot connect to server at ${ApiConstants.baseUrl}. Check if server is running.';
-      }
-      throw 'Registration failed: ${e.message}';
+      throw _extractDioError(e, defaultMessage: 'Registration failed. Please try again.');
     }
   }
 
@@ -273,25 +299,22 @@ class ApiClient {
         'password': password,
       });
 
-      final tokens = res.data['tokens'];
-      await SecureStorageService.saveTokens(
-        accessToken: tokens['accessToken'],
-        refreshToken: tokens['refreshToken'],
-      );
+      final tokens = res.data['tokens'] ?? res.data;
+      final accessToken = tokens?['accessToken'] ?? res.data['accessToken'];
+      final refreshToken = tokens?['refreshToken'] ?? res.data['refreshToken'];
+
+      if (accessToken != null && refreshToken != null) {
+        await SecureStorageService.saveTokens(
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+        );
+      }
 
       final user = UserProfileModel.fromJson(res.data['user']);
       await SecureStorageService.saveUserProfile(jsonEncode(user.toJson()));
       return user;
     } on DioException catch (e) {
-      if (e.response?.data is Map && e.response?.data['error'] != null) {
-        throw e.response!.data['error'].toString();
-      }
-      if (e.type == DioExceptionType.connectionError ||
-          e.type == DioExceptionType.connectionTimeout ||
-          e.response == null) {
-        throw 'Cannot connect to server at ${ApiConstants.baseUrl}. Check if server is running.';
-      }
-      throw 'Login failed: ${e.message}';
+      throw _extractDioError(e, defaultMessage: 'Login failed. Please check your credentials.');
     }
   }
 
@@ -302,7 +325,7 @@ class ApiClient {
       });
       return res.data['message'] ?? 'OTP dispatched to recovery email';
     } on DioException catch (e) {
-      throw e.response?.data['error'] ?? 'Failed to send recovery code';
+      throw _extractDioError(e, defaultMessage: 'Failed to send recovery code');
     }
   }
 
@@ -319,7 +342,7 @@ class ApiClient {
       });
       return res.data['message'] ?? 'Password reset successful';
     } on DioException catch (e) {
-      throw e.response?.data['error'] ?? 'Invalid code or password';
+      throw _extractDioError(e, defaultMessage: 'Invalid code or password');
     }
   }
 
@@ -328,7 +351,7 @@ class ApiClient {
       final res = await _dio.get('/v1/auth/me');
       return UserProfileModel.fromJson(res.data['user']);
     } on DioException catch (e) {
-      throw e.response?.data['error'] ?? 'Failed to fetch profile';
+      throw _extractDioError(e, defaultMessage: 'Failed to fetch profile');
     }
   }
 

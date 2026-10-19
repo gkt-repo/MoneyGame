@@ -171,7 +171,10 @@ class UserApiService {
     };
     if (token) headers.Authorization = `Bearer ${token}`;
     const response = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
-    const data = await response.json().catch(() => ({}));
+    const contentType = response.headers.get('content-type') || '';
+    const isJson = contentType.includes('application/json');
+    const data = isJson ? await response.json().catch(() => ({})) : {};
+
     if (!response.ok) {
       if (response.status === 401 && data.code === 'TOKEN_EXPIRED' && token && !retried) {
         if (this.token === token) await this.getValidToken(true);
@@ -183,6 +186,11 @@ class UserApiService {
       }
       throw new Error(data.error || `HTTP error ${response.status}`);
     }
+
+    if (!isJson && response.status !== 204) {
+      throw new Error(`Unexpected non-JSON response from server (${response.status})`);
+    }
+
     return data;
   }
 
@@ -190,14 +198,25 @@ class UserApiService {
     const res = await this.request<{
       success: boolean;
       user: UserProfile;
-      tokens: { accessToken: string; refreshToken: string };
+      tokens?: { accessToken: string; refreshToken: string };
+      accessToken?: string;
+      refreshToken?: string;
     }>('/v1/auth/register', {
       method: 'POST',
       body: JSON.stringify({ username, phone, email, password }),
     });
 
-    this.setToken(res.tokens.accessToken);
-    localStorage.setItem('moneygame_user_refresh_token', res.tokens.refreshToken);
+    const accessToken = res.tokens?.accessToken || res.accessToken;
+    const refreshToken = res.tokens?.refreshToken || res.refreshToken;
+
+    if (!accessToken) {
+      throw new Error((res as any)?.error || 'Registration succeeded but no access token was received.');
+    }
+
+    this.setToken(accessToken);
+    if (refreshToken) {
+      localStorage.setItem('moneygame_user_refresh_token', refreshToken);
+    }
     return res.user;
   }
 
@@ -205,14 +224,25 @@ class UserApiService {
     const res = await this.request<{
       success: boolean;
       user: UserProfile;
-      tokens: { accessToken: string; refreshToken: string };
+      tokens?: { accessToken: string; refreshToken: string };
+      accessToken?: string;
+      refreshToken?: string;
     }>('/v1/auth/login', {
       method: 'POST',
       body: JSON.stringify({ phone, password }),
     });
 
-    this.setToken(res.tokens.accessToken);
-    localStorage.setItem('moneygame_user_refresh_token', res.tokens.refreshToken);
+    const accessToken = res.tokens?.accessToken || res.accessToken;
+    const refreshToken = res.tokens?.refreshToken || res.refreshToken;
+
+    if (!accessToken) {
+      throw new Error((res as any)?.error || 'Login succeeded but no access token was received.');
+    }
+
+    this.setToken(accessToken);
+    if (refreshToken) {
+      localStorage.setItem('moneygame_user_refresh_token', refreshToken);
+    }
     return res.user;
   }
 

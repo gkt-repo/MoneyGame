@@ -20,8 +20,8 @@ class ApiConstants {
       return 'http://localhost:4000';
     }
     if (Platform.isAndroid) {
-      // Direct connection to Oracle Cloud production VM
-      return 'http://132.226.186.196:4000';
+      // Direct connection to Oracle Cloud production VM via secure HTTPS
+      return 'https://game-132-226-186-196.sslip.io';
     }
     return 'http://localhost:4000';
   }

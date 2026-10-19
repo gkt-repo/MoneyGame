@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/colors.dart';
-import '../../core/constants/api_constants.dart';
-import '../../core/storage/secure_storage_service.dart';
 import '../../core/network/api_client.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -514,79 +512,24 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                InkWell(
-                  onTap: _showServerConfigDialog,
-                  borderRadius: BorderRadius.circular(4),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.wifi_tethering, size: 12, color: AppColors.slate400),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Server: ${ApiConstants.baseUrl}',
-                          style: const TextStyle(fontSize: 11, color: AppColors.slate400, fontFamily: 'monospace'),
-                        ),
-                      ],
-                    ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.shield_outlined, size: 13, color: AppColors.slate400),
+                      SizedBox(width: 4),
+                      Text(
+                        'MoneyGame • Secure & Fair Play',
+                        style: TextStyle(fontSize: 11, color: AppColors.slate400),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  void _showServerConfigDialog() {
-    final controller = TextEditingController(text: ApiConstants.baseUrl);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Text('Backend Server URL', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Specify your PC host address when testing on a real device on local Wi-Fi:',
-              style: TextStyle(fontSize: 12, color: AppColors.slate600),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'http://10.130.161.144:4000',
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.slate500)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final newUrl = controller.text.trim();
-              if (newUrl.isNotEmpty) {
-                ApiConstants.setRuntimeUrl(newUrl);
-                await SecureStorageService.saveCustomBaseUrl(newUrl);
-                if (ctx.mounted) Navigator.pop(ctx);
-                setState(() {});
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.emerald600),
-            child: const Text('Save & Connect', style: TextStyle(color: AppColors.white)),
-          ),
-        ],
       ),
     );
   }

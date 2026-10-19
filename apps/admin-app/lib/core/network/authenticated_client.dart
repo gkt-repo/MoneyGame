@@ -19,8 +19,8 @@ class AuthenticatedClient {
     Dio? client, Dio? refreshClient,
   }) : dio = client ?? Dio(), refreshDio = refreshClient ?? Dio() {
     for (final client in [dio, refreshDio]) {
-      client.options.connectTimeout = const Duration(seconds: 10);
-      client.options.receiveTimeout = const Duration(seconds: 10);
+      client.options.connectTimeout = const Duration(seconds: 30);
+      client.options.receiveTimeout = const Duration(seconds: 30);
       client.options.headers['Content-Type'] = 'application/json';
     }
     dio.interceptors.add(InterceptorsWrapper(
