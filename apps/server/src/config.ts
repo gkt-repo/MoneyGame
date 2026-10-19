@@ -21,6 +21,11 @@ export const config = {
   platformCommissionPercent: parseFloat(process.env.PLATFORM_COMMISSION_PERCENT || '0'),
   depositExpiryMinutes: 10,
 
+  // CORS Allowed Origins (comma-separated list, or '*' for open development)
+  allowedOrigins: process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim())
+    : ['*'],
+
   // JWT & Security
   jwtSecret: secret('JWT_SECRET'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '15m',

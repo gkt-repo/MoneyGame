@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import '../core/constants/colors.dart';
 import '../core/network/admin_api_client.dart';
 import 'dashboard/admin_dashboard_screen.dart';
+import 'users/users_screen.dart';
 import 'withdrawals/withdrawals_queue_screen.dart';
 import 'deposits/deposits_ledger_screen.dart';
-import 'settings/admin_settings_screen.dart';
+import 'more/admin_more_screen.dart';
+import 'feedback/feedback_screen.dart';
 
 class AdminHomeScreen extends StatefulWidget {
   final AdminProfileModel admin;
@@ -22,26 +24,30 @@ class AdminHomeScreen extends StatefulWidget {
 
 class _AdminHomeScreenState extends State<AdminHomeScreen> {
   int _currentIndex = 0;
-  int _pendingCount = 0;
+  int _pendingWithdrawalsCount = 0;
+  int _openFeedbacksCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _fetchPendingCount();
+    _fetchCounts();
   }
 
-  Future<void> _fetchPendingCount() async {
+  Future<void> _fetchCounts() async {
     try {
       final stats = await AdminApiClient.getStats();
       if (mounted) {
-        setState(() => _pendingCount = stats.pendingWithdrawalsCount);
+        setState(() {
+          _pendingWithdrawalsCount = stats.pendingWithdrawalsCount;
+          _openFeedbacksCount = stats.openFeedbacksCount;
+        });
       }
     } catch (_) {}
   }
 
   void _onTabTapped(int index) {
     setState(() => _currentIndex = index);
-    _fetchPendingCount();
+    _fetchCounts();
   }
 
   @override
@@ -71,9 +77,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            const Text(
-              'Super Admin',
-              style: TextStyle(
+            Text(
+              widget.admin.username,
+              style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
                 color: AppColors.slate900,
@@ -83,10 +89,24 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, size: 20, color: AppColors.slate600),
-            tooltip: 'Refresh',
+            icon: Badge(
+              isLabelVisible: _openFeedbacksCount > 0,
+              label: Text('$_openFeedbacksCount'),
+              backgroundColor: AppColors.amber800,
+              child: const Icon(Icons.support_agent_outlined, size: 22, color: AppColors.slate700),
+            ),
+            tooltip: 'Support Desk Tickets',
             onPressed: () {
-              _fetchPendingCount();
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FeedbackScreen()),
+              ).then((_) => _fetchCounts());
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh, size: 20, color: AppColors.slate600),
+            tooltip: 'Refresh Telemetry',
+            onPressed: () {
+              _fetchCounts();
               setState(() {});
             },
           ),
@@ -108,14 +128,17 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           AdminDashboardScreen(
             admin: widget.admin,
             onNavigateTab: _onTabTapped,
+            onLogout: widget.onLogout,
           ),
+          const UsersScreen(),
           WithdrawalsQueueScreen(
-            onQueueUpdated: _fetchPendingCount,
+            onQueueUpdated: _fetchCounts,
           ),
           const DepositsLedgerScreen(),
-          AdminSettingsScreen(
+          AdminMoreScreen(
             admin: widget.admin,
             onLogout: widget.onLogout,
+            onRefreshCounts: _fetchCounts,
           ),
         ],
       ),
@@ -140,16 +163,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               activeIcon: Icon(Icons.dashboard),
               label: 'Overview',
             ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.people_outline),
+              activeIcon: Icon(Icons.people),
+              label: 'Users',
+            ),
             BottomNavigationBarItem(
               icon: Badge(
-                isLabelVisible: _pendingCount > 0,
-                label: Text('$_pendingCount'),
+                isLabelVisible: _pendingWithdrawalsCount > 0,
+                label: Text('$_pendingWithdrawalsCount'),
                 backgroundColor: AppColors.red600,
                 child: const Icon(Icons.account_balance_wallet_outlined),
               ),
               activeIcon: Badge(
-                isLabelVisible: _pendingCount > 0,
-                label: Text('$_pendingCount'),
+                isLabelVisible: _pendingWithdrawalsCount > 0,
+                label: Text('$_pendingWithdrawalsCount'),
                 backgroundColor: AppColors.red600,
                 child: const Icon(Icons.account_balance_wallet),
               ),
@@ -160,10 +188,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               activeIcon: Icon(Icons.receipt_long),
               label: 'Deposits',
             ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.settings_outlined),
-              activeIcon: Icon(Icons.settings),
-              label: 'Gateway',
+            BottomNavigationBarItem(
+              icon: Badge(
+                isLabelVisible: _openFeedbacksCount > 0,
+                label: Text('$_openFeedbacksCount'),
+                backgroundColor: AppColors.amber800,
+                child: const Icon(Icons.menu_outlined),
+              ),
+              activeIcon: Badge(
+                isLabelVisible: _openFeedbacksCount > 0,
+                label: Text('$_openFeedbacksCount'),
+                backgroundColor: AppColors.amber800,
+                child: const Icon(Icons.menu),
+              ),
+              label: 'More',
             ),
           ],
         ),

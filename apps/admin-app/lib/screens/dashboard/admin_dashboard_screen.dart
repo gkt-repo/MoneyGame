@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/colors.dart';
 import '../../core/network/admin_api_client.dart';
+import '../feedback/feedback_screen.dart';
+import '../rooms/rooms_screen.dart';
+import '../settings/admin_settings_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   final AdminProfileModel admin;
   final Function(int targetTab) onNavigateTab;
+  final VoidCallback onLogout;
 
   const AdminDashboardScreen({
     super.key,
     required this.admin,
     required this.onNavigateTab,
+    required this.onLogout,
   });
 
   @override
@@ -38,13 +43,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _error = e.toString());
-      }
+      if (mounted) setState(() => _error = e.toString());
     } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -158,7 +159,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Super Admin (${widget.admin.email})',
+                            '${widget.admin.role} (${widget.admin.email})',
                             style: const TextStyle(fontSize: 12, color: AppColors.slate500),
                           ),
                         ],
@@ -239,6 +240,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       value: '${_stats!.totalUsers}',
                       icon: Icons.people_outline,
                       iconColor: AppColors.slate700,
+                      onTap: () => widget.onNavigateTab(1),
                     ),
                     _buildKpiCard(
                       title: 'TOTAL DEPOSITED',
@@ -246,6 +248,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       icon: Icons.south_west,
                       iconColor: AppColors.emerald600,
                       isMonospace: true,
+                      onTap: () => widget.onNavigateTab(3),
                     ),
                     _buildKpiCard(
                       title: 'TOTAL WITHDRAWN',
@@ -253,6 +256,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       icon: Icons.north_east,
                       iconColor: AppColors.amber600,
                       isMonospace: true,
+                      onTap: () => widget.onNavigateTab(2),
                     ),
                     _buildKpiCard(
                       title: 'PLATFORM PROFIT',
@@ -267,29 +271,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       icon: Icons.pending_actions,
                       iconColor: _stats!.pendingWithdrawalsCount > 0 ? AppColors.red600 : AppColors.slate500,
                       highlightAlert: _stats!.pendingWithdrawalsCount > 0,
+                      onTap: () => widget.onNavigateTab(2),
                     ),
                     _buildKpiCard(
                       title: 'ACTIVE TABLES',
                       value: '${_stats!.activeRooms}',
                       icon: Icons.casino_outlined,
                       iconColor: AppColors.slate700,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const RoomsScreen()),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
-                // Quick Action Clearance Banner
+                // Payout clearance banner if pending
                 if (_stats!.pendingWithdrawalsCount > 0) ...[
                   Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: AppColors.amber50,
+                      color: AppColors.red50,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.amber600.withValues(alpha: 0.3)),
+                      border: Border.all(color: AppColors.red600.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.warning_amber_rounded, size: 24, color: AppColors.amber800),
+                        const Icon(Icons.warning_amber_rounded, size: 24, color: AppColors.red600),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -297,20 +305,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             children: [
                               Text(
                                 '${_stats!.pendingWithdrawalsCount} Payout Request${_stats!.pendingWithdrawalsCount > 1 ? 's' : ''} Awaiting',
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.amber800),
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.red700),
                               ),
                               const SizedBox(height: 2),
-                              const Text(
-                                'Clear player withdrawals with bank UTR verification.',
-                                style: TextStyle(fontSize: 11, color: AppColors.amber800),
-                              ),
+                              const Text('Verify UPI VPA and enter bank UTR.', style: TextStyle(fontSize: 11, color: AppColors.red600)),
                             ],
                           ),
                         ),
                         ElevatedButton(
-                          onPressed: () => widget.onNavigateTab(1),
+                          onPressed: () => widget.onNavigateTab(2),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.amber800,
+                            backgroundColor: AppColors.red600,
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                           ),
@@ -319,7 +324,50 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 12),
+                ],
+
+                // Feedback ticket alert if pending
+                if (_stats!.openFeedbacksCount > 0) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.amber50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.amber600.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.support_agent, size: 24, color: AppColors.amber800),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${_stats!.openFeedbacksCount} Support Ticket${_stats!.openFeedbacksCount > 1 ? 's' : ''} Open',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.amber800),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text('Players need assistance or deposit checks.', style: TextStyle(fontSize: 11, color: AppColors.amber800)),
+                            ],
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const FeedbackScreen()),
+                          ).then((_) => _fetchStats()),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.amber800,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                          child: const Text('View Tickets', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.white)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                 ],
 
                 // Quick Navigation Cards
@@ -335,24 +383,51 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 const SizedBox(height: 10),
 
                 _buildActionTile(
-                  icon: Icons.account_balance_wallet_outlined,
-                  title: 'Withdrawal Clearance Queue',
-                  subtitle: 'Inspect UPI VPAs and input bank IMPS/UPI UTRs',
+                  icon: Icons.people_outline,
+                  title: 'User Management & Profiles',
+                  subtitle: '${_stats!.totalUsers} registered users • Adjust wallet balance, bans',
                   onTap: () => widget.onNavigateTab(1),
                 ),
                 const SizedBox(height: 8),
                 _buildActionTile(
-                  icon: Icons.receipt_long_outlined,
-                  title: 'Live Deposits Ledger',
-                  subtitle: 'View automated paise-offset reconciliation log',
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Withdrawal Clearance Queue',
+                  subtitle: '${_stats!.pendingWithdrawalsCount} pending payouts to process',
                   onTap: () => widget.onNavigateTab(2),
                 ),
                 const SizedBox(height: 8),
                 _buildActionTile(
-                  icon: Icons.settings_outlined,
-                  title: 'Gateway & UPI Settings',
-                  subtitle: 'Receiver UPI: ${_stats!.adminUpiId}',
+                  icon: Icons.receipt_long_outlined,
+                  title: 'Live Deposits & Unmatched Ledger',
+                  subtitle: 'Paise-offset reconciliation log & unmatched payments',
                   onTap: () => widget.onNavigateTab(3),
+                ),
+                const SizedBox(height: 8),
+                _buildActionTile(
+                  icon: Icons.support_agent_outlined,
+                  title: 'Support Desk & Feedback Tickets',
+                  subtitle: '${_stats!.openFeedbacksCount} open player tickets awaiting answer',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const FeedbackScreen()),
+                  ).then((_) => _fetchStats()),
+                ),
+                const SizedBox(height: 8),
+                _buildActionTile(
+                  icon: Icons.casino_outlined,
+                  title: 'Game Tables Monitor',
+                  subtitle: '${_stats!.activeRooms} active tables currently in play',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const RoomsScreen()),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _buildActionTile(
+                  icon: Icons.settings_outlined,
+                  title: 'Gateway & Helpline Settings',
+                  subtitle: 'Receiving UPI: ${_stats!.adminUpiId}',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => AdminSettingsScreen(admin: widget.admin, onLogout: widget.onLogout)),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 _buildActionTile(
@@ -376,45 +451,58 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     required Color iconColor,
     bool isMonospace = false,
     bool highlightAlert = false,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: highlightAlert ? AppColors.red50 : AppColors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: highlightAlert ? AppColors.red600.withValues(alpha: 0.4) : AppColors.slate200,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: highlightAlert ? AppColors.red50 : AppColors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: highlightAlert ? AppColors.red600.withValues(alpha: 0.4) : AppColors.slate200,
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
-                  color: highlightAlert ? AppColors.red700 : AppColors.slate400,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                    color: highlightAlert ? AppColors.red700 : AppColors.slate400,
+                  ),
                 ),
-              ),
-              Icon(icon, size: 16, color: iconColor),
-            ],
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontFamily: isMonospace ? 'monospace' : null,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: highlightAlert ? AppColors.red700 : AppColors.slate900,
+                Icon(icon, size: 16, color: iconColor),
+              ],
             ),
-          ),
-        ],
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontFamily: isMonospace ? 'monospace' : null,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: highlightAlert ? AppColors.red700 : AppColors.slate900,
+                  ),
+                ),
+                if (onTap != null)
+                  const Icon(Icons.arrow_forward_ios, size: 11, color: AppColors.slate400),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

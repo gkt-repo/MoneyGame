@@ -1,8 +1,13 @@
 import { io } from 'socket.io-client';
 import { userApi } from './api';
 
+declare const __VITE_API_URL__: string | undefined;
+
 export function connectSocket() {
-  const socket = io('/', {
+  const serverUrl = typeof __VITE_API_URL__ !== 'undefined' && __VITE_API_URL__
+    ? __VITE_API_URL__.replace(/\/api\/?$/, '')
+    : '/';
+  const socket = io(serverUrl, {
     transports: ['websocket', 'polling'],
     auth: async callback => {
       try { callback({ token: await userApi.getValidToken() }); }

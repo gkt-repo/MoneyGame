@@ -28,14 +28,12 @@ git clone <YOUR_MONEY_GAME_REPO_URL> MoneyGame
 
 ---
 
-## Step 2: Create the `money_game` Database in Existing Postgres
+## Step 2: Dedicated Side-by-Side Database (Zero Interference with NithConnect)
 
-Your VM already has PostgreSQL running inside the `nith_connect_db` container. You do **not** need to install another database. Just create a new database inside it:
-
-```bash
-# On your Oracle VM terminal:
-docker exec -it nith_connect_db psql -U nith_user -d postgres -c "CREATE DATABASE money_game;"
-```
+MoneyGame now includes its own dedicated PostgreSQL container (`money_game_db`) in `docker-compose.yml`.
+- It uses its own isolated Docker volume (`moneygame_pgdata`).
+- It binds to host port `5433` (while `nith_connect_db` stays on `5432`), guaranteeing zero conflict.
+- You do **NOT** need to create databases or touch `nith_connect_db` at all!
 
 ---
 
@@ -48,23 +46,34 @@ cp .env.oracle.example .env
 nano .env
 ```
 
-Ensure the `DATABASE_URL` matches your existing Postgres password (from `~/NithConnect/backend/.env`):
+Generate secure 32+ character secrets:
+```bash
+# Generate secrets:
+openssl rand -hex 32   # for JWT_SECRET
+openssl rand -hex 32   # for WEBHOOK_SECRET
+```
+
+Set your values in `.env`:
 ```ini
 PORT=4000
 NODE_ENV=production
-DATABASE_URL="postgresql://nith_user:YOUR_NITH_POSTGRES_PASSWORD@127.0.0.1:5432/money_game?schema=public"
+
+# Dedicated database configuration
+POSTGRES_DB=money_game
+POSTGRES_USER=money_user
+POSTGRES_PASSWORD=choose_a_strong_password
+POSTGRES_PORT=5433
+DATABASE_URL="postgresql://money_user:choose_a_strong_password@money_game_db:5432/money_game?schema=public"
+
 ADMIN_UPI_ID="your_real_upi@bank"
 ADMIN_UPI_NAME="Your Business Name"
-WEBHOOK_SECRET="create-a-random-secret-key"
 PLATFORM_COMMISSION_PERCENT=10
-```
-
-*(Note: If you use Docker, Docker automatically detects PostgreSQL from DATABASE_URL and configures the schema for you!)*
-
-If running directly on the host without Docker:
-```bash
-cp apps/server/prisma/schema.postgresql.prisma apps/server/prisma/schema.prisma
-npx prisma db push --schema=apps/server/prisma/schema.prisma
+WEBHOOK_SECRET="<YOUR_GENERATED_WEBHOOK_SECRET>"
+JWT_SECRET="<YOUR_GENERATED_JWT_SECRET>"
+ADMIN_INITIAL_EMAIL="admin@moneygame.com"
+ADMIN_INITIAL_PASSWORD="your_unique_admin_password_123"
+ADMIN_INITIAL_PHONE="9999999999"
+ALLOWED_ORIGINS="*"
 ```
 
 ---
@@ -114,3 +123,54 @@ On your spare Android phone running YouPI-PG companion app / Tasker / MacroDroid
   }
   ```
 Whenever a payment arrives, your Android phone will forward it directly to your Oracle VM and auto-approve the deposit within 2 seconds.
+
+---
+
+## Step 7: Free SSL for Backend (No Domain Purchase Required)
+
+You do **not** need to buy a domain. Choose either Option A (simplest) or Option B:
+
+### Option A: Free Public Wildcard Domain (`sslip.io`) with Let's Encrypt
+`sslip.io` maps any IP into a valid domain automatically without setup. For your VM (`132.226.186.196`):
+- Domain: `132-226-186-196.sslip.io` (resolves directly to `132.226.186.196`)
+- Install Certbot on your VM to get a 100% free Let's Encrypt SSL certificate:
+  ```bash
+  sudo apt update && sudo apt install -y certbot nginx
+  sudo certbot certonly --standalone -d 132-226-186-196.sslip.io
+  ```
+
+### Option B: Cloudflare Tunnel (100% Free HTTPS & WSS, No Port Forwarding)
+1. Install `cloudflared` on your VM:
+   ```bash
+   curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+   sudo dpkg -i cloudflared.deb
+   ```
+2. Run a free instant tunnel:
+   ```bash
+   cloudflared tunnel --url http://localhost:4000
+   ```
+   Cloudflare will give you a free `https://*.trycloudflare.com` URL with automatic SSL and WebSocket support!
+
+---
+
+## Step 8: Deploy Web Apps to Firebase Hosting (Optional Free Option)
+
+If you wish to host `user-web` and `admin-web` on Firebase Hosting:
+
+1. Build both web portals with your backend URL:
+   ```bash
+   # In local repo:
+   VITE_API_URL=https://132-226-186-196.sslip.io npm run build:user-web
+   VITE_API_URL=https://132-226-186-196.sslip.io npm run build:admin-web
+   ```
+2. Initialize Firebase in this folder:
+   ```bash
+   firebase login
+   firebase target:apply hosting user-web <YOUR_FIREBASE_USER_SITE_NAME>
+   firebase target:apply hosting admin-web <YOUR_FIREBASE_ADMIN_SITE_NAME>
+   ```
+3. Deploy to Firebase Hosting:
+   ```bash
+   firebase deploy --only hosting
+   ```
+   Both web apps will now be live on free, fast global CDN with free SSL (e.g. `https://my-game.web.app`)!

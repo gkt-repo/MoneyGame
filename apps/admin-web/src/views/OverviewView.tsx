@@ -64,6 +64,30 @@ export const OverviewView: React.FC<OverviewViewProps> = ({ stats, onRefresh, lo
         </button>
       </div>
 
+      {/* Listener Watchdog Status Bar */}
+      <div className={`flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl border text-xs ${
+        stats?.listenerStatus === 'ONLINE'
+          ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-300'
+          : 'bg-amber-950/30 border-amber-800/50 text-amber-300'
+      }`}>
+        <div className="flex items-center gap-2.5">
+          <span className={`w-2.5 h-2.5 rounded-full ${stats?.listenerStatus === 'ONLINE' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+          <span className="font-semibold">
+            {stats?.listenerStatus === 'ONLINE' ? 'UPI Listener Companion: ONLINE' : 'UPI Listener Companion: OFFLINE / STANDBY'}
+          </span>
+          <span className="text-zinc-400">
+            {stats?.listenerStatus === 'ONLINE'
+              ? `(Active auto-matching${stats?.listenerMetadata?.batteryLevel ? ` • Battery: ${stats.listenerMetadata.batteryLevel}%` : ''}${stats?.listenerMetadata?.phoneModel ? ` • ${stats.listenerMetadata.phoneModel}` : ''})`
+              : '(Ensure companion app on Android phone is running with battery optimization disabled)'}
+          </span>
+        </div>
+        {stats?.lastHeartbeatAt && (
+          <span className="text-zinc-500 text-[11px] mt-1 sm:mt-0">
+            Last ping: {new Date(stats.lastHeartbeatAt).toLocaleTimeString()}
+          </span>
+        )}
+      </div>
+
       {/* KPI Stat Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Total Inflow (Deposits) */}

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/constants/colors.dart';
 import '../../core/network/admin_api_client.dart';
+import '../users/user_profile_screen.dart';
 
 class WithdrawalsQueueScreen extends StatefulWidget {
   final VoidCallback onQueueUpdated;
@@ -17,11 +18,26 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
   bool _loading = true;
   String? _error;
   String _activeFilter = 'PENDING'; // PENDING, COMPLETED, REJECTED, ALL
+  final _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _fetchWithdrawals();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _openUserProfile(String userId) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => UserProfileScreen(userId: userId, onUserUpdated: _fetchWithdrawals),
+      ),
+    );
   }
 
   Future<void> _fetchWithdrawals() async {
@@ -266,9 +282,18 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final query = _searchController.text.trim().toLowerCase();
     final filtered = _withdrawals.where((w) {
-      if (_activeFilter == 'ALL') return true;
-      return w.status == _activeFilter;
+      if (_activeFilter != 'ALL' && w.status != _activeFilter) return false;
+      if (query.isNotEmpty) {
+        final matchUser = w.username.toLowerCase().contains(query);
+        final matchPhone = w.phone?.contains(query) ?? false;
+        final matchUpi = w.upiId.toLowerCase().contains(query);
+        final matchAmount = w.amount.toString().contains(query);
+        final matchUtr = w.payoutUtr?.toLowerCase().contains(query) ?? false;
+        return matchUser || matchPhone || matchUpi || matchAmount || matchUtr;
+      }
+      return true;
     }).toList();
 
     final pendingCount = _withdrawals.where((w) => w.status == 'PENDING').length;
@@ -314,6 +339,22 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
+
+                    // Search Bar
+                    TextField(
+                      controller: _searchController,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        hintText: 'Filter by user, phone, UPI ID, or amount...',
+                        prefixIcon: const Icon(Icons.search, size: 20, color: AppColors.slate400),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setState(() => _searchController.clear()))
+                            : null,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
 
                     // Filter Chips
                     SingleChildScrollView(
@@ -472,22 +513,27 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
           const SizedBox(height: 10),
 
           // User details
-          Row(
-            children: [
-              const Icon(Icons.person_outline, size: 14, color: AppColors.slate500),
-              const SizedBox(width: 6),
-              Text(
-                item.username,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.slate800),
-              ),
-              if (item.phone != null) ...[
-                const SizedBox(width: 8),
+          InkWell(
+            onTap: () => _openUserProfile(item.userId),
+            child: Row(
+              children: [
+                const Icon(Icons.person_outline, size: 14, color: AppColors.slate500),
+                const SizedBox(width: 6),
                 Text(
-                  '•  ${item.phone}',
-                  style: const TextStyle(fontSize: 12, color: AppColors.slate500),
+                  item.username,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.slate800),
                 ),
+                const SizedBox(width: 4),
+                const Icon(Icons.open_in_new, size: 12, color: AppColors.slate400),
+                if (item.phone != null) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    '•  ${item.phone}',
+                    style: const TextStyle(fontSize: 12, color: AppColors.slate500),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
           const SizedBox(height: 6),
 

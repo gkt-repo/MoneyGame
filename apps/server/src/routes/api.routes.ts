@@ -11,20 +11,80 @@ import {
   authenticateAdmin,
   AuthenticatedRequest,
 } from '../middleware/auth.middleware';
+import rateLimit from 'express-rate-limit';
+import { prisma } from '../db';
 
 export const router = Router();
 
-// Health check endpoint
-router.get('/health', (_req: Request, res: Response): void => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+const isTest = process.env.NODE_ENV === 'test';
+
+// ─── Rate Limiters ───────────────────────────────────────────────────────────
+
+// Strict Limiter for Authentication & OTP routes (prevents brute-force)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 30, // 30 attempts per 15 minutes per IP
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many authentication attempts. Please try again after 15 minutes.' },
+  skip: () => isTest,
+});
+
+// Deposit Creation Rate Limiter
+export const depositLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  limit: 25,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many deposit requests. Please wait a few minutes before trying again.' },
+  skip: () => isTest,
+});
+
+// UTR Claim Rate Limiter (prevents UTR brute-forcing)
+export const claimLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  limit: 15,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many UTR claim attempts. Please wait a few minutes before trying again.' },
+  skip: () => isTest,
+});
+
+// Webhook Rate Limiter
+export const webhookLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  limit: 60,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  skip: () => isTest,
+});
+
+// ─── Health Check Endpoint (Deep DB Probe) ───────────────────────────────────
+router.get('/health', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    await prisma.$queryRawUnsafe('SELECT 1');
+    res.json({
+      status: 'ok',
+      database: 'connected',
+      uptime: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    res.status(503).json({
+      status: 'degraded',
+      database: 'disconnected',
+      error: err.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // ─── Authentication Endpoints ────────────────────────────────────────────────
-// Mount public auth routers
-router.use('/auth', authRouter);
-router.use('/v1/auth', authRouter);
-router.use('/admin/auth', adminAuthRouter);
-router.use('/v1/admin/auth', adminAuthRouter);
+// Mount public auth routers with brute-force rate limiting
+router.use('/auth', authLimiter, authRouter);
+router.use('/v1/auth', authLimiter, authRouter);
+router.use('/admin/auth', authLimiter, adminAuthRouter);
+router.use('/v1/admin/auth', authLimiter, adminAuthRouter);
 
 // ─── User Profile & Wallet (Protected) ───────────────────────────────────────
 
@@ -56,7 +116,7 @@ router.get('/wallet/:userId', authenticateUser, async (req: AuthenticatedRequest
 
 // ─── Payment & Deposits ───────────────────────────────────────────────────────
 
-router.post('/deposits/create', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.post('/deposits/create', authenticateUser, depositLimiter, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user!.id;
     const amount = req.body.amount;
@@ -71,7 +131,7 @@ router.post('/deposits/create', authenticateUser, async (req: AuthenticatedReque
   }
 });
 
-router.post('/deposits/claim-utr', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+router.post('/deposits/claim-utr', authenticateUser, claimLimiter, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { depositId, utr } = req.body;
     if (!depositId || !utr) {
@@ -230,7 +290,7 @@ router.post('/rooms/:roomId/cancel', authenticateUser, async (req: Authenticated
 
 // ─── Automated Webhook Receiver (Android Notification / Email Forwarder) ───────
 
-router.post('/webhooks/upi-notify', async (req: Request, res: Response): Promise<void> => {
+router.post('/webhooks/upi-notify', webhookLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const authHeader = req.headers['x-webhook-secret'] || req.headers['authorization'];
     const expectedSecret = config.webhookSecret;
@@ -260,12 +320,61 @@ router.post('/webhooks/upi-notify', async (req: Request, res: Response): Promise
   }
 });
 
+// Listener heartbeat endpoint for Android phone watchdog
+router.post('/webhooks/listener-heartbeat', webhookLimiter, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const authHeader = req.headers['x-webhook-secret'] || req.headers['authorization'];
+    const expectedSecret = config.webhookSecret;
+
+    const supplied = typeof authHeader === 'string' ? authHeader.replace(/^Bearer /, '') : '';
+    if (!expectedSecret || !supplied || Buffer.byteLength(supplied) !== Buffer.byteLength(expectedSecret)
+        || !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expectedSecret))) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { batteryLevel, phoneModel } = req.body || {};
+
+    // Persist heartbeat in DB for watchdog
+    await prisma.systemSetting.upsert({
+      where: { key: 'last_listener_heartbeat' },
+      update: { value: new Date().toISOString() },
+      create: { key: 'last_listener_heartbeat', value: new Date().toISOString() },
+    });
+
+    if (batteryLevel !== undefined || phoneModel !== undefined) {
+      await prisma.systemSetting.upsert({
+        where: { key: 'listener_metadata' },
+        update: { value: JSON.stringify({ batteryLevel, phoneModel, updatedAt: new Date().toISOString() }) },
+        create: { key: 'listener_metadata', value: JSON.stringify({ batteryLevel, phoneModel, updatedAt: new Date().toISOString() }) },
+      });
+    }
+
+    res.json({
+      status: 'ok',
+      acknowledgedAt: new Date().toISOString(),
+      receivedMeta: { batteryLevel, phoneModel },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Admin Endpoints (Guarded by authenticateAdmin) ───────────────────────────
 
 router.get('/admin/stats', authenticateAdmin, async (_req: Request, res: Response): Promise<void> => {
   try {
     const stats = await adminService.getDashboardStats();
     res.json({ success: true, stats });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/admin/solvency-audit', authenticateAdmin, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const audit = await adminService.auditPlatformSolvency();
+    res.json({ success: true, audit });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

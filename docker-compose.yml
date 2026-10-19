@@ -1,17 +1,45 @@
 services:
+  # Side-by-side isolated PostgreSQL database (dedicated to MoneyGame, zero interference with nith_connect_db)
+  money_game_db:
+    image: postgres:16-alpine
+    container_name: money_game_db
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-money_game}
+      POSTGRES_USER: ${POSTGRES_USER:-money_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-money_secure_pass_2026}
+    volumes:
+      - moneygame_pgdata:/var/lib/postgresql/data
+    ports:
+      # Bound to 127.0.0.1 on port 5433 to completely isolate from existing nith_connect_db on 5432
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    networks:
+      - moneygame_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-money_user} -d ${POSTGRES_DB:-money_game}"]
+      interval: 4s
+      timeout: 4s
+      retries: 10
+
   money_game_app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: money_game_app
     restart: always
-    network_mode: "host"
+    ports:
+      - "${PORT:-4000}:4000"
+    networks:
+      - moneygame_network
+    depends_on:
+      money_game_db:
+        condition: service_healthy
     volumes:
       - moneygame_data:/app/data
     environment:
       - PORT=${PORT:-4000}
       - NODE_ENV=${NODE_ENV:-production}
-      - DATABASE_URL=${DATABASE_URL:-file:/app/data/moneygame.db}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-money_user}:${POSTGRES_PASSWORD:-money_secure_pass_2026}@money_game_db:5432/${POSTGRES_DB:-money_game}?schema=public}
       - ADMIN_UPI_ID=${ADMIN_UPI_ID:-admin@okhdfcbank}
       - ADMIN_UPI_NAME=${ADMIN_UPI_NAME:-MoneyGame}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:?Set a unique WEBHOOK_SECRET of at least 32 characters}
@@ -20,11 +48,17 @@ services:
       - ADMIN_INITIAL_EMAIL=${ADMIN_INITIAL_EMAIL:-admin@moneygame.com}
       - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-}
       - ADMIN_INITIAL_PHONE=${ADMIN_INITIAL_PHONE:-9999999999}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASS=${SMTP_PASS:-}
       - SMTP_FROM=${SMTP_FROM:-MoneyGame <no-reply@moneygame.com>}
 
+networks:
+  moneygame_network:
+    driver: bridge
+
 volumes:
   moneygame_data:
+  moneygame_pgdata:

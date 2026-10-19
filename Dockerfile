@@ -73,7 +73,10 @@ COPY --from=builder /app/apps/admin-web/dist ./apps/server/public/admin
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
+# Create persistent data directory and grant ownership to non-root node user
+RUN mkdir -p /app/data && chown -R node:node /app
+
+USER node
 
 WORKDIR /app/apps/server
 

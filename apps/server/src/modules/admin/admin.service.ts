@@ -1,6 +1,7 @@
 import { prisma } from '../../db';
 import { walletService } from '../wallet/wallet.service';
 import { paymentService } from '../payment/payment.service';
+import { toPaise } from '../../money';
 
 export class AdminService {
   /**
@@ -45,6 +46,24 @@ export class AdminService {
     const supportTelegram = await prisma.systemSetting.findUnique({ where: { key: 'support_telegram' } });
     const supportHours = await prisma.systemSetting.findUnique({ where: { key: 'support_hours' } });
 
+    // Listener phone watchdog status (Online if heartbeat within 3 minutes)
+    const lastHeartbeat = await prisma.systemSetting.findUnique({ where: { key: 'last_listener_heartbeat' } });
+    const listenerMeta = await prisma.systemSetting.findUnique({ where: { key: 'listener_metadata' } });
+    let listenerStatus: 'ONLINE' | 'OFFLINE' = 'OFFLINE';
+    let lastHeartbeatAt: string | null = null;
+    let listenerMetadata: any = null;
+
+    if (lastHeartbeat?.value) {
+      lastHeartbeatAt = lastHeartbeat.value;
+      const diffMs = Date.now() - new Date(lastHeartbeat.value).getTime();
+      if (diffMs >= 0 && diffMs < 180000) {
+        listenerStatus = 'ONLINE';
+      }
+    }
+    if (listenerMeta?.value) {
+      try { listenerMetadata = JSON.parse(listenerMeta.value); } catch { /* ignore */ }
+    }
+
     return {
       totalUsers,
       totalUsersCount: totalUsers,
@@ -66,6 +85,9 @@ export class AdminService {
       supportWhatsapp: supportWhatsapp?.value || '+91 98765 43210',
       supportTelegram: supportTelegram?.value || '@MoneyGameSupport',
       supportHours: supportHours?.value || '24/7 Live Support',
+      listenerStatus,
+      lastHeartbeatAt,
+      listenerMetadata,
     };
   }
 
@@ -643,6 +665,54 @@ export class AdminService {
    */
   async rejectWithdrawal(withdrawalId: string, reason?: string) {
     return walletService.rejectWithdrawal(withdrawalId, reason);
+  }
+
+  /**
+   * Audit platform solvency and double-entry ledger balance integrity
+   */
+  async auditPlatformSolvency() {
+    const wallets = await prisma.wallet.findMany({ select: { balance: true, lockedBalance: true } });
+    const totalUserAvailablePaise = wallets.reduce((sum, w) => sum + toPaise(w.balance), 0);
+    const totalUserLockedPaise = wallets.reduce((sum, w) => sum + toPaise(w.lockedBalance), 0);
+    const totalUserLiabilityPaise = totalUserAvailablePaise + totalUserLockedPaise;
+
+    const deposits = await prisma.deposit.aggregate({
+      where: { status: 'APPROVED' },
+      _sum: { baseAmount: true },
+    });
+    const totalApprovedDepositsPaise = toPaise(deposits._sum.baseAmount || 0);
+
+    const withdrawals = await prisma.withdrawal.aggregate({
+      where: { status: 'COMPLETED' },
+      _sum: { amount: true },
+    });
+    const totalCompletedWithdrawalsPaise = toPaise(withdrawals._sum.amount || 0);
+
+    const completedRooms = await prisma.room.findMany({
+      where: { status: 'COMPLETED' },
+      select: { entryFee: true, maxPlayers: true, winnerPrize: true },
+    });
+    const totalPlatformCommissionPaise = completedRooms.reduce((sum, r) => {
+      const pool = toPaise(r.entryFee) * r.maxPlayers;
+      const prize = toPaise(r.winnerPrize || 0);
+      return sum + Math.max(0, pool - prize);
+    }, 0);
+
+    const netSystemFundsPaise = totalApprovedDepositsPaise - totalCompletedWithdrawalsPaise;
+    const expectedLiabilityPaise = netSystemFundsPaise - totalPlatformCommissionPaise;
+    const variancePaise = totalUserLiabilityPaise - expectedLiabilityPaise;
+
+    return {
+      isSolvent: Math.abs(variancePaise) < 100, // tolerance < ₹1 due to rounding
+      totalUserAvailable: totalUserAvailablePaise / 100,
+      totalUserLocked: totalUserLockedPaise / 100,
+      totalUserLiability: totalUserLiabilityPaise / 100,
+      totalApprovedDeposits: totalApprovedDepositsPaise / 100,
+      totalCompletedWithdrawals: totalCompletedWithdrawalsPaise / 100,
+      totalPlatformCommission: totalPlatformCommissionPaise / 100,
+      varianceRupees: variancePaise / 100,
+      auditedAt: new Date().toISOString(),
+    };
   }
 }
 

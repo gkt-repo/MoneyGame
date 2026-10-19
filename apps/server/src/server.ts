@@ -3,9 +3,10 @@ import { configureSockets } from './socket';
 import path from 'path';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { Server } from 'socket.io';
 import { config } from './config';
-import { initDbDefaults } from './db';
+import { initDbDefaults, prisma } from './db';
 import fs from 'fs';
 import { router as apiRouter } from './routes/api.routes';
 import { gameManager } from './modules/game/game.manager';
@@ -15,8 +16,36 @@ import { paymentService } from './modules/payment/payment.service';
 const app = express();
 const server = http.createServer(app);
 
+// Configure CORS origin validator supporting Firebase Hosting, GitHub Pages, localhost, and custom domains
+const corsOriginChecker = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+  if (!origin) return callback(null, true);
+  if (config.allowedOrigins.includes('*')) return callback(null, true);
+  if (config.allowedOrigins.includes(origin)) return callback(null, true);
+
+  // Allow Firebase Hosting, GitHub Pages, and localhost
+  if (
+    /^https:\/\/.*\.web\.app$/.test(origin) ||
+    /^https:\/\/.*\.firebaseapp\.com$/.test(origin) ||
+    /^https:\/\/.*\.github\.io$/.test(origin) ||
+    /^http:\/\/localhost(:\d+)?$/.test(origin) ||
+    /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)
+  ) {
+    return callback(null, true);
+  }
+
+  callback(new Error('Blocked by CORS policy'));
+};
+
+// Security headers via Helmet (disabling CSP & COEP to permit embedded Vite SPA builds)
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
 // Enable CORS and JSON parsing
-app.use(cors());
+app.use(cors({ origin: corsOriginChecker, credentials: true }));
 app.use(express.json());
 
 // Mount API routes (supported both at /api and root / for robust client compatibility)
@@ -58,11 +87,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize Socket.io
+// Initialize Socket.io with origin validator
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: corsOriginChecker,
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 
@@ -77,13 +107,47 @@ async function bootstrap() {
   await initDbDefaults();
   await gameManager.recoverInterruptedRooms();
 
-  server.listen(config.port, () => {
+  // Background daemon: clean up expired deposit reservations every 60 seconds
+  const periodicExpiry = setInterval(() => {
+    paymentService.runPeriodicExpiry().catch((err: any) => {
+      console.error('Periodic deposit expiry check error:', err.message);
+    });
+  }, 60000);
+
+  const runningServer = server.listen(config.port, () => {
     console.log(`=======================================================`);
     console.log(`🚀 MoneyGame Server running on http://localhost:${config.port}`);
     console.log(`📡 WebSocket ready on port ${config.port}`);
     console.log(`💳 Dynamic UPI Receiver: ${config.adminUpiId}`);
+    console.log(`🛡️ Security: Helmet active & Rate Limiters enabled`);
     console.log(`=======================================================`);
   });
+
+  const shutdown = async (signal: string) => {
+    console.log(`\n🛑 Received ${signal}. Starting graceful shutdown...`);
+    clearInterval(periodicExpiry);
+    gameManager.stopTimers();
+
+    runningServer.close(async () => {
+      try {
+        io.close();
+        await prisma.$disconnect();
+        console.log('✅ Server and database connections closed cleanly.');
+        process.exit(0);
+      } catch (err) {
+        console.error('Error during shutdown:', err);
+        process.exit(1);
+      }
+    });
+
+    setTimeout(() => {
+      console.error('Shutdown timed out after 10s. Forcefully terminating.');
+      process.exit(1);
+    }, 10000).unref();
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 bootstrap().catch((err) => {

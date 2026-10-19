@@ -1,4 +1,7 @@
-const API_BASE = '/api';
+declare const __VITE_API_URL__: string | undefined;
+const API_BASE = typeof __VITE_API_URL__ !== 'undefined' && __VITE_API_URL__
+  ? `${__VITE_API_URL__.replace(/\/+$/, '')}/api`
+  : '/api';
 
 export interface AdminUser {
   id: string;
@@ -27,6 +30,9 @@ export interface DashboardStats {
   supportWhatsapp?: string;
   supportTelegram?: string;
   supportHours?: string;
+  listenerStatus?: 'ONLINE' | 'OFFLINE';
+  lastHeartbeatAt?: string | null;
+  listenerMetadata?: { batteryLevel?: number; phoneModel?: string; updatedAt?: string } | null;
 }
 
 export interface SupportContactSettings {
@@ -432,6 +438,10 @@ class AdminApiService {
       body: JSON.stringify(settings),
     });
     return res.contact;
+  }
+
+  async getSolvencyAudit(): Promise<{ success: boolean; audit: any }> {
+    return this.request('/admin/solvency-audit');
   }
 
   logout() {

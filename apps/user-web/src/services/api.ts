@@ -1,4 +1,7 @@
-const API_BASE = '/api';
+declare const __VITE_API_URL__: string | undefined;
+const API_BASE = typeof __VITE_API_URL__ !== 'undefined' && __VITE_API_URL__
+  ? `${__VITE_API_URL__.replace(/\/+$/, '')}/api`
+  : '/api';
 
 export interface UserProfile {
   id: string;

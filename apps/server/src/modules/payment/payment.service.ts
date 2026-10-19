@@ -24,6 +24,12 @@ export class PaymentService {
     });
   }
 
+  async runPeriodicExpiry() {
+    return serializable(async tx => {
+      await this.expire(tx);
+    });
+  }
+
   async createDepositRequest(userId: string, amount: number) {
     const baseAmount = money(amount, 1);
     const deposit = await serializable(async tx => {

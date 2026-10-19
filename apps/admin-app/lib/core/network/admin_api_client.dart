@@ -47,8 +47,15 @@ class AdminStatsModel {
   final int pendingWithdrawalsCount;
   final int completedDepositsCount;
   final int pendingDepositsCount;
+  final int openFeedbacksCount;
+  final int completedRoomsCount;
   final String adminUpiId;
   final String adminUpiName;
+  final String commissionPercent;
+  final String supportEmail;
+  final String supportWhatsapp;
+  final String supportTelegram;
+  final String supportHours;
 
   AdminStatsModel({
     required this.totalUsers,
@@ -59,8 +66,15 @@ class AdminStatsModel {
     required this.pendingWithdrawalsCount,
     required this.completedDepositsCount,
     required this.pendingDepositsCount,
+    required this.openFeedbacksCount,
+    required this.completedRoomsCount,
     required this.adminUpiId,
     required this.adminUpiName,
+    required this.commissionPercent,
+    required this.supportEmail,
+    required this.supportWhatsapp,
+    required this.supportTelegram,
+    required this.supportHours,
   });
 
   factory AdminStatsModel.fromJson(Map<String, dynamic> json) {
@@ -73,8 +87,15 @@ class AdminStatsModel {
       pendingWithdrawalsCount: json['pendingWithdrawalsCount'] ?? 0,
       completedDepositsCount: json['completedDepositsCount'] ?? 0,
       pendingDepositsCount: json['pendingDepositsCount'] ?? 0,
+      openFeedbacksCount: json['openFeedbacksCount'] ?? 0,
+      completedRoomsCount: json['completedRoomsCount'] ?? 0,
       adminUpiId: json['adminUpiId'] ?? '',
       adminUpiName: json['adminUpiName'] ?? '',
+      commissionPercent: json['commissionPercent']?.toString() ?? '0',
+      supportEmail: json['supportEmail'] ?? 'support@moneygame.com',
+      supportWhatsapp: json['supportWhatsapp'] ?? '+91 98765 43210',
+      supportTelegram: json['supportTelegram'] ?? '@MoneyGameSupport',
+      supportHours: json['supportHours'] ?? '24/7 Live Support',
     );
   }
 }
@@ -112,7 +133,7 @@ class AdminWithdrawalModel {
       upiId: json['upiId'] ?? '',
       status: json['status'] ?? 'PENDING',
       payoutUtr: json['payoutUtr'],
-      rejectionReason: json['rejectionReason'],
+      rejectionReason: json['reason'] ?? json['rejectionReason'],
       createdAt: json['createdAt'] ?? '',
       username: json['user']?['username'] ?? 'User',
       phone: json['user']?['phone'],
@@ -128,8 +149,10 @@ class AdminDepositModel {
   final int offsetPaise;
   final String status;
   final String? utr;
+  final String? receivingUpi;
   final String createdAt;
   final String username;
+  final String? phone;
   final String? userClaimedUtr;
 
   AdminDepositModel({
@@ -140,9 +163,11 @@ class AdminDepositModel {
     required this.offsetPaise,
     required this.status,
     this.utr,
+    this.receivingUpi,
     this.userClaimedUtr,
     required this.createdAt,
     required this.username,
+    this.phone,
   });
 
   factory AdminDepositModel.fromJson(Map<String, dynamic> json) {
@@ -154,9 +179,481 @@ class AdminDepositModel {
       offsetPaise: json['offsetPaise'] ?? 0,
       status: json['status'] ?? 'PENDING',
       utr: json['utr'],
+      receivingUpi: json['receivingUpi'],
       userClaimedUtr: json['userClaimedUtr'],
       createdAt: json['createdAt'] ?? '',
       username: json['user']?['username'] ?? 'Player',
+      phone: json['user']?['phone'],
+    );
+  }
+}
+
+class UnmatchedPaymentModel {
+  final String id;
+  final double amount;
+  final String? utr;
+  final String? senderUpi;
+  final String? senderName;
+  final String status;
+  final String? assignedUserId;
+  final String? assignedDepositId;
+  final String? resolvedAt;
+  final String createdAt;
+
+  UnmatchedPaymentModel({
+    required this.id,
+    required this.amount,
+    this.utr,
+    this.senderUpi,
+    this.senderName,
+    required this.status,
+    this.assignedUserId,
+    this.assignedDepositId,
+    this.resolvedAt,
+    required this.createdAt,
+  });
+
+  factory UnmatchedPaymentModel.fromJson(Map<String, dynamic> json) {
+    return UnmatchedPaymentModel(
+      id: json['id'] ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      utr: json['utr'],
+      senderUpi: json['senderUpi'],
+      senderName: json['senderName'],
+      status: json['status'] ?? 'UNCLAIMED',
+      assignedUserId: json['assignedUserId'],
+      assignedDepositId: json['assignedDepositId'],
+      resolvedAt: json['resolvedAt'],
+      createdAt: json['createdAt'] ?? '',
+    );
+  }
+}
+
+class AdminUserModel {
+  final String id;
+  final String username;
+  final String? phone;
+  final String? email;
+  final String role;
+  final String status;
+  final String createdAt;
+  final double balance;
+  final double lockedBalance;
+  final int totalDepositsCount;
+  final double totalDepositedAmount;
+  final int totalWithdrawalsCount;
+  final double totalWithdrawnAmount;
+  final int roomsPlayedCount;
+  final int roomsWonCount;
+  final int feedbacksCount;
+
+  AdminUserModel({
+    required this.id,
+    required this.username,
+    this.phone,
+    this.email,
+    required this.role,
+    required this.status,
+    required this.createdAt,
+    required this.balance,
+    required this.lockedBalance,
+    required this.totalDepositsCount,
+    required this.totalDepositedAmount,
+    required this.totalWithdrawalsCount,
+    required this.totalWithdrawnAmount,
+    required this.roomsPlayedCount,
+    required this.roomsWonCount,
+    required this.feedbacksCount,
+  });
+
+  factory AdminUserModel.fromJson(Map<String, dynamic> json) {
+    return AdminUserModel(
+      id: json['id'] ?? '',
+      username: json['username'] ?? '',
+      phone: json['phone'],
+      email: json['email'],
+      role: json['role'] ?? 'USER',
+      status: json['status'] ?? 'ACTIVE',
+      createdAt: json['createdAt'] ?? '',
+      balance: (json['balance'] as num?)?.toDouble() ?? 0.0,
+      lockedBalance: (json['lockedBalance'] as num?)?.toDouble() ?? 0.0,
+      totalDepositsCount: json['totalDepositsCount'] ?? 0,
+      totalDepositedAmount: (json['totalDepositedAmount'] as num?)?.toDouble() ?? 0.0,
+      totalWithdrawalsCount: json['totalWithdrawalsCount'] ?? 0,
+      totalWithdrawnAmount: (json['totalWithdrawnAmount'] as num?)?.toDouble() ?? 0.0,
+      roomsPlayedCount: json['roomsPlayedCount'] ?? 0,
+      roomsWonCount: json['roomsWonCount'] ?? 0,
+      feedbacksCount: json['feedbacksCount'] ?? 0,
+    );
+  }
+}
+
+class UserWalletDetail {
+  final double balance;
+  final double lockedBalance;
+  final String updatedAt;
+
+  UserWalletDetail({
+    required this.balance,
+    required this.lockedBalance,
+    required this.updatedAt,
+  });
+
+  factory UserWalletDetail.fromJson(Map<String, dynamic> json) {
+    return UserWalletDetail(
+      balance: (json['balance'] as num?)?.toDouble() ?? 0.0,
+      lockedBalance: (json['lockedBalance'] as num?)?.toDouble() ?? 0.0,
+      updatedAt: json['updatedAt'] ?? '',
+    );
+  }
+}
+
+class UserMetricsDetail {
+  final int totalDepositsCount;
+  final double approvedDepositsSum;
+  final int totalWithdrawalsCount;
+  final double completedWithdrawalsSum;
+  final int roomsPlayed;
+  final int roomsWon;
+  final double winRate;
+  final double netProfitLoss;
+
+  UserMetricsDetail({
+    required this.totalDepositsCount,
+    required this.approvedDepositsSum,
+    required this.totalWithdrawalsCount,
+    required this.completedWithdrawalsSum,
+    required this.roomsPlayed,
+    required this.roomsWon,
+    required this.winRate,
+    required this.netProfitLoss,
+  });
+
+  factory UserMetricsDetail.fromJson(Map<String, dynamic> json) {
+    return UserMetricsDetail(
+      totalDepositsCount: json['totalDepositsCount'] ?? 0,
+      approvedDepositsSum: (json['approvedDepositsSum'] as num?)?.toDouble() ?? 0.0,
+      totalWithdrawalsCount: json['totalWithdrawalsCount'] ?? 0,
+      completedWithdrawalsSum: (json['completedWithdrawalsSum'] as num?)?.toDouble() ?? 0.0,
+      roomsPlayed: json['roomsPlayed'] ?? 0,
+      roomsWon: json['roomsWon'] ?? 0,
+      winRate: (json['winRate'] as num?)?.toDouble() ?? 0.0,
+      netProfitLoss: (json['netProfitLoss'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+}
+
+class UserTransactionItem {
+  final String id;
+  final double amount;
+  final String type;
+  final String? referenceId;
+  final String? description;
+  final String createdAt;
+
+  UserTransactionItem({
+    required this.id,
+    required this.amount,
+    required this.type,
+    this.referenceId,
+    this.description,
+    required this.createdAt,
+  });
+
+  factory UserTransactionItem.fromJson(Map<String, dynamic> json) {
+    return UserTransactionItem(
+      id: json['id'] ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      type: json['type'] ?? '',
+      referenceId: json['referenceId'],
+      description: json['description'],
+      createdAt: json['createdAt'] ?? '',
+    );
+  }
+}
+
+class UserGameItem {
+  final String id;
+  final String roomId;
+  final String roomCode;
+  final double entryFee;
+  final int guessNumber;
+  final int? winningNumber;
+  final bool isWinner;
+  final String status;
+  final String createdAt;
+
+  UserGameItem({
+    required this.id,
+    required this.roomId,
+    required this.roomCode,
+    required this.entryFee,
+    required this.guessNumber,
+    this.winningNumber,
+    required this.isWinner,
+    required this.status,
+    required this.createdAt,
+  });
+
+  factory UserGameItem.fromJson(Map<String, dynamic> json) {
+    return UserGameItem(
+      id: json['id'] ?? '',
+      roomId: json['roomId'] ?? '',
+      roomCode: json['roomCode'] ?? '',
+      entryFee: (json['entryFee'] as num?)?.toDouble() ?? 0.0,
+      guessNumber: json['guessNumber'] ?? 0,
+      winningNumber: json['winningNumber'],
+      isWinner: json['isWinner'] ?? false,
+      status: json['status'] ?? '',
+      createdAt: json['createdAt'] ?? '',
+    );
+  }
+}
+
+class UserAuditLogItem {
+  final String id;
+  final String action;
+  final String actorUsername;
+  final String? details;
+  final String? ipAddress;
+  final String createdAt;
+
+  UserAuditLogItem({
+    required this.id,
+    required this.action,
+    required this.actorUsername,
+    this.details,
+    this.ipAddress,
+    required this.createdAt,
+  });
+
+  factory UserAuditLogItem.fromJson(Map<String, dynamic> json) {
+    return UserAuditLogItem(
+      id: json['id'] ?? '',
+      action: json['action'] ?? '',
+      actorUsername: json['actor']?['username'] ?? 'System',
+      details: json['details'],
+      ipAddress: json['ipAddress'],
+      createdAt: json['createdAt'] ?? '',
+    );
+  }
+}
+
+class UserProfileDetailModel {
+  final String id;
+  final String username;
+  final String? phone;
+  final String? email;
+  final String role;
+  final String status;
+  final String createdAt;
+  final String updatedAt;
+  final UserWalletDetail? wallet;
+  final UserMetricsDetail metrics;
+  final List<UserTransactionItem> recentTransactions;
+  final List<AdminDepositModel> recentDeposits;
+  final List<AdminWithdrawalModel> recentWithdrawals;
+  final List<UserGameItem> recentGames;
+  final List<AdminFeedbackModel> feedbacks;
+  final List<UserAuditLogItem> auditLogs;
+
+  UserProfileDetailModel({
+    required this.id,
+    required this.username,
+    this.phone,
+    this.email,
+    required this.role,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+    this.wallet,
+    required this.metrics,
+    required this.recentTransactions,
+    required this.recentDeposits,
+    required this.recentWithdrawals,
+    required this.recentGames,
+    required this.feedbacks,
+    required this.auditLogs,
+  });
+
+  factory UserProfileDetailModel.fromJson(Map<String, dynamic> json) {
+    return UserProfileDetailModel(
+      id: json['id'] ?? '',
+      username: json['username'] ?? '',
+      phone: json['phone'],
+      email: json['email'],
+      role: json['role'] ?? 'USER',
+      status: json['status'] ?? 'ACTIVE',
+      createdAt: json['createdAt'] ?? '',
+      updatedAt: json['updatedAt'] ?? '',
+      wallet: json['wallet'] != null ? UserWalletDetail.fromJson(json['wallet']) : null,
+      metrics: UserMetricsDetail.fromJson(json['metrics'] ?? {}),
+      recentTransactions: (json['recentTransactions'] as List? ?? [])
+          .map((t) => UserTransactionItem.fromJson(t))
+          .toList(),
+      recentDeposits: (json['recentDeposits'] as List? ?? [])
+          .map((d) => AdminDepositModel.fromJson(d))
+          .toList(),
+      recentWithdrawals: (json['recentWithdrawals'] as List? ?? [])
+          .map((w) => AdminWithdrawalModel.fromJson(w))
+          .toList(),
+      recentGames: (json['recentGames'] as List? ?? [])
+          .map((g) => UserGameItem.fromJson(g))
+          .toList(),
+      feedbacks: (json['feedbacks'] as List? ?? [])
+          .map((f) => AdminFeedbackModel.fromJson(f))
+          .toList(),
+      auditLogs: (json['auditLogs'] as List? ?? [])
+          .map((l) => UserAuditLogItem.fromJson(l))
+          .toList(),
+    );
+  }
+}
+
+class AdminFeedbackModel {
+  final String id;
+  final String userId;
+  final String category;
+  final String subject;
+  final String message;
+  final String? contactInfo;
+  final String status;
+  final String? adminReply;
+  final String? repliedAt;
+  final String createdAt;
+  final String updatedAt;
+  final String username;
+  final String? email;
+  final String? phone;
+  final String? userStatus;
+  final double? userBalance;
+
+  AdminFeedbackModel({
+    required this.id,
+    required this.userId,
+    required this.category,
+    required this.subject,
+    required this.message,
+    this.contactInfo,
+    required this.status,
+    this.adminReply,
+    this.repliedAt,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.username,
+    this.email,
+    this.phone,
+    this.userStatus,
+    this.userBalance,
+  });
+
+  factory AdminFeedbackModel.fromJson(Map<String, dynamic> json) {
+    return AdminFeedbackModel(
+      id: json['id'] ?? '',
+      userId: json['userId'] ?? '',
+      category: json['category'] ?? 'GENERAL',
+      subject: json['subject'] ?? '',
+      message: json['message'] ?? '',
+      contactInfo: json['contactInfo'],
+      status: json['status'] ?? 'OPEN',
+      adminReply: json['adminReply'],
+      repliedAt: json['repliedAt'],
+      createdAt: json['createdAt'] ?? '',
+      updatedAt: json['updatedAt'] ?? '',
+      username: json['user']?['username'] ?? 'User',
+      email: json['user']?['email'],
+      phone: json['user']?['phone'],
+      userStatus: json['user']?['status'],
+      userBalance: (json['user']?['wallet']?['balance'] as num?)?.toDouble(),
+    );
+  }
+}
+
+class AdminRoomPlayerModel {
+  final String id;
+  final String userId;
+  final String username;
+  final int guessNumber;
+
+  AdminRoomPlayerModel({
+    required this.id,
+    required this.userId,
+    required this.username,
+    required this.guessNumber,
+  });
+
+  factory AdminRoomPlayerModel.fromJson(Map<String, dynamic> json) {
+    return AdminRoomPlayerModel(
+      id: json['id'] ?? '',
+      userId: json['userId'] ?? '',
+      username: json['user']?['username'] ?? 'Player',
+      guessNumber: json['guessNumber'] ?? 0,
+    );
+  }
+}
+
+class AdminRoomModel {
+  final String id;
+  final String roomCode;
+  final double entryFee;
+  final int maxPlayers;
+  final String status;
+  final int? winningNumber;
+  final String? winnerId;
+  final String createdAt;
+  final List<AdminRoomPlayerModel> players;
+
+  AdminRoomModel({
+    required this.id,
+    required this.roomCode,
+    required this.entryFee,
+    required this.maxPlayers,
+    required this.status,
+    this.winningNumber,
+    this.winnerId,
+    required this.createdAt,
+    required this.players,
+  });
+
+  factory AdminRoomModel.fromJson(Map<String, dynamic> json) {
+    return AdminRoomModel(
+      id: json['id'] ?? '',
+      roomCode: json['roomCode'] ?? '',
+      entryFee: (json['entryFee'] as num?)?.toDouble() ?? 0.0,
+      maxPlayers: json['maxPlayers'] ?? 4,
+      status: json['status'] ?? 'WAITING',
+      winningNumber: json['winningNumber'],
+      winnerId: json['winnerId'],
+      createdAt: json['createdAt'] ?? '',
+      players: (json['players'] as List? ?? [])
+          .map((p) => AdminRoomPlayerModel.fromJson(p))
+          .toList(),
+    );
+  }
+}
+
+class SupportSettingsModel {
+  final String email;
+  final String whatsapp;
+  final String telegram;
+  final String hours;
+  final String? upiHelpText;
+
+  SupportSettingsModel({
+    required this.email,
+    required this.whatsapp,
+    required this.telegram,
+    required this.hours,
+    this.upiHelpText,
+  });
+
+  factory SupportSettingsModel.fromJson(Map<String, dynamic> json) {
+    return SupportSettingsModel(
+      email: json['email'] ?? 'support@moneygame.com',
+      whatsapp: json['whatsapp'] ?? '+91 98765 43210',
+      telegram: json['telegram'] ?? '@MoneyGameSupport',
+      hours: json['hours'] ?? '24/7 Live Support',
+      upiHelpText: json['upiHelpText'],
     );
   }
 }
@@ -299,7 +796,136 @@ class AdminApiClient {
     }
   }
 
-  // ─── SYSTEM SETTINGS ───────────────────────────────────────────────────────
+  // ─── UNMATCHED / ORPHAN BANK PAYMENTS ──────────────────────────────────────
+
+  static Future<List<UnmatchedPaymentModel>> getUnmatchedPayments({String? status}) async {
+    try {
+      final qs = status != null ? '?status=$status' : '';
+      final res = await _dio.get('/admin/unmatched-payments$qs');
+      final list = res.data['unmatchedPayments'] as List? ?? [];
+      return list.map((u) => UnmatchedPaymentModel.fromJson(u)).toList();
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to load unmatched payments';
+    }
+  }
+
+  static Future<void> assignUnmatchedPayment({
+    required String id,
+    required String userId,
+  }) async {
+    try {
+      await _dio.post('/admin/unmatched-payments/$id/assign', data: {
+        'userId': userId,
+      });
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to assign payment to player';
+    }
+  }
+
+  // ─── USER DIRECTORY & MANAGEMENT ───────────────────────────────────────────
+
+  static Future<List<AdminUserModel>> getUsers({String? search, String? status}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (search != null && search.isNotEmpty) params['search'] = search;
+      if (status != null && status != 'ALL') params['status'] = status;
+
+      final res = await _dio.get('/admin/users', queryParameters: params);
+      final list = res.data['users'] as List? ?? [];
+      return list.map((u) => AdminUserModel.fromJson(u)).toList();
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to load users directory';
+    }
+  }
+
+  static Future<UserProfileDetailModel> getUserDetail(String userId) async {
+    try {
+      final res = await _dio.get('/admin/users/$userId');
+      return UserProfileDetailModel.fromJson(res.data['user']);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to load user profile';
+    }
+  }
+
+  static Future<void> updateUserStatus({
+    required String userId,
+    required String status,
+    String? reason,
+  }) async {
+    try {
+      final data = <String, dynamic>{'status': status};
+      if (reason != null) data['reason'] = reason;
+      await _dio.patch('/admin/users/$userId/status', data: data);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to update user status';
+    }
+  }
+
+  static Future<void> adjustUserBalance({
+    required String userId,
+    required double amount,
+    required String reason,
+  }) async {
+    try {
+      await _dio.post('/admin/users/$userId/adjust-balance', data: {
+        'amount': amount,
+        'reason': reason,
+      });
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to adjust user balance';
+    }
+  }
+
+  static Future<void> deleteUser(String userId) async {
+    try {
+      await _dio.delete('/admin/users/$userId');
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to delete user';
+    }
+  }
+
+  // ─── SUPPORT TICKETS & FEEDBACK ────────────────────────────────────────────
+
+  static Future<List<AdminFeedbackModel>> getFeedbacks({String? status}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (status != null && status != 'ALL') params['status'] = status;
+
+      final res = await _dio.get('/admin/feedback', queryParameters: params);
+      final list = res.data['feedbacks'] as List? ?? [];
+      return list.map((f) => AdminFeedbackModel.fromJson(f)).toList();
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to load support feedback';
+    }
+  }
+
+  static Future<void> replyFeedback({
+    required String feedbackId,
+    required String adminReply,
+    String? status,
+  }) async {
+    try {
+      final data = <String, dynamic>{'adminReply': adminReply};
+      if (status != null) data['status'] = status;
+      await _dio.patch('/admin/feedback/$feedbackId/reply', data: data);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to reply to feedback';
+    }
+  }
+
+  // ─── GAME TABLES & ROOMS ───────────────────────────────────────────────────
+
+  static Future<List<AdminRoomModel>> getRooms() async {
+    try {
+      final res = await _dio.get('/rooms');
+      final list = res.data['rooms'] as List? ?? [];
+      return list.map((r) => AdminRoomModel.fromJson(r)).toList();
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to load game rooms';
+    }
+  }
+
+  // ─── SYSTEM SETTINGS & SUPPORT CONFIG ──────────────────────────────────────
 
   static Future<void> updateUpiSettings({
     required String upiId,
@@ -312,6 +938,33 @@ class AdminApiClient {
       });
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to update receiver UPI ID';
+    }
+  }
+
+  static Future<SupportSettingsModel> getSupportSettings() async {
+    try {
+      final res = await _dio.get('/admin/support-settings');
+      return SupportSettingsModel.fromJson(res.data['contact'] ?? {});
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to load support settings';
+    }
+  }
+
+  static Future<void> updateSupportSettings({
+    String? email,
+    String? whatsapp,
+    String? telegram,
+    String? hours,
+  }) async {
+    try {
+      final data = <String, dynamic>{};
+      if (email != null) data['email'] = email;
+      if (whatsapp != null) data['whatsapp'] = whatsapp;
+      if (telegram != null) data['telegram'] = telegram;
+      if (hours != null) data['hours'] = hours;
+      await _dio.post('/admin/support-settings', data: data);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to update support contact settings';
     }
   }
 
