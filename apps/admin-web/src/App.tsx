@@ -11,7 +11,7 @@ import { FeedbackView } from './views/FeedbackView';
 import { SettingsView } from './views/SettingsView';
 import { UserProfileModal } from './components/UserProfileModal';
 import { Loader2 } from 'lucide-react';
-import { io } from 'socket.io-client';
+import { connectSocket } from './services/socket';
 
 export const App: React.FC = () => {
   const [admin, setAdmin] = useState<AdminUser | null>(null);
@@ -65,7 +65,7 @@ export const App: React.FC = () => {
       refreshData();
 
       // Connect to WebSocket for live event triggers
-      const socket = io('/', { transports: ['websocket'] });
+      const socket = connectSocket();
 
       socket.on('admin_new_deposit', () => {
         refreshData();

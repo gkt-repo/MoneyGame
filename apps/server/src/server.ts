@@ -1,4 +1,5 @@
 import http from 'http';
+import { configureSockets } from './socket';
 import path from 'path';
 import express from 'express';
 import cors from 'cors';
@@ -69,39 +70,12 @@ gameManager.setSocketServer(io);
 walletService.setSocketServer(io);
 paymentService.setSocketServer(io);
 
-io.on('connection', (socket) => {
-  // Listen for user personal channel subscription (for live balance updates)
-  socket.on('join_user_channel', (userId: string) => {
-    socket.join(`user:${userId}`);
-  });
-
-  // Listen for deposit-specific channel subscription (for instant payment confirmation)
-  socket.on('join_deposit_channel', (depositId: string) => {
-    socket.join(`deposit:${depositId}`);
-  });
-
-  socket.on('leave_deposit_channel', (depositId: string) => {
-    socket.leave(`deposit:${depositId}`);
-  });
-
-  // Listen for admin channel subscription
-  socket.on('join_admin_channel', () => {
-    socket.join('admin_channel');
-  });
-
-  // Listen for room game updates
-  socket.on('join_room_channel', (roomId: string) => {
-    socket.join(roomId);
-  });
-
-  socket.on('leave_room_channel', (roomId: string) => {
-    socket.leave(roomId);
-  });
-});
+configureSockets(io);
 
 // Start server
 async function bootstrap() {
   await initDbDefaults();
+  await gameManager.recoverInterruptedRooms();
 
   server.listen(config.port, () => {
     console.log(`=======================================================`);

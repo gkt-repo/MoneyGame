@@ -512,7 +512,31 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
+
+                  // UPI App Fallback Guidance
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.amber50,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.amber700.withValues(alpha: 0.2)),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline, size: 14, color: AppColors.amber700),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'If your UPI app shows "request not supported" or fails, please scan the QR code above or copy the UPI ID below to pay.',
+                            style: TextStyle(fontSize: 11, color: AppColors.amber900, height: 1.3),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
 
                   // Copyable Details
                   Container(

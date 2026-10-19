@@ -1,4 +1,8 @@
 import { prisma } from '../../db';
+import { moveWallet } from '../../wallet-ledger';
+import { Prisma } from '@prisma/client';
+import { serializable } from '../../transaction';
+import { money, bankReference, toPaise } from '../../money';
 
 export class WalletService {
   private io: any = null;
@@ -67,124 +71,57 @@ export class WalletService {
   }
 
   /**
-   * Atomic credit of an approved deposit
-   */
-  async creditDeposit(userId: string, amount: number, utr?: string, depositId?: string) {
-    return prisma.$transaction(async (tx) => {
-      // 1. Update wallet balance
-      const wallet = await tx.wallet.update({
-        where: { userId },
-        data: {
-          balance: { increment: amount },
-        },
-      });
-
-      // 2. Record immutable audit transaction
-      await tx.transaction.create({
-        data: {
-          userId,
-          amount,
-          type: 'DEPOSIT',
-          referenceId: depositId,
-          description: `UPI deposit credited: ₹${amount.toFixed(2)}${utr ? ` (UTR: ${utr})` : ''}`,
-        },
-      });
-
-      return wallet;
-    });
-  }
-
-  /**
    * Atomic deduction & lock when a player enters a room
    */
-  async lockRoomEntry(userId: string, roomId: string, entryFee: number, guessNumber: number) {
-    return prisma.$transaction(async (tx) => {
-      const wallet = await tx.wallet.findUnique({
-        where: { userId },
-      });
-
-      if (!wallet || wallet.balance < entryFee) {
-        throw new Error(`Insufficient wallet balance. Required: ₹${entryFee.toFixed(2)}, Available: ₹${wallet?.balance.toFixed(2) || '0.00'}`);
-      }
-
-      // Check if guess is already taken in this room
-      const existingGuess = await tx.roomPlayer.findFirst({
-        where: { roomId, guessNumber },
-      });
-      if (existingGuess) {
-        throw new Error(`Number ${guessNumber} has already been taken by another player!`);
-      }
-
-      // Check if user is already in this room
-      const existingPlayer = await tx.roomPlayer.findFirst({
-        where: { roomId, userId },
-      });
-      if (existingPlayer) {
-        throw new Error('You have already joined this room.');
-      }
-
-      // Deduct available balance and add to lockedBalance
-      const updatedWallet = await tx.wallet.update({
-        where: { userId },
-        data: {
-          balance: { decrement: entryFee },
-          lockedBalance: { increment: entryFee },
-        },
-      });
-
-      // Register player in room
-      const playerRecord = await tx.roomPlayer.create({
-        data: {
-          roomId,
-          userId,
-          guessNumber,
-        },
-      });
-
-      // Audit ledger
-      await tx.transaction.create({
-        data: {
-          userId,
-          amount: -entryFee,
-          type: 'ROOM_ENTRY',
-          referenceId: roomId,
-          description: `Entry fee locked for Room #${roomId.slice(0, 8)} (Guess: ${guessNumber})`,
-        },
-      });
-
-      return { wallet: updatedWallet, player: playerRecord };
+  async lockRoomEntry(tx: Prisma.TransactionClient, userId: string, roomId: string, entryFee: number, guessNumber: number) {
+    const wallet = await tx.wallet.findUnique({
+      where: { userId },
     });
-  }
 
-  /**
-   * Refund entry fee if room is cancelled or player leaves before match starts
-   */
-  async refundRoomEntry(userId: string, roomId: string, entryFee: number) {
-    return prisma.$transaction(async (tx) => {
-      await tx.roomPlayer.deleteMany({
-        where: { roomId, userId },
-      });
+    if (!wallet || toPaise(wallet.balance) < toPaise(entryFee)) {
+      throw new Error(`Insufficient wallet balance. Required: ₹${entryFee.toFixed(2)}, Available: ₹${wallet?.balance.toFixed(2) || '0.00'}`);
+    }
 
-      const updatedWallet = await tx.wallet.update({
-        where: { userId },
-        data: {
-          balance: { increment: entryFee },
-          lockedBalance: { decrement: entryFee },
-        },
-      });
-
-      await tx.transaction.create({
-        data: {
-          userId,
-          amount: entryFee,
-          type: 'REFUND',
-          referenceId: roomId,
-          description: `Entry fee refunded for Room #${roomId.slice(0, 8)}`,
-        },
-      });
-
-      return updatedWallet;
+    // Check if guess is already taken in this room
+    const existingGuess = await tx.roomPlayer.findFirst({
+      where: { roomId, guessNumber },
     });
+    if (existingGuess) {
+      throw new Error(`Number ${guessNumber} has already been taken by another player!`);
+    }
+
+    // Check if user is already in this room
+    const existingPlayer = await tx.roomPlayer.findFirst({
+      where: { roomId, userId },
+    });
+    if (existingPlayer) {
+      throw new Error('You have already joined this room.');
+    }
+
+    // Deduct available balance and add to lockedBalance
+    const updatedWallet = await moveWallet(tx, userId, -entryFee, entryFee);
+
+    // Register player in room
+    const playerRecord = await tx.roomPlayer.create({
+      data: {
+        roomId,
+        userId,
+        guessNumber,
+      },
+    });
+
+    // Audit ledger
+    await tx.transaction.create({
+      data: {
+        userId,
+        amount: -entryFee,
+        type: 'ROOM_ENTRY',
+        referenceId: roomId,
+        description: `Entry fee locked for Room #${roomId.slice(0, 8)} (Guess: ${guessNumber})`,
+      },
+    });
+
+    return { wallet: updatedWallet, player: playerRecord };
   }
 
   /**
@@ -198,36 +135,29 @@ export class WalletService {
     totalPool: number,
     commissionPercent: number
   ) {
-    return prisma.$transaction(async (tx) => {
+    return serializable(async (tx) => {
       const room = await tx.room.findUnique({
         where: { id: roomId },
         include: { players: true },
       });
 
       if (!room) throw new Error('Room not found');
-      if (room.status === 'COMPLETED') throw new Error('Room already settled');
+      if (room.status !== 'ROLLING') throw new Error('Room is not awaiting settlement');
+      if (!room.players.some(p => p.userId === winnerId && p.guessNumber === winningNumber)) throw new Error('Invalid winner');
+      totalPool = toPaise(room.entryFee) * room.players.length / 100;
+      if (!Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) throw new Error('Invalid commission');
 
       const entryFee = room.entryFee;
-      const commissionAmount = (totalPool * commissionPercent) / 100;
-      const winnerPrize = totalPool - commissionAmount;
+      const commissionAmount = Math.round(toPaise(totalPool) * commissionPercent / 100) / 100;
+      const winnerPrize = (toPaise(totalPool) - toPaise(commissionAmount)) / 100;
 
       // 1. Release locked balances for all participating players
       for (const p of room.players) {
-        await tx.wallet.update({
-          where: { userId: p.userId },
-          data: {
-            lockedBalance: { decrement: entryFee },
-          },
-        });
+        await moveWallet(tx, p.userId, 0, -entryFee);
       }
 
       // 2. Credit the winner's available balance
-      const winnerWallet = await tx.wallet.update({
-        where: { userId: winnerId },
-        data: {
-          balance: { increment: winnerPrize },
-        },
-      });
+      const winnerWallet = await moveWallet(tx, winnerId, winnerPrize);
 
       // 3. Mark room completed
       await tx.room.update({
@@ -236,6 +166,7 @@ export class WalletService {
           status: 'COMPLETED',
           winningNumber,
           winnerId,
+          winnerPrize,
         },
       });
 
@@ -245,6 +176,7 @@ export class WalletService {
           userId: winnerId,
           amount: winnerPrize,
           type: 'ROOM_WIN',
+          idempotencyKey: `room-win:${roomId}`,
           referenceId: roomId,
           description: `Won Room #${room.roomCode} (Roll: ${winningNumber}). Net prize: ₹${winnerPrize.toFixed(2)}`,
         },
@@ -265,7 +197,7 @@ export class WalletService {
    * Enforces single active pending request limit and strict UPI address format
    */
   async requestWithdrawal(userId: string, amount: number, upiId: string) {
-    const roundedAmount = parseFloat(amount.toFixed(2));
+    const roundedAmount = money(amount, 10);
     if (isNaN(roundedAmount) || roundedAmount <= 0) {
       throw new Error('Withdrawal amount must be greater than 0');
     }
@@ -273,37 +205,27 @@ export class WalletService {
       throw new Error('Minimum withdrawal limit is ₹10.00');
     }
 
-    const cleanUpi = upiId.trim();
+    const cleanUpi = typeof upiId === 'string' ? upiId.trim() : '';
     const vpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
     if (!vpaRegex.test(cleanUpi)) {
       throw new Error('Valid UPI ID is required (e.g., 9876543210@paytm or user@okhdfcbank)');
     }
 
-    // Prevent multiple pending withdrawal spam
-    const existingPending = await prisma.withdrawal.findFirst({
-      where: { userId, status: 'PENDING' },
-    });
-    if (existingPending) {
-      throw new Error('You already have a pending withdrawal request under review. Please wait for it to be cleared.');
-    }
-
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await serializable(async (tx) => {
+      const existingPending = await tx.withdrawal.findFirst({
+        where: { userId, status: { in: ['PENDING', 'PROCESSING'] } },
+      });
+      if (existingPending) throw new Error('You already have a pending withdrawal request under review.');
       const wallet = await tx.wallet.findUnique({
         where: { userId },
       });
 
-      if (!wallet || wallet.balance < roundedAmount) {
+      if (!wallet || toPaise(wallet.balance) < toPaise(roundedAmount)) {
         throw new Error(`Insufficient balance. Available: ₹${wallet?.balance.toFixed(2) || '0.00'}`);
       }
 
       // Move balance to lockedBalance
-      const updatedWallet = await tx.wallet.update({
-        where: { userId },
-        data: {
-          balance: { decrement: roundedAmount },
-          lockedBalance: { increment: roundedAmount },
-        },
-      });
+      const updatedWallet = await moveWallet(tx, userId, -roundedAmount, roundedAmount);
 
       const withdrawal = await tx.withdrawal.create({
         data: {
@@ -332,7 +254,7 @@ export class WalletService {
         balance: result.wallet.balance,
         lockedBalance: result.wallet.lockedBalance,
       });
-      this.io.emit('admin_new_withdrawal', {
+      this.io.to('admin_channel').emit('admin_new_withdrawal', {
         withdrawalId: result.withdrawal.id,
         amount: result.withdrawal.amount,
         userId,
@@ -347,7 +269,7 @@ export class WalletService {
    * Verifies UTR uniqueness to prevent duplicate settlements
    */
   async completeWithdrawal(withdrawalId: string, payoutUtr: string) {
-    const cleanUtr = payoutUtr.trim();
+    const cleanUtr = bankReference(payoutUtr);
     if (!cleanUtr) throw new Error('Bank payout UTR is required');
 
     const duplicateUtr = await prisma.withdrawal.findFirst({
@@ -357,7 +279,7 @@ export class WalletService {
       throw new Error(`Bank payout UTR ${cleanUtr} has already been recorded for a previous withdrawal (#${duplicateUtr.id.slice(0, 8)})`);
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await serializable(async (tx) => {
       const withdrawal = await tx.withdrawal.findUnique({
         where: { id: withdrawalId },
       });
@@ -366,12 +288,7 @@ export class WalletService {
       if (withdrawal.status !== 'PENDING') throw new Error(`Withdrawal is already ${withdrawal.status}`);
 
       // Deduct permanently from lockedBalance
-      const wallet = await tx.wallet.update({
-        where: { userId: withdrawal.userId },
-        data: {
-          lockedBalance: { decrement: withdrawal.amount },
-        },
-      });
+      const wallet = await moveWallet(tx, withdrawal.userId, 0, -withdrawal.amount);
 
       const updatedWithdrawal = await tx.withdrawal.update({
         where: { id: withdrawalId },
@@ -412,7 +329,7 @@ export class WalletService {
    * Admin rejects withdrawal and refunds locked balance back to available balance
    */
   async rejectWithdrawal(withdrawalId: string, reason?: string) {
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await serializable(async (tx) => {
       const withdrawal = await tx.withdrawal.findUnique({
         where: { id: withdrawalId },
       });
@@ -421,13 +338,7 @@ export class WalletService {
       if (withdrawal.status !== 'PENDING') throw new Error(`Withdrawal is already ${withdrawal.status}`);
 
       // Refund from lockedBalance to balance
-      const wallet = await tx.wallet.update({
-        where: { userId: withdrawal.userId },
-        data: {
-          balance: { increment: withdrawal.amount },
-          lockedBalance: { decrement: withdrawal.amount },
-        },
-      });
+      const wallet = await moveWallet(tx, withdrawal.userId, withdrawal.amount, -withdrawal.amount);
 
       const updatedWithdrawal = await tx.withdrawal.update({
         where: { id: withdrawalId },
@@ -468,28 +379,23 @@ export class WalletService {
    * Admin manual balance adjustment (credit or debit)
    */
   async adjustBalance(userId: string, amount: number, reason: string, adminId: string) {
-    const roundedAmount = parseFloat(amount.toFixed(2));
+    const roundedAmount = Math.sign(amount) * money(Math.abs(amount));
     if (isNaN(roundedAmount) || roundedAmount === 0) {
       throw new Error('Adjustment amount cannot be zero');
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await serializable(async (tx) => {
       const wallet = await tx.wallet.findUnique({
         where: { userId },
       });
 
       if (!wallet) throw new Error('User wallet not found');
 
-      if (roundedAmount < 0 && wallet.balance + roundedAmount < 0) {
+      if (roundedAmount < 0 && toPaise(wallet.balance) + toPaise(roundedAmount) < 0) {
         throw new Error(`Insufficient balance to deduct ₹${Math.abs(roundedAmount).toFixed(2)}. Available: ₹${wallet.balance.toFixed(2)}`);
       }
 
-      const updatedWallet = await tx.wallet.update({
-        where: { userId },
-        data: {
-          balance: { increment: roundedAmount },
-        },
-      });
+      const updatedWallet = await moveWallet(tx, userId, roundedAmount);
 
       const txRecord = await tx.transaction.create({
         data: {

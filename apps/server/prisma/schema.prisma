@@ -74,7 +74,8 @@ model Deposit {
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   baseAmount       Float
   offsetPaise      Int
-  totalAmount      Float             @unique
+  totalAmount      Float
+  activeAmountKey  Int?              @unique // amount in paise, held only while active
   receivingUpi     String
   status           String            @default("PENDING") // PENDING, CLAIMED, APPROVED, EXPIRED, REJECTED
   utr              String?           @unique
@@ -89,6 +90,7 @@ model Deposit {
   @@index([userId])
   @@index([userClaimedUtr])
   @@index([status])
+  @@index([totalAmount])
 }
 
 model UnmatchedPayment {
@@ -129,9 +131,10 @@ model Room {
   roomCode      String       @unique
   entryFee      Float
   maxPlayers    Int          @default(2)
-  status        String       @default("WAITING") // WAITING, PLAYING, COMPLETED, CANCELLED
+  status        String       @default("WAITING") // WAITING, COUNTDOWN, ROLLING, COMPLETED, CANCELLED
   winningNumber Int?
   winnerId      String?
+  winnerPrize   Float?
   winner        User?        @relation("RoomWinner", fields: [winnerId], references: [id])
   players       RoomPlayer[]
   createdAt     DateTime     @default(now())
@@ -158,6 +161,7 @@ model Transaction {
   amount      Float
   type        String   // DEPOSIT, ROOM_ENTRY, ROOM_WIN, WITHDRAWAL_LOCK, WITHDRAWAL_COMPLETE, REFUND
   referenceId String?
+  idempotencyKey String? @unique
   description String?
   createdAt   DateTime @default(now())
 

@@ -4,11 +4,15 @@ import 'core/constants/colors.dart';
 import 'core/constants/api_constants.dart';
 import 'core/network/admin_api_client.dart';
 import 'core/storage/admin_secure_storage.dart';
+import 'core/services/display_mode_service.dart';
 import 'screens/auth/admin_login_screen.dart';
 import 'screens/admin_home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Force 120 FPS / 120 Hz display refresh rate by default
+  await DisplayModeService.force120Hz();
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -34,14 +38,30 @@ class MoneyGameAdminApp extends StatefulWidget {
   State<MoneyGameAdminApp> createState() => _MoneyGameAdminAppState();
 }
 
-class _MoneyGameAdminAppState extends State<MoneyGameAdminApp> {
+class _MoneyGameAdminAppState extends State<MoneyGameAdminApp>
+    with WidgetsBindingObserver {
   AdminProfileModel? _currentAdmin;
   bool _initializing = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    DisplayModeService.force120Hz();
     _checkSavedSession();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      DisplayModeService.force120Hz();
+    }
   }
 
   Future<void> _checkSavedSession() async {

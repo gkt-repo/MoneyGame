@@ -1,4 +1,7 @@
+import './test-env';
 import http from 'http';
+import { emailService } from '../src/modules/auth/email.service';
+emailService.sendPasswordResetOtp = async () => true; // No real email in tests.
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma, initDbDefaults } from '../src/db';
@@ -25,8 +28,8 @@ async function runTests() {
     },
   });
 
-  await new Promise<void>((resolve) => server.listen(4099, resolve));
-  const baseUrl = 'http://localhost:4099/api';
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const baseUrl = `http://127.0.0.1:${(server.address() as import('net').AddressInfo).port}/api`;
 
   console.log('🧪 Starting comprehensive Authentication & RBAC tests...\n');
 

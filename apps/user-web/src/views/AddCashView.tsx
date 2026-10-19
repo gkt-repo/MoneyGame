@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { userApi, UserProfile, DepositResponse, DepositItem } from '../services/api';
 import { QRCodeSVG } from 'qrcode.react';
 import confetti from 'canvas-confetti';
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
+import { connectSocket } from '../services/socket';
 import {
   QrCode,
   Copy,
@@ -74,6 +75,9 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
   const [submittingUtr, setSubmittingUtr] = useState(false);
   const [utrSuccessMsg, setUtrSuccessMsg] = useState<string | null>(null);
   const [utrErrorMsg, setUtrErrorMsg] = useState<string | null>(null);
+  // True once user submits a UTR that isn't instantly approved — keeps the live
+  // "still verifying" indicator visible in the main screen after the modal closes
+  const [utrSubmitted, setUtrSubmitted] = useState(false);
 
   // Deposit history list
   const [history, setHistory] = useState<DepositItem[]>([]);
@@ -145,6 +149,7 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
     setUtrErrorMsg(null);
     setHasTappedPaid(false);
     setPaidCountdown(60);
+    setUtrSubmitted(false);
 
     try {
       const res = await userApi.createDeposit(user.id, parseFloat(selectedBase));
@@ -161,15 +166,16 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
   useEffect(() => {
     if (!deposit || isApproved) return;
 
-    const socket = io('/', { transports: ['websocket', 'polling'] });
+    const socket = connectSocket();
     socketRef.current = socket;
 
     // Join deposit-specific channel AND personal user channel
-    socket.emit('join_deposit_channel', deposit.depositId);
-    socket.emit('join_user_channel', user.id);
+    socket.on('connect', () => {
+      socket.emit('join_deposit_channel', deposit.depositId);
+    });
 
     socket.on('deposit_approved', (data: any) => {
-      if (!data || data.depositId === deposit.depositId || Number(data.amount) === Number(deposit.baseAmount)) {
+      if (data?.depositId === deposit.depositId) {
         handleApprovalSuccess({
           amount: data.amount || deposit.baseAmount,
           utr: data.utr,
@@ -218,6 +224,30 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
     return () => clearInterval(timer);
   }, [deposit, isApproved, isExpired, hasTappedPaid, paidCountdown]);
 
+  // Fix #2 — Opens the UPI deep link and simultaneously starts the verification
+  // countdown so users don't have to tap "I Have Paid" as a separate step.
+  // Uses the Android intent:// scheme so UPI apps open reliably inside WebViews.
+  const handleOpenUpiApp = () => {
+    const upiLink = deposit?.upiDeepLink || deposit?.upiUri || '';
+    if (!upiLink) return;
+    // Auto-start the countdown right here — no separate "I Have Paid" tap needed
+    if (!hasTappedPaid) {
+      setHasTappedPaid(true);
+      setPaidCountdown(60);
+    }
+    const isAndroid = /android/i.test(navigator.userAgent);
+    if (isAndroid) {
+      // intent:// opens the Android UPI app chooser reliably in Chrome and WebViews
+      const intentUrl =
+        upiLink.replace(/^upi:\/\//, 'intent://') +
+        '#Intent;scheme=upi;action=android.intent.action.VIEW;end';
+      window.location.href = intentUrl;
+    } else {
+      // iOS / desktop: upi:// is handled by the UPI app or browser
+      window.location.href = upiLink;
+    }
+  };
+
   const handlePaidClicked = () => {
     setHasTappedPaid(true);
     setPaidCountdown(60);
@@ -231,9 +261,15 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
     // 1. Regular 3s poll as fallback
     const interval = setInterval(checkStatus, 3000);
 
-    // 2. INSTANT CHECK the exact millisecond user returns from GPay/PhonePe to browser
+    // 2. INSTANT CHECK the exact millisecond user returns from GPay/PhonePe to browser.
+    // Also auto-start the countdown so they don't need to tap "I Have Paid" manually.
     const onVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
+        // Fix #1: auto-trigger "I Have Paid" state the moment they switch back
+        if (!hasTappedPaid) {
+          setHasTappedPaid(true);
+          setPaidCountdown(60);
+        }
         checkStatus();
       }
     };
@@ -246,7 +282,7 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
       window.removeEventListener('focus', onVisibilityOrFocus);
       document.removeEventListener('visibilitychange', onVisibilityOrFocus);
     };
-  }, [deposit, isApproved, isExpired, checkStatus]);
+  }, [deposit, isApproved, isExpired, checkStatus, hasTappedPaid]);
 
   // User Manual UTR Claim Handler
   const handleClaimUtr = async (e: React.FormEvent) => {
@@ -265,7 +301,10 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
           utr: manualUtr.trim(),
         });
       } else {
+        setUtrSubmitted(true);
         setUtrSuccessMsg(res.message || 'UTR recorded! Verifying against bank records...');
+        // Auto-close the modal after 2s so user sees the live verifying indicator
+        setTimeout(() => setShowUtrModal(false), 2000);
       }
     } catch (err: any) {
       setUtrErrorMsg(err.message || 'Failed to submit UTR. Please recheck your reference number.');
@@ -403,15 +442,16 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
                 <QRCodeSVG value={deposit.upiDeepLink || deposit.upiUri || ''} size={190} level="M" />
               </div>
 
-              {/* Direct Pay Link for Mobile */}
+              {/* Direct Pay Link for Mobile — Fix #2: starts countdown + Android intent:// */}
               <div>
-                <a
-                  href={deposit.upiDeepLink || deposit.upiUri || '#'}
+                <button
+                  type="button"
+                  onClick={handleOpenUpiApp}
                   className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold transition shadow-xs"
                 >
                   <ExternalLink className="w-4 h-4" />
                   <span>Open in UPI App (GPay / PhonePe / Paytm)</span>
-                </a>
+                </button>
               </div>
 
               {/* Copyable Details */}
@@ -480,6 +520,26 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
                     />
                   </div>
                 </div>
+              ) : utrSubmitted ? (
+                /* Stage D — Fix #3: UTR submitted, background auto-verify still running */
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-2.5 text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                    <span className="text-xs font-bold text-blue-900">
+                      UTR submitted — matching with bank records…
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-blue-800">
+                    Your UTR is recorded. We're checking incoming bank payments. Your wallet will credit automatically once matched, or an admin will verify and approve it shortly.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => { setShowUtrModal(true); setUtrSuccessMsg(null); }}
+                    className="text-[11px] text-blue-600 underline underline-offset-2"
+                  >
+                    Wrong UTR? Tap to correct it
+                  </button>
+                </div>
               ) : (
                 /* Stage C: 1 Minute Elapsed Without Notification -> Option appears to enter UTR */
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-left space-y-3">
@@ -512,6 +572,7 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
                     setDeposit(null);
                     setHasTappedPaid(false);
                     setPaidCountdown(60);
+                    setUtrSubmitted(false);
                   }}
                   className="text-xs text-slate-400 hover:text-slate-600 hover:underline cursor-pointer"
                 >

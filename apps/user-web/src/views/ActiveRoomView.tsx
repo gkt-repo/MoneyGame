@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { RoomItem, userApi, UserProfile } from '../services/api';
 import { ArrowLeft, Users, Trophy, Award, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -18,12 +18,15 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
 }) => {
   const [room, setRoom] = useState<RoomItem | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const finished = useRef(false);
 
   const fetchRoom = async () => {
     try {
       const data = await userApi.getRoomDetails(roomId);
       setRoom(data);
-      if (data.status === 'COMPLETED') {
+      if (['COMPLETED', 'CANCELLED'].includes(data.status) && !finished.current) {
+        finished.current = true;
         if (data.winnerId === user.id) {
           confetti({
             particleCount: 80,
@@ -41,8 +44,9 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
   };
 
   useEffect(() => {
+    finished.current = false;
     fetchRoom();
-    const interval = setInterval(fetchRoom, 2500);
+    const interval = setInterval(() => { if (!finished.current) fetchRoom(); }, 2500);
     return () => clearInterval(interval);
   }, [roomId]);
 
@@ -76,6 +80,13 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
         </span>
       </div>
 
+      {error && <p role="alert" className="text-red-600 text-sm">{error}</p>}
+      {room.status === 'WAITING' && room.players.some(p => p.userId === user.id) && (
+        <button className="text-sm text-red-600" onClick={async () => {
+          try { await userApi.cancelRoom(roomId); await fetchRoom(); onRefreshBalance(); }
+          catch (err) { setError(err instanceof Error ? err.message : 'Cancellation failed'); }
+        }}>Cancel table and refund all entries</button>
+      )}
       {/* Main Table Arena Card */}
       <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 shadow-xs text-center space-y-6">
         <div>
@@ -90,6 +101,7 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
           >
             {room.status === 'COMPLETED'
               ? 'Game Concluded'
+              : room.status === 'CANCELLED' ? 'Cancelled — entry fees refunded'
               : isFull
               ? 'Evaluating Guesses...'
               : 'Waiting for Players'}
@@ -126,7 +138,7 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
 
             {isWinner && (
               <div className="mt-3 text-sm font-bold text-emerald-700 mono-num">
-                +₹{prizePool.toFixed(2)} credited to your wallet balance!
+                {room.winnerPrize != null ? `₹${room.winnerPrize.toFixed(2)} credited to your wallet balance!` : 'Prize credited. See your wallet for the payout.'}
               </div>
             )}
           </div>

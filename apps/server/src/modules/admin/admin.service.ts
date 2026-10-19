@@ -20,7 +20,7 @@ export class AdminService {
     const completedWithdrawals = withdrawals.filter((w) => w.status === 'COMPLETED');
     const totalPayoutVolume = completedWithdrawals.reduce((acc, w) => acc + w.amount, 0);
 
-    const activeRooms = rooms.filter((r) => r.status === 'WAITING' || r.status === 'PLAYING');
+    const activeRooms = rooms.filter((r) => ['WAITING', 'COUNTDOWN', 'ROLLING'].includes(r.status));
     const completedRooms = rooms.filter((r) => r.status === 'COMPLETED');
 
     const adminUpi = await prisma.systemSetting.findUnique({

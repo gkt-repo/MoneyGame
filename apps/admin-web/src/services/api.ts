@@ -224,31 +224,57 @@ class AdminApiService {
     return this.token;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(options.headers as Record<string, string> || {}),
-    };
+  private refreshPromise: Promise<string | null> | null = null;
 
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+  async getValidToken(force = false): Promise<string | null> {
+    if (!this.token) return null;
+    try {
+      const payload = JSON.parse(atob(this.token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (!force && payload.exp * 1000 > Date.now() + 30000) return this.token;
+    } catch { /* Refresh malformed or expired access tokens. */ }
+    if (!this.refreshPromise) {
+      this.refreshPromise = (async () => {
+        const refreshToken = localStorage.getItem('moneygame_admin_refresh_token');
+        if (!refreshToken) { this.setToken(null); return null; }
+        const response = await fetch(`${API_BASE}/v1/admin/auth/refresh-token`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          if (response.status === 401) { this.setToken(null); window.location.reload(); }
+          throw new Error(data.error || 'Unable to refresh session');
+        }
+        // A logout or new login while this request was in flight wins.
+        if (localStorage.getItem('moneygame_admin_refresh_token') !== refreshToken) return this.token;
+        this.setToken(data.accessToken);
+        localStorage.setItem('moneygame_admin_refresh_token', data.refreshToken);
+        return this.token;
+      })().finally(() => { this.refreshPromise = null; });
     }
+    return this.refreshPromise;
+  }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      headers,
-    });
-
+  private async request<T>(endpoint: string, options: RequestInit = {}, retried = false): Promise<T> {
+    const publicAuth = ['/login', '/register', '/forgot-password', '/reset-password'].some(path => endpoint.endsWith(path));
+    const token = publicAuth ? null : await this.getValidToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json', ...(options.headers as Record<string, string> || {}),
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
     const data = await response.json().catch(() => ({}));
-
     if (!response.ok) {
-      if (response.status === 401 && this.token) {
+      if (response.status === 401 && data.code === 'TOKEN_EXPIRED' && token && !retried) {
+        if (this.token === token) await this.getValidToken(true);
+        if (this.token) return this.request<T>(endpoint, options, true);
+      }
+      if (response.status === 401 && token && !endpoint.endsWith('/login')) {
         this.setToken(null);
         window.location.reload();
       }
       throw new Error(data.error || `HTTP error ${response.status}`);
     }
-
     return data;
   }
 

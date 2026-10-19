@@ -4,11 +4,15 @@ import 'core/constants/colors.dart';
 import 'core/constants/api_constants.dart';
 import 'core/network/api_client.dart';
 import 'core/storage/secure_storage_service.dart';
+import 'core/services/display_mode_service.dart';
 import 'screens/auth/auth_screen.dart';
 import 'screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Force 120 FPS / 120 Hz display refresh rate by default
+  await DisplayModeService.force120Hz();
 
   // Set standard status bar colors
   SystemChrome.setSystemUIOverlayStyle(
@@ -35,14 +39,30 @@ class MoneyGameUserApp extends StatefulWidget {
   State<MoneyGameUserApp> createState() => _MoneyGameUserAppState();
 }
 
-class _MoneyGameUserAppState extends State<MoneyGameUserApp> {
+class _MoneyGameUserAppState extends State<MoneyGameUserApp>
+    with WidgetsBindingObserver {
   UserProfileModel? _currentUser;
   bool _initializing = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    DisplayModeService.force120Hz();
     _checkSavedSession();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      DisplayModeService.force120Hz();
+    }
   }
 
   Future<void> _checkSavedSession() async {

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'authenticated_client.dart';
 import '../constants/api_constants.dart';
 import '../storage/secure_storage_service.dart';
 
@@ -111,6 +112,7 @@ class RoomModel {
   final int maxPlayers;
   final String status;
   final int? winningNumber;
+  final double? winnerPrize;
   final String? winnerId;
   final String? winnerUsername;
   final List<RoomPlayerModel> players;
@@ -122,6 +124,7 @@ class RoomModel {
     required this.maxPlayers,
     required this.status,
     this.winningNumber,
+    this.winnerPrize,
     this.winnerId,
     this.winnerUsername,
     required this.players,
@@ -139,6 +142,7 @@ class RoomModel {
       maxPlayers: json['maxPlayers'] ?? 2,
       status: json['status'] ?? 'WAITING',
       winningNumber: json['winningNumber'],
+      winnerPrize: (json['winnerPrize'] as num?)?.toDouble(),
       winnerId: json['winnerId'],
       winnerUsername: json['winner']?['username'],
       players: parsedPlayers,
@@ -204,34 +208,18 @@ class TransactionModel {
 }
 
 class ApiClient {
-  static final Dio _dio = Dio(BaseOptions(
-    baseUrl: '${ApiConstants.baseUrl}/api',
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 10),
-    headers: {'Content-Type': 'application/json'},
-  ));
-
-  static void init() {
-    _dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (options, handler) async {
-          options.baseUrl = ApiConstants.baseUrl;
-          final token = await SecureStorageService.getAccessToken();
-          if (token != null && token.isNotEmpty) {
-            options.headers['Authorization'] = 'Bearer $token';
-          }
-          return handler.next(options);
-        },
-        onError: (DioException error, handler) async {
-          // Handle 401 Session Expiry
-          if (error.response?.statusCode == 401) {
-            await SecureStorageService.clearSession();
-          }
-          return handler.next(error);
-        },
-      ),
-    );
-  }
+  static final _session = AuthenticatedClient(
+    baseUrl: () => ApiConstants.baseUrl,
+    refreshPath: '/v1/auth/refresh-token',
+    readAccessToken: SecureStorageService.getAccessToken,
+    readRefreshToken: SecureStorageService.getRefreshToken,
+    saveTokens: SecureStorageService.saveTokens,
+    clearSession: SecureStorageService.clearSession,
+  );
+  static final Dio _dio = _session.dio;
+  static void init() {}
+  static Future<String?> getValidAccessToken({bool forceRefresh = false}) =>
+      _session.validAccessToken(forceRefresh: forceRefresh);
 
   // ─── AUTHENTICATION ────────────────────────────────────────────────────────
 
@@ -466,6 +454,10 @@ class ApiClient {
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to join room';
     }
+  }
+
+  static Future<void> cancelRoom(String roomId) async {
+    await _dio.post('/rooms/$roomId/cancel');
   }
 
   static Future<RoomModel> getRoomDetails(String roomId) async {

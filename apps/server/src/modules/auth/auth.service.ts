@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import { Prisma } from '@prisma/client';
+import { serializable } from '../../transaction';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../../db';
@@ -52,7 +54,8 @@ export class AuthService {
     user: { id: string; role: string; username: string },
     audience: string,
     deviceInfo?: string,
-    ipAddress?: string
+    ipAddress?: string,
+    client: Prisma.TransactionClient = prisma
   ): Promise<AuthTokens> {
     const payload: TokenPayload = {
       userId: user.id,
@@ -71,7 +74,7 @@ export class AuthService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + config.jwtRefreshExpiresDays);
 
-    await prisma.refreshToken.create({
+    await client.refreshToken.create({
       data: {
         tokenHash,
         userId: user.id,
@@ -216,6 +219,8 @@ export class AuthService {
       throw new Error(`Your account has been ${user.status.toLowerCase()}. Please contact support.`);
     }
 
+    if (user.role !== 'USER') throw new Error('Use the admin sign-in page for this account');
+
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
       throw new Error('Invalid mobile number, username, or password');
@@ -293,47 +298,20 @@ export class AuthService {
     }
 
     const tokenHash = this.hashToken(refreshTokenStr);
-    const existingToken = await prisma.refreshToken.findUnique({
-      where: { tokenHash },
-      include: { user: true },
+    const result = await serializable(async tx => {
+      const token = await tx.refreshToken.findUnique({ where: { tokenHash }, include: { user: true } });
+      if (!token || token.expiresAt < new Date()) throw new Error('Invalid or expired refresh token');
+      if (token.revokedAt) {
+        await tx.refreshToken.updateMany({ where: { userId: token.userId }, data: { revokedAt: new Date() } });
+        return null;
+      }
+      if (token.user.status !== 'ACTIVE') throw new Error('Account is inactive');
+      await tx.refreshToken.update({ where: { id: token.id }, data: { revokedAt: new Date() } });
+      const audience = ['ADMIN', 'SUPER_ADMIN'].includes(token.user.role) ? config.adminAudience : config.userAudience;
+      return this.issueTokens(token.user, audience, deviceInfo, ipAddress, tx);
     });
-
-    if (!existingToken) {
-      throw new Error('Invalid refresh token');
-    }
-
-    if (existingToken.revokedAt) {
-      // Possible token reuse attempt: Revoke all tokens for this user for security
-      await prisma.refreshToken.updateMany({
-        where: { userId: existingToken.userId },
-        data: { revokedAt: new Date() },
-      });
-      throw new Error('Token compromised: Session terminated');
-    }
-
-    if (existingToken.expiresAt < new Date()) {
-      throw new Error('Refresh token has expired. Please log in again.');
-    }
-
-    const user = existingToken.user;
-    if (user.status !== 'ACTIVE') {
-      throw new Error('Account is inactive');
-    }
-
-    // Determine audience
-    const audience =
-      user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
-        ? config.adminAudience
-        : config.userAudience;
-
-    // Invalidate old token (Rotation)
-    await prisma.refreshToken.update({
-      where: { id: existingToken.id },
-      data: { revokedAt: new Date() },
-    });
-
-    // Issue new pair
-    return this.issueTokens(user, audience, deviceInfo, ipAddress);
+    if (!result) throw new Error('Token compromised: Session terminated');
+    return result;
   }
 
   /**
@@ -366,14 +344,14 @@ export class AuthService {
     }
 
     // Generate random 6-digit OTP
-    const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const rawOtp = crypto.randomInt(100000, 1000000).toString();
     const otpHash = await bcrypt.hash(rawOtp, 10);
 
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 minutes expiry
 
     // Save in database
-    await prisma.passwordResetOtp.create({
+    const otpRecord = await prisma.passwordResetOtp.create({
       data: {
         userId: user.id,
         otpHash,
@@ -382,7 +360,12 @@ export class AuthService {
     });
 
     // Send email
-    await emailService.sendPasswordResetOtp(user.email, rawOtp, user.username);
+    try {
+      await emailService.sendPasswordResetOtp(user.email, rawOtp, user.username);
+    } catch (error) {
+      await prisma.passwordResetOtp.delete({ where: { id: otpRecord.id } });
+      throw error;
+    }
 
     return {
       success: true,
@@ -486,7 +469,19 @@ export class AuthService {
       },
     });
 
+    if (config.nodeEnv === 'production' && adminCount > 0) {
+      const admins = await prisma.user.findMany({ where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } }, select: { passwordHash: true } });
+      for (const admin of admins) {
+        if (await bcrypt.compare('Admin@123456', admin.passwordHash)) {
+          throw new Error('A legacy default admin password is still active. Run scripts/set-admin-password.cjs before starting production.');
+        }
+      }
+    }
+
     if (adminCount === 0) {
+      if (config.adminInitialPassword.length < 12 || config.adminInitialPassword === 'Admin@123456') {
+        throw new Error('Set ADMIN_INITIAL_PASSWORD to a unique password of at least 12 characters to create the initial admin');
+      }
       console.log('⚡ No admin account detected. Seeding initial Super Admin...');
       const passwordHash = await bcrypt.hash(config.adminInitialPassword, 10);
 
@@ -512,7 +507,7 @@ export class AuthService {
       console.log(`👤 Username: ${admin.username}`);
       console.log(`📧 Email:    ${admin.email}`);
       console.log(`📱 Phone:    ${admin.phone}`);
-      console.log(`🔑 Password: ${config.adminInitialPassword}`);
+
       console.log(`=======================================================`);
     }
   }

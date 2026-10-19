@@ -1,3 +1,4 @@
+import './test-env';
 import { prisma, initDbDefaults } from '../src/db';
 import { paymentService } from '../src/modules/payment/payment.service';
 import { walletService } from '../src/modules/wallet/wallet.service';
@@ -49,9 +50,10 @@ async function runPaymentSystemTests() {
   }
   console.log(`   Dep 1 is now EXPIRED (offset freed), Dep 2 is PENDING: ₹${dep2.totalAmount} ✅ PASS\n`);
 
-  // 4. Webhook arrives with unexpected payment (₹350.00, UTR: UTR_UNMATCHED_01)
+  // 4. Webhook arrives with unexpected payment (the exact expected amount, UTR: UTR_UNMATCHED_01)
   console.log('Test 4: Webhook Receives Unmatched Bank Payment (Never Discard Money!)');
-  const unmatchedRes = await paymentService.verifyIncomingPayment(350.00, 'UTR_UNMATCHED_01', {
+  await prisma.deposit.update({ where: { id: dep2.depositId }, data: { status: 'EXPIRED', activeAmountKey: null } });
+  const unmatchedRes = await paymentService.verifyIncomingPayment(dep2.totalAmount, 'UTR_UNMATCHED_01', {
     senderUpi: 'payer@bank',
     senderName: 'Random Payer',
   });
@@ -62,7 +64,7 @@ async function runPaymentSystemTests() {
     where: { utr: 'UTR_UNMATCHED_01' },
   });
   if (!savedUnmatched) throw new Error('Unmatched payment record not found in database');
-  console.log(`   Unmatched bank payment of ₹350.00 recorded in DB (Status: ${savedUnmatched.status}) ✅ PASS\n`);
+  console.log(`   Unmatched bank payment of the exact expected amount recorded in DB (Status: ${savedUnmatched.status}) ✅ PASS\n`);
 
   // 5. User Fallback UTR Claim: Player claims UTR_UNMATCHED_01 on their active deposit
   console.log('Test 5: Zero-Lost-Payment: Player Claims UTR Matching Already-Received Bank Notification');

@@ -276,7 +276,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl p-6 shadow-xl">
             <h3 className="text-base font-bold text-slate-900 mb-1">Join with Table Code</h3>
             <p className="text-xs text-slate-500 mb-4">
-              Enter the unique 6-character room code shared by your friend.
+              Enter the room code shared by your friend.
             </p>
 
             {error && (
@@ -293,7 +293,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   type="text"
                   required
                   autoFocus
-                  maxLength={6}
+                  maxLength={10}
                   value={roomCode}
                   onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
                   placeholder="e.g. A3X9Y2"

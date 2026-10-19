@@ -1,43 +1,44 @@
 #!/bin/sh
-set -e
+set -eu
 
-echo "======================================================="
-echo "  🚀 Starting MoneyGame Central Engine"
-echo "======================================================="
-
-# Auto-detect database provider based on DATABASE_URL
-if echo "${DATABASE_URL:-}" | grep -qE '^postgres(ql)?://'; then
-  echo "📦 Database: PostgreSQL connection detected."
-  if [ -f prisma/schema.postgresql.prisma ]; then
+case "${DATABASE_URL:-}" in
+  postgres://*|postgresql://*)
     cp prisma/schema.postgresql.prisma prisma/schema.prisma
-  fi
-else
-  echo "📦 Database: SQLite connection detected (${DATABASE_URL:-file:./dev.db})."
-fi
-
-# Generate Prisma Client for the active schema
-echo "🔄 Generating Prisma Client..."
-npx prisma generate
-
-# Synchronize database schema with retry logic
-echo "🔄 Synchronizing database schema (prisma db push)..."
-MAX_RETRIES=15
-RETRY_COUNT=0
+    rm -rf prisma/migrations
+    cp -R prisma/migrations-postgresql prisma/migrations
+    ;;
+  file:/*) ;;
+  *) echo 'Set DATABASE_URL to PostgreSQL or an absolute SQLite file path on a persistent volume.' >&2; exit 1 ;;
+esac
 
 if [ "${PRISMA_FORCE_RESET:-false}" = "true" ]; then
-  echo "⚠️ PRISMA_FORCE_RESET=true detected. Dropping and re-creating database schema..."
-  npx prisma db push --skip-generate --force-reset
-else
-  until npx prisma db push --skip-generate --accept-data-loss || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
-    RETRY_COUNT=$((RETRY_COUNT+1))
-    echo "⏳ Database not ready yet... Waiting 2s (Attempt $RETRY_COUNT/$MAX_RETRIES)"
-    sleep 2
-  done
-
-  if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-    echo "⚠️ Warning: Database synchronization timed out after $MAX_RETRIES attempts. Attempting to start server..."
-  fi
+  echo 'Automatic database resets are disabled. Apply reviewed migrations instead.' >&2
+  exit 1
 fi
 
-echo "🚀 MoneyGame Server listening on port ${PORT:-4000}"
-exec node dist/server.js
+# Validate secrets before connecting to the database or changing its schema.
+node -e "require('./dist/config')"
+node scripts/ensure-sqlite.cjs
+npx prisma generate
+case "${1:-start}" in
+  baseline)
+    # Explicit one-time adoption of the pre-migration schema; see PAYMENT_FIXES.md.
+    exec npx prisma migrate resolve --applied 20261019000000_baseline
+    ;;
+  start|migrate|rotate-admin) ;;
+  *) echo 'Usage: start | migrate | baseline | rotate-admin' >&2; exit 1 ;;
+esac
+attempt=0
+until npx prisma migrate deploy; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 5 ]; then
+    echo 'Migration failed. Refusing to start with an outdated schema.' >&2
+    exit 1
+  fi
+  sleep 2
+done
+case "${1:-start}" in
+  migrate) exit 0 ;;
+  rotate-admin) exec node scripts/set-admin-password.cjs ;;
+  start) exec node dist/server.js ;;
+esac

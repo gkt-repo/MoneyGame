@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
 import { walletService } from '../modules/wallet/wallet.service';
 import { paymentService } from '../modules/payment/payment.service';
@@ -42,9 +43,10 @@ router.get('/user/wallet', authenticateUser, async (req: AuthenticatedRequest, r
 });
 
 // Legacy direct user endpoint for backwards compatibility
-router.get('/wallet/:userId', async (req: Request, res: Response): Promise<void> => {
+router.get('/wallet/:userId', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
+    if (userId !== req.user!.id) { res.status(403).json({ error: 'Access denied' }); return; }
     const wallet = await walletService.getWallet(userId);
     res.json({ success: true, wallet });
   } catch (err: any) {
@@ -54,15 +56,15 @@ router.get('/wallet/:userId', async (req: Request, res: Response): Promise<void>
 
 // ─── Payment & Deposits ───────────────────────────────────────────────────────
 
-router.post('/deposits/create', async (req: Request, res: Response): Promise<void> => {
+router.post('/deposits/create', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id || req.body.userId;
+    const userId = req.user!.id;
     const amount = req.body.amount;
     if (!userId || !amount) {
       res.status(400).json({ error: 'userId and amount are required' });
       return;
     }
-    const depositData = await paymentService.createDepositRequest(userId, parseFloat(amount));
+    const depositData = await paymentService.createDepositRequest(userId, Number(amount));
     res.json({ success: true, ...depositData });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -83,10 +85,10 @@ router.post('/deposits/claim-utr', authenticateUser, async (req: AuthenticatedRe
   }
 });
 
-router.get('/deposits/status/:depositId', async (req: Request, res: Response): Promise<void> => {
+router.get('/deposits/status/:depositId', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const depositId = Array.isArray(req.params.depositId) ? req.params.depositId[0] : req.params.depositId;
-    const result = await paymentService.getDepositStatus(depositId);
+    const result = await paymentService.getDepositStatus(depositId, req.user!.id);
     res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(404).json({ error: err.message });
@@ -122,15 +124,15 @@ router.get('/user/transactions', authenticateUser, async (req: AuthenticatedRequ
 
 // ─── Withdrawals ──────────────────────────────────────────────────────────────
 
-router.post('/withdrawals/request', async (req: Request, res: Response): Promise<void> => {
+router.post('/withdrawals/request', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id || req.body.userId;
+    const userId = req.user!.id;
     const { amount, upiId } = req.body;
     if (!userId || !amount || !upiId) {
       res.status(400).json({ error: 'userId, amount, and upiId are required' });
       return;
     }
-    const result = await walletService.requestWithdrawal(userId, parseFloat(amount), upiId);
+    const result = await walletService.requestWithdrawal(userId, Number(amount), upiId);
     res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -147,9 +149,10 @@ router.get('/withdrawals/my', authenticateUser, async (req: AuthenticatedRequest
   }
 });
 
-router.get('/withdrawals/user/:userId', async (req: Request, res: Response): Promise<void> => {
+router.get('/withdrawals/user/:userId', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
+    if (userId !== req.user!.id) { res.status(403).json({ error: 'Access denied' }); return; }
     const withdrawals = await walletService.getUserWithdrawals(userId);
     res.json({ success: true, withdrawals });
   } catch (err: any) {
@@ -168,18 +171,19 @@ router.get('/rooms', async (_req: Request, res: Response): Promise<void> => {
   }
 });
 
-router.post('/rooms/create', async (req: Request, res: Response): Promise<void> => {
+router.post('/rooms/create', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { userId, entryFee, maxPlayers, guessNumber } = req.body;
+    const userId = req.user!.id;
+    const { entryFee, maxPlayers, guessNumber } = req.body;
     if (!userId || !entryFee || !maxPlayers || !guessNumber) {
       res.status(400).json({ error: 'userId, entryFee, maxPlayers, and guessNumber are required' });
       return;
     }
     const room = await gameManager.createRoom(
       userId,
-      parseFloat(entryFee),
-      parseInt(maxPlayers, 10),
-      parseInt(guessNumber, 10)
+      Number(entryFee),
+      Number(maxPlayers),
+      Number(guessNumber)
     );
     res.json({ success: true, room });
   } catch (err: any) {
@@ -187,14 +191,15 @@ router.post('/rooms/create', async (req: Request, res: Response): Promise<void> 
   }
 });
 
-router.post('/rooms/join', async (req: Request, res: Response): Promise<void> => {
+router.post('/rooms/join', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { userId, roomCode, guessNumber } = req.body;
+    const userId = req.user!.id;
+    const { roomCode, guessNumber } = req.body;
     if (!userId || !roomCode || !guessNumber) {
       res.status(400).json({ error: 'userId, roomCode, and guessNumber are required' });
       return;
     }
-    const room = await gameManager.joinRoom(userId, roomCode, parseInt(guessNumber, 10));
+    const room = await gameManager.joinRoom(userId, roomCode, Number(guessNumber));
     res.json({ success: true, room });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -215,6 +220,14 @@ router.get('/rooms/:roomId', async (req: Request, res: Response): Promise<void> 
   }
 });
 
+router.post('/rooms/:roomId/cancel', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const roomId = String(req.params.roomId);
+    await gameManager.cancelWaitingRoom(roomId, req.user!.id);
+    res.json({ success: true });
+  } catch (err: any) { res.status(400).json({ error: err.message }); }
+});
+
 // ─── Automated Webhook Receiver (Android Notification / Email Forwarder) ───────
 
 router.post('/webhooks/upi-notify', async (req: Request, res: Response): Promise<void> => {
@@ -222,8 +235,9 @@ router.post('/webhooks/upi-notify', async (req: Request, res: Response): Promise
     const authHeader = req.headers['x-webhook-secret'] || req.headers['authorization'];
     const expectedSecret = config.webhookSecret;
 
-    // Optional token verification if provided
-    if (authHeader && authHeader !== expectedSecret && authHeader !== `Bearer ${expectedSecret}`) {
+    const supplied = typeof authHeader === 'string' ? authHeader.replace(/^Bearer /, '') : '';
+    if (!expectedSecret || !supplied || Buffer.byteLength(supplied) !== Buffer.byteLength(expectedSecret)
+        || !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expectedSecret))) {
       res.status(401).json({ error: 'Unauthorized webhook request' });
       return;
     }
@@ -234,7 +248,7 @@ router.post('/webhooks/upi-notify', async (req: Request, res: Response): Promise
       return;
     }
 
-    const result = await paymentService.verifyIncomingPayment(parseFloat(amount), utr, {
+    const result = await paymentService.verifyIncomingPayment(Number(amount), utr, {
       senderUpi,
       senderName,
       rawPayload: req.body,
@@ -242,7 +256,7 @@ router.post('/webhooks/upi-notify', async (req: Request, res: Response): Promise
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.code?.startsWith('P') ? 503 : 400).json({ error: err.message });
   }
 });
 
@@ -343,7 +357,7 @@ router.post('/admin/simulate-payment', authenticateAdmin, async (req: Request, r
       res.status(400).json({ error: 'Amount is required' });
       return;
     }
-    const result = await adminService.simulateIncomingWebhook(parseFloat(amount), utr);
+    const result = await adminService.simulateIncomingWebhook(Number(amount), utr);
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -453,7 +467,7 @@ router.post('/admin/users/:userId/adjust-balance', authenticateAdmin, async (req
   try {
     const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
     const { amount, reason } = req.body;
-    if (amount === undefined || isNaN(parseFloat(amount))) {
+    if (amount === undefined || isNaN(Number(amount))) {
       res.status(400).json({ error: 'Valid amount is required' });
       return;
     }
@@ -461,7 +475,7 @@ router.post('/admin/users/:userId/adjust-balance', authenticateAdmin, async (req
       res.status(400).json({ error: 'Reason is required for audit trail' });
       return;
     }
-    const result = await adminService.adjustUserBalance(userId, parseFloat(amount), reason.trim(), req.user!.id);
+    const result = await adminService.adjustUserBalance(userId, Number(amount), reason.trim(), req.user!.id);
     res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(400).json({ error: err.message });

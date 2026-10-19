@@ -22,7 +22,10 @@
     "test:user-app": "(cd apps/user-app && flutter test)",
     "test:admin-app": "(cd apps/admin-app && flutter test)",
     "analyze:flutter": "(cd apps/user-app && flutter analyze) && (cd apps/admin-app && flutter analyze)",
-    "test": "npm run test:auth && npm run test:admin && npm run test:payment && npm run test:user-app && npm run test:admin-app"
+    "test": "npm --prefix apps/server test && npm run test:web-sessions && npm run test:migrations && npm run test:user-app && npm run test:admin-app",
+    "test:security": "npm --prefix apps/server run test:security",
+    "test:web-sessions": "node --test apps/server/tests/web_session.test.cjs",
+    "test:migrations": "node --test apps/server/tests/migration_upgrade.test.cjs"
   },
   "devDependencies": {
     "typescript": "^6.0.3"

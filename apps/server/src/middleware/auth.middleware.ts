@@ -31,7 +31,7 @@ export async function authenticateUser(
 
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, config.jwtSecret) as TokenPayload;
+    const decoded = jwt.verify(token, config.jwtSecret, { audience: config.userAudience, algorithms: ['HS256'] }) as TokenPayload;
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
@@ -84,6 +84,7 @@ export async function authenticateAdmin(
   try {
     const decoded = jwt.verify(token, config.jwtSecret, {
       audience: config.adminAudience,
+      algorithms: ['HS256'],
     }) as TokenPayload;
 
     if (decoded.role !== 'ADMIN' && decoded.role !== 'SUPER_ADMIN') {

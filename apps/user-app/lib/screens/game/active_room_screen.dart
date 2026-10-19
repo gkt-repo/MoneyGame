@@ -41,11 +41,13 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
   void dispose() {
     _fallbackPollTimer?.cancel();
     SocketService.leaveRoom(widget.roomId);
+    for (final event in ['room_updated', 'game_countdown', 'roll_started', 'roll_tick', 'game_finished']) { SocketService.off(event); }
     super.dispose();
   }
 
   Future<void> _initRoom() async {
     await _loadRoom();
+    if (!mounted) return;
 
     // Join WebSocket channel for real-time multiplayer updates
     SocketService.joinRoom(widget.roomId);
@@ -97,7 +99,7 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
 
     // Fallback polling every 3 seconds for network reliability
     _fallbackPollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (_room?.status != 'FINISHED') {
+      if (!['COMPLETED', 'CANCELLED'].contains(_room?.status)) {
         _loadRoom(silent: true);
       }
     });
@@ -110,6 +112,7 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
       if (mounted) {
         setState(() {
           _room = room;
+          if (['COMPLETED', 'CANCELLED'].contains(room.status)) { _isRolling = false; _countdown = null; }
           _error = null;
         });
       }
@@ -157,6 +160,15 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
+          if (_room?.status == 'WAITING' && _room!.players.any((p) => p.userId == widget.user.id))
+            IconButton(
+              icon: const Icon(Icons.cancel_outlined),
+              tooltip: 'Cancel table and refund all entries',
+              onPressed: () async {
+                try { await ApiClient.cancelRoom(widget.roomId); await _loadRoom(); }
+                catch (error) { if (mounted) setState(() => _error = error.toString()); }
+              },
+            ),
           if (_room != null)
             IconButton(
               icon: const Icon(Icons.copy, size: 18, color: AppColors.slate700),
@@ -195,7 +207,7 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
   Widget _buildRoomContent() {
     final room = _room!;
     final totalPool = room.entryFee * room.maxPlayers;
-    final winnerPrize = totalPool * 0.90; // 90% pot prize after 10% commission
+    final winnerPrize = room.winnerPrize ?? totalPool;
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -241,8 +253,8 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'WINNER TAKES',
+                          Text(
+                            room.winnerPrize != null ? 'WINNER PAYOUT' : 'PRIZE POOL',
                             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.emerald700),
                           ),
                           const SizedBox(height: 4),
@@ -343,12 +355,13 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
   }
 
   Widget _buildGameStateBanner() {
+    if (_room?.status == 'CANCELLED') return const Text('Table cancelled. Entry fees refunded.');
     // 1. Finished Game State
-    if (_gameFinishedData != null || _room?.status == 'FINISHED') {
+    if (_gameFinishedData != null || _room?.status == 'COMPLETED') {
       final winnerUsername = _gameFinishedData?['winnerUsername'] ?? _room?.winnerUsername ?? 'Winner';
       final winningNumber = _gameFinishedData?['winningNumber'] ?? _room?.winningNumber ?? 0;
       final winnerPrize = (_gameFinishedData?['winnerPrize'] as num?)?.toDouble() ??
-          ((_room?.entryFee ?? 0) * (_room?.maxPlayers ?? 2) * 0.90);
+          _room?.winnerPrize;
       final isMeWinner = _gameFinishedData?['winnerId'] == widget.user.id || _room?.winnerId == widget.user.id;
 
       return Container(
@@ -403,7 +416,7 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Payout: ₹${winnerPrize.toStringAsFixed(2)} credited',
+              winnerPrize != null ? 'Payout: ₹${winnerPrize.toStringAsFixed(2)} credited' : 'Prize credited. See your wallet for the payout.',
               style: const TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 13,
@@ -616,7 +629,7 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
                     border: Border.all(color: AppColors.slate200),
                   ),
                   child: Text(
-                    isMe || room.status == 'FINISHED' ? 'No. ${p.guessNumber}' : 'No. ? [🔒]',
+                    isMe || room.status == 'COMPLETED' ? 'No. ${p.guessNumber}' : 'No. ? [🔒]',
                     style: const TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 13,

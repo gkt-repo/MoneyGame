@@ -6,18 +6,25 @@ services:
     container_name: money_game_app
     restart: always
     network_mode: "host"
+    volumes:
+      - moneygame_data:/app/data
     environment:
       - PORT=${PORT:-4000}
       - NODE_ENV=${NODE_ENV:-production}
-      - DATABASE_URL=${DATABASE_URL:-file:./dev.db}
+      - DATABASE_URL=${DATABASE_URL:-file:/app/data/moneygame.db}
       - ADMIN_UPI_ID=${ADMIN_UPI_ID:-admin@okhdfcbank}
       - ADMIN_UPI_NAME=${ADMIN_UPI_NAME:-MoneyGame}
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-moneygame-secret-key-1234}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:?Set a unique WEBHOOK_SECRET of at least 32 characters}
       - PLATFORM_COMMISSION_PERCENT=${PLATFORM_COMMISSION_PERCENT:-10}
-      - JWT_SECRET=${JWT_SECRET:-moneygame-super-secret-jwt-key}
-      - PRISMA_FORCE_RESET=${PRISMA_FORCE_RESET:-false}
+      - JWT_SECRET=${JWT_SECRET:?Set a unique JWT_SECRET of at least 32 characters}
+      - ADMIN_INITIAL_EMAIL=${ADMIN_INITIAL_EMAIL:-admin@moneygame.com}
+      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-}
+      - ADMIN_INITIAL_PHONE=${ADMIN_INITIAL_PHONE:-9999999999}
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASS=${SMTP_PASS:-}
       - SMTP_FROM=${SMTP_FROM:-MoneyGame <no-reply@moneygame.com>}
+
+volumes:
+  moneygame_data:

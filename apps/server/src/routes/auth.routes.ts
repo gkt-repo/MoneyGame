@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { walletService } from '../modules/wallet/wallet.service';
 import { authService } from '../modules/auth/auth.service';
 import {
   authenticateUser,
@@ -120,8 +121,9 @@ authRouter.post('/logout', async (req: Request, res: Response): Promise<void> =>
 /**
  * Get current user profile
  */
-authRouter.get('/me', authenticateUser, (req: AuthenticatedRequest, res: Response): void => {
-  res.json({ success: true, user: req.user });
+authRouter.get('/me', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const wallet = await walletService.getWallet(req.user!.id);
+  res.json({ success: true, user: { ...req.user, wallet } });
 });
 
 // ─── Admin Auth Routes ───────────────────────────────────────────────────────

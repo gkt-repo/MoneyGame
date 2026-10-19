@@ -1,4 +1,4 @@
-export type RoomStatus = 'WAITING' | 'PLAYING' | 'COMPLETED' | 'CANCELLED';
+export type RoomStatus = 'WAITING' | 'COUNTDOWN' | 'ROLLING' | 'COMPLETED' | 'CANCELLED';
 
 export interface RoomPlayerDTO {
   id: string;

@@ -63,6 +63,7 @@ COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 
 # Copy Prisma schema files
 COPY apps/server/prisma ./apps/server/prisma
+COPY apps/server/scripts ./apps/server/scripts
 
 # Copy compiled server code and static assets
 COPY --from=builder /app/apps/server/dist ./apps/server/dist

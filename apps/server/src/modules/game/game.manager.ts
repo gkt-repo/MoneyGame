@@ -1,5 +1,8 @@
 import crypto from 'crypto';
-import { Server, Socket } from 'socket.io';
+import { moveWallet } from '../../wallet-ledger';
+import { Server } from 'socket.io';
+import { serializable } from '../../transaction';
+import { money } from '../../money';
 import { prisma } from '../../db';
 import { config } from '../../config';
 import { walletService } from '../wallet/wallet.service';
@@ -11,91 +14,104 @@ export class GameManager {
     this.io = io;
   }
 
-  /**
-   * Create a new multiplayer room with entry fee & host's guess
-   */
-  async createRoom(hostUserId: string, entryFee: number, maxPlayers: number, guessNumber: number) {
-    if (entryFee < 1) throw new Error('Minimum entry fee is ₹1.00');
-    if (maxPlayers < 2 || maxPlayers > 10) throw new Error('Max players must be between 2 and 10');
-    if (guessNumber < 1 || guessNumber > 10) throw new Error('Guess number must be between 1 and 10');
+  private timers = new Map<string, ReturnType<typeof setInterval>>();
 
-    // Generate clean 6-digit room code
-    const roomCode = 'R-' + Math.floor(1000 + Math.random() * 9000);
-
-    const room = await prisma.room.create({
-      data: {
-        roomCode,
-        entryFee,
-        maxPlayers,
-        status: 'WAITING',
-      },
-    });
-
-    // Lock host's entry fee
-    await walletService.lockRoomEntry(hostUserId, room.id, entryFee, guessNumber);
-
-    const fullRoom = await this.getRoomDetails(room.id);
-    this.broadcastLobbyUpdate();
-    return fullRoom;
+  private validateGuess(guess: number) {
+    if (!Number.isInteger(guess) || guess < 1 || guess > 10) throw new Error('Guess must be an integer between 1 and 10');
   }
 
-  /**
-   * Join an existing room and pick an available number
-   */
+  async createRoom(hostUserId: string, amount: number, maxPlayers: number, guessNumber: number) {
+    const entryFee = money(amount, 1);
+    this.validateGuess(guessNumber);
+    if (!Number.isInteger(maxPlayers) || maxPlayers < 2 || maxPlayers > 10) throw new Error('Max players must be between 2 and 10');
+    const room = await serializable(async tx => {
+      const created = await tx.room.create({ data: {
+        roomCode: 'R-' + crypto.randomBytes(4).toString('hex').toUpperCase(), entryFee, maxPlayers,
+      } });
+      await walletService.lockRoomEntry(tx, hostUserId, created.id, entryFee, guessNumber);
+      return created;
+    });
+    await this.broadcastLobbyUpdate();
+    return this.getRoomDetails(room.id);
+  }
+
   async joinRoom(userId: string, roomCode: string, guessNumber: number) {
-    if (guessNumber < 1 || guessNumber > 10) throw new Error('Guess number must be between 1 and 10');
-
-    const room = await prisma.room.findUnique({
-      where: { roomCode },
-      include: { players: true },
+    this.validateGuess(guessNumber);
+    if (typeof roomCode !== 'string') throw new Error('Room code is required');
+    roomCode = roomCode.trim().toUpperCase();
+    const result = await serializable(async tx => {
+      // Write-lock the room before counting its seats. Serializable retries
+      // also cover PostgreSQL snapshots that predate another join's commit.
+      const locked = await tx.room.updateMany({ where: { roomCode, status: 'WAITING' }, data: { status: 'WAITING' } });
+      if (locked.count !== 1) throw new Error('Room is not available to join');
+      const room = await tx.room.findUniqueOrThrow({ where: { roomCode }, include: { players: true } });
+      if (room.players.length >= room.maxPlayers) throw new Error('Room is already full');
+      await walletService.lockRoomEntry(tx, userId, room.id, room.entryFee, guessNumber);
+      const full = room.players.length + 1 === room.maxPlayers;
+      if (full) await tx.room.update({ where: { id: room.id }, data: { status: 'COUNTDOWN' } });
+      return { id: room.id, full };
     });
-
-    if (!room) throw new Error('Room not found');
-    if (room.status !== 'WAITING') throw new Error(`Cannot join room: status is ${room.status}`);
-    if (room.players.length >= room.maxPlayers) throw new Error('Room is already full');
-
-    // Lock player entry fee and register guess
-    await walletService.lockRoomEntry(userId, room.id, room.entryFee, guessNumber);
-
-    const updatedRoom = await this.getRoomDetails(room.id);
-
-    // Notify room participants
-    if (this.io) {
-      this.io.to(room.id).emit('room_updated', updatedRoom);
-    }
-    this.broadcastLobbyUpdate();
-
-    // If room is now full, trigger game countdown automatically!
-    if (updatedRoom && updatedRoom.players.length >= updatedRoom.maxPlayers) {
-      this.startRoomCountdown(room.id);
-    }
-
-    return updatedRoom;
+    // Start execution immediately after commit, before any socket work.
+    if (result.full) this.startRoomCountdown(result.id);
+    const room = await this.getRoomDetails(result.id);
+    this.io?.to(`room:${result.id}`).emit('room_updated', room);
+    await this.broadcastLobbyUpdate();
+    return room;
   }
 
-  /**
-   * Start 5-second countdown when room is full, then execute roll
-   */
-  async startRoomCountdown(roomId: string) {
+  private startRoomCountdown(roomId: string) {
+    if (this.timers.has(roomId)) return;
     let countdown = 5;
-
-    await prisma.room.update({
-      where: { id: roomId },
-      data: { status: 'COUNTDOWN' },
-    });
-
-    const interval = setInterval(async () => {
-      if (this.io) {
-        this.io.to(roomId).emit('game_countdown', { countdown });
-      }
-
-      countdown--;
-
-      if (countdown < 0) {
-        clearInterval(interval);
-        await this.executeRoll(roomId);
+    const timer = setInterval(() => {
+      this.io?.to(`room:${roomId}`).emit('game_countdown', { countdown });
+      if (--countdown < 0) {
+        clearInterval(timer);
+        this.timers.delete(roomId);
+        void this.executeRoll(roomId).catch(async error => {
+          console.error('Room execution failed; refunding entries:', roomId, error.message);
+          await this.refundRoom(roomId).catch(err => console.error('Room recovery required:', roomId, err.message));
+        });
       }
     }, 1000);
+    this.timers.set(roomId, timer);
+  }
+
+  stopTimers() {
+    for (const timer of this.timers.values()) clearInterval(timer);
+    this.timers.clear();
+  }
+
+  async cancelWaitingRoom(roomId: string, userId: string) {
+    return this.refundRoom(roomId, userId);
+  }
+
+  private async refundRoom(roomId: string, userId?: string) {
+    const players = await serializable(async tx => {
+      const room = await tx.room.findUnique({ where: { id: roomId }, include: { players: true } });
+      if (!room) throw new Error('Room not found');
+      if (userId && !room.players.some(p => p.userId === userId)) throw new Error('Only participants can cancel a room');
+      if (userId && room.status !== 'WAITING') throw new Error('Only waiting rooms can be cancelled');
+      if (!['WAITING', 'COUNTDOWN', 'ROLLING'].includes(room.status)) return [];
+      await tx.room.update({ where: { id: roomId }, data: { status: 'CANCELLED' } });
+      for (const player of room.players) {
+        await moveWallet(tx, player.userId, room.entryFee, -room.entryFee);
+        await tx.transaction.create({ data: {
+          userId: player.userId, amount: room.entryFee, type: 'REFUND', referenceId: roomId,
+          idempotencyKey: `room-refund:${roomId}:${player.userId}`, description: 'Cancelled game entry refunded',
+        } });
+      }
+      return room.players;
+    });
+    for (const player of players) this.io?.to(`user:${player.userId}`).emit('balance_updated', await walletService.getWallet(player.userId));
+    this.io?.to(`room:${roomId}`).emit('room_updated', await this.getRoomDetails(roomId));
+    await this.broadcastLobbyUpdate();
+  }
+
+  // The deployment runs one game engine. Before accepting connections, refund
+  // all unfinished games from the previous process; never replay a random roll.
+  async recoverInterruptedRooms() {
+    const rooms = await prisma.room.findMany({ where: { status: { in: ['WAITING', 'COUNTDOWN', 'ROLLING'] } }, select: { id: true } });
+    for (const room of rooms) await this.refundRoom(room.id);
   }
 
   /**
@@ -113,13 +129,14 @@ export class GameManager {
 
     if (!room || room.players.length === 0) return;
 
-    await prisma.room.update({
-      where: { id: roomId },
+    const started = await prisma.room.updateMany({
+      where: { id: roomId, status: 'COUNTDOWN' },
       data: { status: 'ROLLING' },
     });
+    if (started.count !== 1) return;
 
     if (this.io) {
-      this.io.to(roomId).emit('roll_started');
+      this.io.to(`room:${roomId}`).emit('roll_started');
     }
 
     // Simulate animated suspense roll ticks (e.g. 8 rapid ticks before final landing)
@@ -127,7 +144,7 @@ export class GameManager {
       await new Promise((res) => setTimeout(res, 350));
       const tickNum = crypto.randomInt(1, 11);
       if (this.io) {
-        this.io.to(roomId).emit('roll_tick', { number: tickNum });
+        this.io.to(`room:${roomId}`).emit('roll_tick', { number: tickNum });
       }
     }
 
@@ -157,7 +174,7 @@ export class GameManager {
 
     // Broadcast celebration and final outcome
     if (this.io) {
-      this.io.to(roomId).emit('game_finished', {
+      this.io.to(`room:${roomId}`).emit('game_finished', {
         winningNumber,
         winnerId: winningPlayer.userId,
         winnerUsername: winningPlayer.user.username,
@@ -175,7 +192,7 @@ export class GameManager {
       }
     }
 
-    this.broadcastLobbyUpdate();
+    await this.broadcastLobbyUpdate();
   }
 
   /**

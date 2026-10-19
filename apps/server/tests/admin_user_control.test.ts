@@ -1,3 +1,4 @@
+import './test-env';
 import http from 'http';
 import express from 'express';
 import { prisma, initDbDefaults } from '../src/db';
@@ -28,8 +29,8 @@ async function runAdminControlTests() {
     },
   });
 
-  await new Promise<void>((resolve) => server.listen(4098, resolve));
-  const baseUrl = 'http://localhost:4098/api';
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const baseUrl = `http://127.0.0.1:${(server.address() as import('net').AddressInfo).port}/api`;
 
   console.log('🧪 Starting Admin Control & User Support Feedback End-to-End Tests...\n');
 

@@ -8,7 +8,7 @@ import { AddCashView } from './views/AddCashView';
 import { WithdrawView } from './views/WithdrawView';
 import { SupportFeedbackView } from './views/SupportFeedbackView';
 import { Loader2 } from 'lucide-react';
-import { io } from 'socket.io-client';
+import { connectSocket } from './services/socket';
 
 export const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -75,11 +75,12 @@ export const App: React.FC = () => {
       refreshBalance();
       refreshRooms();
 
-      const socket = io('/', { transports: ['websocket'] });
+      const socket = connectSocket();
 
       // Join private user channel for wallet events
-      socket.emit('join_user_channel', user.id);
+      socket.on('connect', () => socket.emit('join_user_channel', user.id));
 
+      socket.on('wallet_updated', () => refreshBalance());
       socket.on('balance_updated', (data: { balance: number; lockedBalance?: number }) => {
         setBalance(data.balance);
         if (typeof data.lockedBalance === 'number') {

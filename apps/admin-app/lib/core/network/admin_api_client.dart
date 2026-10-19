@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'authenticated_client.dart';
 import '../constants/api_constants.dart';
 import '../storage/admin_secure_storage.dart';
 
@@ -161,33 +162,18 @@ class AdminDepositModel {
 }
 
 class AdminApiClient {
-  static final Dio _dio = Dio(BaseOptions(
-    baseUrl: '${ApiConstants.baseUrl}/api',
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 10),
-    headers: {'Content-Type': 'application/json'},
-  ));
-
-  static void init() {
-    _dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (options, handler) async {
-          options.baseUrl = ApiConstants.baseUrl;
-          final token = await AdminSecureStorage.getAccessToken();
-          if (token != null && token.isNotEmpty) {
-            options.headers['Authorization'] = 'Bearer $token';
-          }
-          return handler.next(options);
-        },
-        onError: (DioException error, handler) async {
-          if (error.response?.statusCode == 401) {
-            await AdminSecureStorage.clearSession();
-          }
-          return handler.next(error);
-        },
-      ),
-    );
-  }
+  static final _session = AuthenticatedClient(
+    baseUrl: () => ApiConstants.baseUrl,
+    refreshPath: '/admin/auth/refresh-token',
+    readAccessToken: AdminSecureStorage.getAccessToken,
+    readRefreshToken: AdminSecureStorage.getRefreshToken,
+    saveTokens: AdminSecureStorage.saveTokens,
+    clearSession: AdminSecureStorage.clearSession,
+  );
+  static final Dio _dio = _session.dio;
+  static void init() {}
+  static Future<String?> getValidAccessToken({bool forceRefresh = false}) =>
+      _session.validAccessToken(forceRefresh: forceRefresh);
 
   // ─── ADMIN AUTH ────────────────────────────────────────────────────────────
 

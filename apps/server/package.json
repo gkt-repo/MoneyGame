@@ -9,10 +9,11 @@
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
-    "test:auth": "ts-node tests/auth.test.ts",
-    "test:admin": "ts-node tests/admin_user_control.test.ts",
-    "test:payment": "ts-node tests/payment_system.test.ts",
-    "test": "npm run test:auth && npm run test:admin && npm run test:payment"
+    "test:auth": "node scripts/test-runner.cjs auth",
+    "test:admin": "node scripts/test-runner.cjs admin",
+    "test:payment": "node scripts/test-runner.cjs payment",
+    "test": "node scripts/test-runner.cjs",
+    "test:security": "node scripts/test-runner.cjs security"
   },
   "keywords": [],
   "type": "commonjs",
@@ -40,6 +41,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/uuid": "^10.0.0",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "socket.io-client": "^4.8.4"
   }
 }
