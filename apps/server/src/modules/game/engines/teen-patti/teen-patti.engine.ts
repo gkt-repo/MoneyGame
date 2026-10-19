@@ -34,6 +34,9 @@ interface InternalGameState {
   turnTimer?: NodeJS.Timeout;
 }
 
+const TURN_TIMEOUT_MS = 25000;
+
+
 export class TeenPattiEngine implements IGameEngine {
   readonly gameType: GameType = 'TEEN_PATTI';
 
@@ -120,8 +123,6 @@ export class TeenPattiEngine implements IGameEngine {
       };
       playerTurnOrder.push(player.userId);
     }
-
-const TURN_TIMEOUT_MS = 25000;
 
     const gameState: InternalGameState = {
       roomId,
