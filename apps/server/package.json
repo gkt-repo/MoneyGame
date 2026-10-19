@@ -13,6 +13,7 @@
     "test:admin": "node scripts/test-runner.cjs admin",
     "test:payment": "node scripts/test-runner.cjs payment",
     "test": "node scripts/test-runner.cjs",
+    "test:game": "node scripts/test-runner.cjs game",
     "test:security": "node scripts/test-runner.cjs security"
   },
   "keywords": [],

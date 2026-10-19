@@ -108,6 +108,7 @@ class DepositResponseModel {
 class RoomModel {
   final String id;
   final String roomCode;
+  final String gameType;
   final double entryFee;
   final int maxPlayers;
   final String status;
@@ -120,6 +121,7 @@ class RoomModel {
   RoomModel({
     required this.id,
     required this.roomCode,
+    this.gameType = 'GUESS_NUMBER',
     required this.entryFee,
     required this.maxPlayers,
     required this.status,
@@ -138,6 +140,7 @@ class RoomModel {
     return RoomModel(
       id: json['id'] ?? '',
       roomCode: json['roomCode'] ?? '',
+      gameType: json['gameType'] ?? 'GUESS_NUMBER',
       entryFee: (json['entryFee'] as num).toDouble(),
       maxPlayers: json['maxPlayers'] ?? 2,
       status: json['status'] ?? 'WAITING',
@@ -154,13 +157,15 @@ class RoomPlayerModel {
   final String id;
   final String userId;
   final String username;
-  final int guessNumber;
+  final int seatIndex;
+  final int? guessNumber;
 
   RoomPlayerModel({
     required this.id,
     required this.userId,
     required this.username,
-    required this.guessNumber,
+    this.seatIndex = 0,
+    this.guessNumber,
   });
 
   factory RoomPlayerModel.fromJson(Map<String, dynamic> json) {
@@ -168,7 +173,8 @@ class RoomPlayerModel {
       id: json['id'] ?? '',
       userId: json['userId'] ?? '',
       username: json['user']?['username'] ?? 'Player',
-      guessNumber: json['guessNumber'] ?? 0,
+      seatIndex: json['seatIndex'] ?? 0,
+      guessNumber: json['guessNumber'],
     );
   }
 }
@@ -447,14 +453,16 @@ class ApiClient {
     required String userId,
     required double entryFee,
     required int maxPlayers,
-    required int guessNumber,
+    int? guessNumber,
+    String gameType = 'TEEN_PATTI',
   }) async {
     try {
       final res = await _dio.post('/rooms/create', data: {
         'userId': userId,
         'entryFee': entryFee,
         'maxPlayers': maxPlayers,
-        'guessNumber': guessNumber,
+        if (guessNumber != null) ...{'guessNumber': guessNumber},
+        'gameType': gameType,
       });
       return RoomModel.fromJson(res.data['room']);
     } on DioException catch (e) {
@@ -465,17 +473,33 @@ class ApiClient {
   static Future<RoomModel> joinRoom({
     required String userId,
     required String roomCode,
-    required int guessNumber,
+    int? guessNumber,
   }) async {
     try {
       final res = await _dio.post('/rooms/join', data: {
         'userId': userId,
         'roomCode': roomCode,
-        'guessNumber': guessNumber,
+        if (guessNumber != null) ...{'guessNumber': guessNumber},
       });
       return RoomModel.fromJson(res.data['room']);
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to join room';
+    }
+  }
+
+  static Future<Map<String, dynamic>> sendGameAction({
+    required String roomId,
+    required String action,
+    Map<String, dynamic>? payload,
+  }) async {
+    try {
+      final res = await _dio.post('/rooms/$roomId/action', data: {
+        'action': action,
+        'payload': payload ?? {},
+      });
+      return Map<String, dynamic>.from(res.data);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Action failed';
     }
   }
 

@@ -73,7 +73,14 @@ export class WalletService {
   /**
    * Atomic deduction & lock when a player enters a room
    */
-  async lockRoomEntry(tx: Prisma.TransactionClient, userId: string, roomId: string, entryFee: number, guessNumber: number) {
+  async lockRoomEntry(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    roomId: string,
+    entryFee: number,
+    guessNumber?: number | null,
+    seatIndex?: number
+  ) {
     const wallet = await tx.wallet.findUnique({
       where: { userId },
     });
@@ -82,12 +89,14 @@ export class WalletService {
       throw new Error(`Insufficient wallet balance. Required: ₹${entryFee.toFixed(2)}, Available: ₹${wallet?.balance.toFixed(2) || '0.00'}`);
     }
 
-    // Check if guess is already taken in this room
-    const existingGuess = await tx.roomPlayer.findFirst({
-      where: { roomId, guessNumber },
-    });
-    if (existingGuess) {
-      throw new Error(`Number ${guessNumber} has already been taken by another player!`);
+    // Check if guess is already taken in this room (for games that use guess numbers)
+    if (guessNumber !== undefined && guessNumber !== null) {
+      const existingGuess = await tx.roomPlayer.findFirst({
+        where: { roomId, guessNumber },
+      });
+      if (existingGuess) {
+        throw new Error(`Number ${guessNumber} has already been taken by another player!`);
+      }
     }
 
     // Check if user is already in this room
@@ -98,6 +107,14 @@ export class WalletService {
       throw new Error('You have already joined this room.');
     }
 
+    // Assign next available seat if seatIndex not specified
+    if (seatIndex === undefined || seatIndex === null) {
+      const takenSeats = await tx.roomPlayer.findMany({ where: { roomId }, select: { seatIndex: true } });
+      const takenSet = new Set(takenSeats.map(s => s.seatIndex));
+      seatIndex = 0;
+      while (takenSet.has(seatIndex)) seatIndex++;
+    }
+
     // Deduct available balance and add to lockedBalance
     const updatedWallet = await moveWallet(tx, userId, -entryFee, entryFee);
 
@@ -106,7 +123,8 @@ export class WalletService {
       data: {
         roomId,
         userId,
-        guessNumber,
+        seatIndex,
+        guessNumber: guessNumber ?? null,
       },
     });
 
@@ -117,7 +135,7 @@ export class WalletService {
         amount: -entryFee,
         type: 'ROOM_ENTRY',
         referenceId: roomId,
-        description: `Entry fee locked for Room #${roomId.slice(0, 8)} (Guess: ${guessNumber})`,
+        description: `Entry fee locked for Room #${roomId.slice(0, 8)}${guessNumber != null ? ` (Guess: ${guessNumber})` : ''}`,
       },
     });
 

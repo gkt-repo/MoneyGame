@@ -7,6 +7,7 @@ const serverDir = path.resolve(__dirname, '..');
 const cases = {
   auth: 'auth.test.ts', admin: 'admin_user_control.test.ts',
   payment: 'payment_system.test.ts', security: 'security_regression.test.ts',
+  game: 'teen_patti.test.ts',
 };
 const generated = spawnSync(process.execPath, [require.resolve('prisma'), 'generate', '--schema', 'prisma/schema.prisma'], { cwd: serverDir, stdio: 'inherit' });
 if (generated.status !== 0) throw new Error('Prisma client generation failed');

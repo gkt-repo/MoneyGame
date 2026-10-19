@@ -221,7 +221,17 @@ router.get('/withdrawals/user/:userId', authenticateUser, async (req: Authentica
   }
 });
 
-// ─── Game Rooms ───────────────────────────────────────────────────────────────
+// ─── Game Types & Rooms ───────────────────────────────────────────────────────
+
+router.get('/games', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const { gameRegistry } = await import('../modules/game/game.registry');
+    const games = gameRegistry.listGames();
+    res.json({ success: true, games });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.get('/rooms', async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -235,16 +245,18 @@ router.get('/rooms', async (_req: Request, res: Response): Promise<void> => {
 router.post('/rooms/create', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user!.id;
-    const { entryFee, maxPlayers, guessNumber } = req.body;
-    if (!userId || !entryFee || !maxPlayers || !guessNumber) {
-      res.status(400).json({ error: 'userId, entryFee, maxPlayers, and guessNumber are required' });
+    const { entryFee, maxPlayers, guessNumber, gameType, customConfig } = req.body;
+    if (!userId || entryFee === undefined || maxPlayers === undefined) {
+      res.status(400).json({ error: 'userId, entryFee, and maxPlayers are required' });
       return;
     }
     const room = await gameManager.createRoom(
       userId,
       Number(entryFee),
       Number(maxPlayers),
-      Number(guessNumber)
+      guessNumber !== undefined && guessNumber !== null ? Number(guessNumber) : null,
+      gameType || 'GUESS_NUMBER',
+      customConfig
     );
     res.json({ success: true, room });
   } catch (err: any) {
@@ -255,13 +267,34 @@ router.post('/rooms/create', authenticateUser, async (req: AuthenticatedRequest,
 router.post('/rooms/join', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user!.id;
-    const { roomCode, guessNumber } = req.body;
-    if (!userId || !roomCode || !guessNumber) {
-      res.status(400).json({ error: 'userId, roomCode, and guessNumber are required' });
+    const { roomCode, guessNumber, seatIndex } = req.body;
+    if (!userId || !roomCode) {
+      res.status(400).json({ error: 'userId and roomCode are required' });
       return;
     }
-    const room = await gameManager.joinRoom(userId, roomCode, Number(guessNumber));
+    const room = await gameManager.joinRoom(
+      userId,
+      roomCode,
+      guessNumber !== undefined && guessNumber !== null ? Number(guessNumber) : null,
+      seatIndex !== undefined ? Number(seatIndex) : undefined
+    );
     res.json({ success: true, room });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/rooms/:roomId/action', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const roomId = String(req.params.roomId);
+    const userId = req.user!.id;
+    const { action, payload } = req.body;
+    if (!action) {
+      res.status(400).json({ error: 'action is required' });
+      return;
+    }
+    const result = await gameManager.handlePlayerAction(roomId, userId, action, payload);
+    res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
@@ -270,7 +303,17 @@ router.post('/rooms/join', authenticateUser, async (req: AuthenticatedRequest, r
 router.get('/rooms/:roomId', async (req: Request, res: Response): Promise<void> => {
   try {
     const roomId = Array.isArray(req.params.roomId) ? req.params.roomId[0] : req.params.roomId;
-    const room = await gameManager.getRoomDetails(roomId);
+    // Extract userId from auth token if present
+    let userId: string | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const decoded = jwt.decode(authHeader.substring(7)) as any;
+        userId = decoded?.userId;
+      } catch (_) {}
+    }
+
+    const room = await gameManager.getRoomDetails(roomId, userId);
     if (!room) {
       res.status(404).json({ error: 'Room not found' });
       return;

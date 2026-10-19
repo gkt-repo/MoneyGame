@@ -73,6 +73,7 @@ export interface WithdrawalItem {
 export interface RoomItem {
   id: string;
   roomCode: string;
+  gameType: string;
   entryFee: number;
   maxPlayers: number;
   status: string;
@@ -80,10 +81,13 @@ export interface RoomItem {
   winnerPrize?: number | null;
   winnerId?: string | null;
   winner?: { username: string } | null;
+  gameState?: any;
   players: Array<{
     id: string;
     userId: string;
-    guessNumber: number;
+    seatIndex: number;
+    status?: string;
+    guessNumber?: number | null;
     user?: { username: string };
   }>;
 }
@@ -171,8 +175,8 @@ class UserApiService {
     };
     if (token) headers.Authorization = `Bearer ${token}`;
     const response = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
-    const contentType = response.headers.get('content-type') || '';
-    const isJson = contentType.includes('application/json');
+    const contentType = response.headers?.get ? (response.headers.get('content-type') || '') : 'application/json';
+    const isJson = !response.headers || contentType.includes('application/json');
     const data = isJson ? await response.json().catch(() => ({})) : {};
 
     if (!response.ok) {
@@ -314,22 +318,46 @@ class UserApiService {
     return res.withdrawals || [];
   }
 
+  async getSupportedGames(): Promise<any[]> {
+    const res = await this.request<{ success: boolean; games: any[] }>('/games');
+    return res.games || [];
+  }
+
   async getRooms(): Promise<RoomItem[]> {
     const res = await this.request<{ success: boolean; rooms: RoomItem[] }>('/rooms');
     return res.rooms;
   }
 
-  async createRoom(userId: string, entryFee: number, maxPlayers: number, guessNumber: number): Promise<any> {
+  async createRoom(
+    userId: string,
+    entryFee: number,
+    maxPlayers: number,
+    guessNumber?: number | null,
+    gameType: string = 'TEEN_PATTI',
+    customConfig?: Record<string, any>
+  ): Promise<any> {
     return this.request('/rooms/create', {
       method: 'POST',
-      body: JSON.stringify({ userId, entryFee, maxPlayers, guessNumber }),
+      body: JSON.stringify({ userId, entryFee, maxPlayers, guessNumber, gameType, customConfig }),
     });
   }
 
-  async joinRoom(userId: string, roomCode: string, guessNumber: number): Promise<any> {
+  async joinRoom(
+    userId: string,
+    roomCode: string,
+    guessNumber?: number | null,
+    seatIndex?: number
+  ): Promise<any> {
     return this.request('/rooms/join', {
       method: 'POST',
-      body: JSON.stringify({ userId, roomCode, guessNumber }),
+      body: JSON.stringify({ userId, roomCode, guessNumber, seatIndex }),
+    });
+  }
+
+  async sendGameAction(roomId: string, action: string, payload?: any): Promise<any> {
+    return this.request(`/rooms/${roomId}/action`, {
+      method: 'POST',
+      body: JSON.stringify({ action, payload }),
     });
   }
 

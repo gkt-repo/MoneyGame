@@ -43,5 +43,17 @@ export function configureSockets(io: Server) {
     socket.on('leave_deposit_channel', (id: unknown) => { if (typeof id === 'string') socket.leave(`deposit:${id}`); });
     socket.on('join_room_channel', (id: unknown) => { if (typeof id === 'string') socket.join(`room:${id}`); });
     socket.on('leave_room_channel', (id: unknown) => { if (typeof id === 'string') socket.leave(`room:${id}`); });
+    socket.on('game_action', async (data: unknown) => {
+      if (typeof data !== 'object' || !data) return;
+      const { roomId, action, payload } = data as any;
+      if (typeof roomId !== 'string' || typeof action !== 'string') return;
+      try {
+        const { gameManager } = await import('./modules/game/game.manager');
+        const res = await gameManager.handlePlayerAction(roomId, socket.data.userId, action, payload);
+        socket.emit('game_action_response', { success: res.success, action, message: res.message });
+      } catch (err: any) {
+        socket.emit('game_action_response', { success: false, action, message: err.message });
+      }
+    });
   });
 }

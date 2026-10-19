@@ -269,8 +269,8 @@ class AdminApiService {
     };
     if (token) headers.Authorization = `Bearer ${token}`;
     const response = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
-    const contentType = response.headers.get('content-type') || '';
-    const isJson = contentType.includes('application/json');
+    const contentType = response.headers?.get ? (response.headers.get('content-type') || '') : 'application/json';
+    const isJson = !response.headers || contentType.includes('application/json');
     const data = isJson ? await response.json().catch(() => ({})) : {};
 
     if (!response.ok) {
