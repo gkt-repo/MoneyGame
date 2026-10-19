@@ -254,6 +254,8 @@ export class TeenPattiEngine implements IGameEngine {
       const activePlayers = Object.values(game.players).filter(p => !p.isPacked);
       if (activePlayers.length === 1) {
         // Only 1 player remains! Winner by default fold
+        game.currentTurnUserId = null;
+        if (game.turnTimer) clearTimeout(game.turnTimer);
         await this.settleWinner(roomId, activePlayers[0].userId, io, 'All opponents folded');
         return { success: true, message: 'Folded' };
       }

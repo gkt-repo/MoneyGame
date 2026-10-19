@@ -149,7 +149,7 @@ export class WalletService {
   async settleRoomWinner(
     roomId: string,
     winnerId: string,
-    winningNumber: number,
+    winningNumber: number | null,
     totalPool: number,
     commissionPercent: number
   ) {
@@ -160,10 +160,27 @@ export class WalletService {
       });
 
       if (!room) throw new Error('Room not found');
-      if (room.status !== 'ROLLING') throw new Error('Room is not awaiting settlement');
-      if (!room.players.some(p => p.userId === winnerId && p.guessNumber === winningNumber)) throw new Error('Invalid winner');
-      totalPool = toPaise(room.entryFee) * room.players.length / 100;
-      if (!Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) throw new Error('Invalid commission');
+
+      if (room.gameType === 'GUESS_NUMBER') {
+        if (room.status !== 'ROLLING') throw new Error('Room is not awaiting settlement');
+        if (!room.players.some(p => p.userId === winnerId && p.guessNumber === winningNumber)) {
+          throw new Error('Invalid winner');
+        }
+        totalPool = (toPaise(room.entryFee) * room.players.length) / 100;
+      } else {
+        if (!['PLAYING', 'ROLLING'].includes(room.status)) {
+          throw new Error('Room is not awaiting settlement');
+        }
+        if (!room.players.some(p => p.userId === winnerId)) {
+          throw new Error('Winner is not a participant in this room');
+        }
+        const minPool = (toPaise(room.entryFee) * room.players.length) / 100;
+        totalPool = Math.max(totalPool || 0, minPool);
+      }
+
+      if (!Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) {
+        throw new Error('Invalid commission');
+      }
 
       const entryFee = room.entryFee;
       const commissionAmount = Math.round(toPaise(totalPool) * commissionPercent / 100) / 100;
@@ -177,12 +194,14 @@ export class WalletService {
       // 2. Credit the winner's available balance
       const winnerWallet = await moveWallet(tx, winnerId, winnerPrize);
 
+      const resolvedWinningNumber = room.gameType === 'GUESS_NUMBER' ? winningNumber : null;
+
       // 3. Mark room completed
       await tx.room.update({
         where: { id: roomId },
         data: {
           status: 'COMPLETED',
-          winningNumber,
+          winningNumber: resolvedWinningNumber,
           winnerId,
           winnerPrize,
         },
@@ -196,7 +215,9 @@ export class WalletService {
           type: 'ROOM_WIN',
           idempotencyKey: `room-win:${roomId}`,
           referenceId: roomId,
-          description: `Won Room #${room.roomCode} (Roll: ${winningNumber}). Net prize: ₹${winnerPrize.toFixed(2)}`,
+          description: room.gameType === 'GUESS_NUMBER'
+            ? `Won Room #${room.roomCode} (Roll: ${winningNumber}). Net prize: ₹${winnerPrize.toFixed(2)}`
+            : `Won Room #${room.roomCode} (${room.gameType}). Net prize: ₹${winnerPrize.toFixed(2)}`,
         },
       });
 
@@ -204,7 +225,7 @@ export class WalletService {
         winnerId,
         winnerPrize,
         commissionAmount,
-        winningNumber,
+        winningNumber: resolvedWinningNumber,
         winnerWallet,
       };
     });

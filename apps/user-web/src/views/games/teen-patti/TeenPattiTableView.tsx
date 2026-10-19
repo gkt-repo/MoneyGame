@@ -194,7 +194,11 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                   : 'bg-emerald-900/70 text-emerald-300'
               }`}>
                 <Clock className="w-3.5 h-3.5" />
-                {isMyTurn ? `Your Turn (${timeLeft}s)` : 'Opponent Thinking...'}
+                {isMyTurn
+                  ? `Your Turn (${timeLeft}s)`
+                  : myPlayerState?.isPacked
+                  ? 'You Folded (Waiting for hand to finish...)'
+                  : 'Opponent Thinking...'}
               </span>
             )}
             {isCompleted && (
@@ -289,18 +293,18 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
           {room.players.map((p) => {
             const isMe = p.userId === user.id;
             const pState = gameState?.players?.[p.userId];
-            const isTurn = gameState?.currentTurnUserId === p.userId && isPlaying;
-            const isPacked = pState?.isPacked;
+            const isPacked = !!pState?.isPacked;
+            const isTurn = gameState?.currentTurnUserId === p.userId && isPlaying && !isPacked;
             const isSeen = pState?.isSeen;
 
             return (
               <div
                 key={p.id}
                 className={`p-2.5 rounded-xl border transition-all duration-300 ${
-                  isTurn
-                    ? 'bg-amber-400/20 border-amber-400 ring-2 ring-amber-400/50 scale-[1.02]'
-                    : isPacked
+                  isPacked
                     ? 'bg-slate-900/60 border-slate-700/50 opacity-40'
+                    : isTurn
+                    ? 'bg-amber-400/20 border-amber-400 ring-2 ring-amber-400/50 scale-[1.02]'
                     : isMe
                     ? 'bg-emerald-900/50 border-emerald-500/60'
                     : 'bg-emerald-950/60 border-emerald-800/60'
@@ -323,7 +327,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
                 <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-300/80">
                   <span>Bet: ₹{(pState?.totalBet || room.entryFee).toFixed(2)}</span>
-                  {isTurn && (
+                  {isTurn && !isPacked && (
                     <span className="text-amber-400 font-mono font-bold animate-pulse text-[10px]">
                       Thinking...
                     </span>
