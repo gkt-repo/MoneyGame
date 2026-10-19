@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/colors.dart';
 import '../../core/network/admin_api_client.dart';
+import '../../core/services/listener_service.dart';
 import '../../core/storage/admin_secure_storage.dart';
 
 class AdminSettingsScreen extends StatefulWidget {
@@ -29,6 +30,10 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   bool _loading = true;
   bool _savingUpi = false;
   bool _savingSupport = false;
+  bool _syncingListener = false;
+
+  ListenerStatus? _listenerStatus;
+  ListenerConfigModel? _listenerConfig;
 
   String? _upiError;
   String? _upiSuccess;
@@ -62,6 +67,14 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             telegram: stats.supportTelegram,
             hours: stats.supportHours,
           ));
+      final listenerConfig = await AdminApiClient.getListenerConfig().catchError((_) => ListenerConfigModel(
+            success: false,
+            webhookSecret: '',
+            serverUrl: '',
+            listenerStatus: stats.listenerStatus,
+            lastHeartbeatAt: stats.lastHeartbeatAt,
+          ));
+      final listenerStatus = await ListenerService.getStatus();
 
       if (mounted) {
         setState(() {
@@ -72,6 +85,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           _supportWhatsappController.text = support.whatsapp;
           _supportTelegramController.text = support.telegram;
           _supportHoursController.text = support.hours;
+
+          _listenerConfig = listenerConfig;
+          _listenerStatus = listenerStatus;
 
           _upiError = null;
           _supportError = null;
@@ -360,6 +376,20 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                   ),
                   const SizedBox(height: 20),
 
+                  // SECTION: Built-in UPI Listener Companion
+                  const Text(
+                    'BUILT-IN UPI LISTENER & COMPANION',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                      color: AppColors.slate500,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _buildListenerSettingsCard(),
+                  const SizedBox(height: 20),
+
                   // SECTION 3: Super Admin Session Card
                   const Text(
                     'SECURITY & SESSION',
@@ -415,6 +445,116 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildListenerSettingsCard() {
+    final isOnline = _listenerConfig?.listenerStatus == 'ONLINE';
+    final isPermissionGranted = _listenerStatus?.isPermissionGranted ?? false;
+    final isBatteryIgnored = _listenerStatus?.isBatteryOptimizationIgnored ?? true;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.slate200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                isOnline ? '🟢 Listener Status: ONLINE' : '🟠 Listener Status: STANDBY',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: isOnline ? AppColors.emerald700 : AppColors.amber800,
+                ),
+              ),
+              IconButton(
+                icon: _syncingListener
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh, size: 18, color: AppColors.slate600),
+                onPressed: _syncingListener ? null : () async {
+                  setState(() => _syncingListener = true);
+                  await ListenerService.sendHeartbeatNow();
+                  await _loadSettings();
+                  if (mounted) setState(() => _syncingListener = false);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'This application natively intercepts incoming UPI credit notifications (PhonePe, GPay, Paytm, BHIM, Bank SMS) and auto-verifies user deposits without any third-party apps.',
+            style: TextStyle(fontSize: 12, color: AppColors.slate600, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          _buildRow('Target Endpoint', '/api/webhooks/upi-notify'),
+          const Divider(height: 18),
+          _buildRow('Notification Access', isPermissionGranted ? 'Granted ✅' : 'Action Required ⚠️'),
+          const Divider(height: 18),
+          _buildRow('Battery Limit', isBatteryIgnored ? 'Unrestricted ✅' : 'Optimized (Restricted) ⚠️'),
+          if (_listenerConfig?.lastHeartbeatAt != null) ...[
+            const Divider(height: 18),
+            _buildRow('Last Heartbeat', _listenerConfig!.lastHeartbeatAt!.replaceFirst('T', ' ').substring(0, 19)),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              if (!isPermissionGranted) ...[
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      await ListenerService.openPermissionSettings();
+                      Future.delayed(const Duration(seconds: 1), _loadSettings);
+                    },
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.amber800),
+                    child: const Text('Grant Access', style: TextStyle(color: AppColors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () async {
+                    setState(() => _syncingListener = true);
+                    try {
+                      final conf = await AdminApiClient.getListenerConfig();
+                      await ListenerService.syncConfig(
+                        baseUrl: conf.serverUrl,
+                        webhookSecret: conf.webhookSecret,
+                      );
+                      await ListenerService.sendHeartbeatNow();
+                      await _loadSettings();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Listener config synced & heartbeat sent successfully!'),
+                            backgroundColor: AppColors.emerald700,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.red600),
+                        );
+                      }
+                    } finally {
+                      if (mounted) setState(() => _syncingListener = false);
+                    }
+                  },
+                  child: const Text('Sync & Test Heartbeat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate900)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

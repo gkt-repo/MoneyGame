@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/constants/colors.dart';
 import '../core/network/admin_api_client.dart';
+import '../core/services/listener_service.dart';
 import 'dashboard/admin_dashboard_screen.dart';
 import 'users/users_screen.dart';
 import 'withdrawals/withdrawals_queue_screen.dart';
@@ -31,6 +32,18 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   void initState() {
     super.initState();
     _fetchCounts();
+    ListenerService.startAutoHeartbeat();
+  }
+
+  @override
+  void dispose() {
+    ListenerService.stopAutoHeartbeat();
+    super.dispose();
+  }
+
+  void _handleLogout() {
+    ListenerService.stopAutoHeartbeat();
+    widget.onLogout();
   }
 
   Future<void> _fetchCounts() async {
@@ -113,7 +126,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           IconButton(
             icon: const Icon(Icons.logout, size: 20, color: AppColors.slate600),
             tooltip: 'Logout',
-            onPressed: widget.onLogout,
+            onPressed: _handleLogout,
           ),
           const SizedBox(width: 4),
         ],
@@ -128,7 +141,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           AdminDashboardScreen(
             admin: widget.admin,
             onNavigateTab: _onTabTapped,
-            onLogout: widget.onLogout,
+            onLogout: _handleLogout,
           ),
           const UsersScreen(),
           WithdrawalsQueueScreen(
@@ -137,7 +150,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           const DepositsLedgerScreen(),
           AdminMoreScreen(
             admin: widget.admin,
-            onLogout: widget.onLogout,
+            onLogout: _handleLogout,
             onRefreshCounts: _fetchCounts,
           ),
         ],

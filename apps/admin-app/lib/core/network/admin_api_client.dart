@@ -56,6 +56,9 @@ class AdminStatsModel {
   final String supportWhatsapp;
   final String supportTelegram;
   final String supportHours;
+  final String listenerStatus;
+  final String? lastHeartbeatAt;
+  final Map<String, dynamic>? listenerMetadata;
 
   AdminStatsModel({
     required this.totalUsers,
@@ -75,6 +78,9 @@ class AdminStatsModel {
     required this.supportWhatsapp,
     required this.supportTelegram,
     required this.supportHours,
+    this.listenerStatus = 'OFFLINE',
+    this.lastHeartbeatAt,
+    this.listenerMetadata,
   });
 
   factory AdminStatsModel.fromJson(Map<String, dynamic> json) {
@@ -96,6 +102,38 @@ class AdminStatsModel {
       supportWhatsapp: json['supportWhatsapp'] ?? '+91 98765 43210',
       supportTelegram: json['supportTelegram'] ?? '@MoneyGameSupport',
       supportHours: json['supportHours'] ?? '24/7 Live Support',
+      listenerStatus: json['listenerStatus'] ?? 'OFFLINE',
+      lastHeartbeatAt: json['lastHeartbeatAt'],
+      listenerMetadata: json['listenerMetadata'] as Map<String, dynamic>?,
+    );
+  }
+}
+
+class ListenerConfigModel {
+  final bool success;
+  final String webhookSecret;
+  final String serverUrl;
+  final String listenerStatus;
+  final String? lastHeartbeatAt;
+  final Map<String, dynamic>? listenerMetadata;
+
+  ListenerConfigModel({
+    required this.success,
+    required this.webhookSecret,
+    required this.serverUrl,
+    required this.listenerStatus,
+    this.lastHeartbeatAt,
+    this.listenerMetadata,
+  });
+
+  factory ListenerConfigModel.fromJson(Map<String, dynamic> json) {
+    return ListenerConfigModel(
+      success: json['success'] == true,
+      webhookSecret: json['webhookSecret'] ?? '',
+      serverUrl: json['serverUrl'] ?? '',
+      listenerStatus: json['listenerStatus'] ?? 'OFFLINE',
+      lastHeartbeatAt: json['lastHeartbeatAt'],
+      listenerMetadata: json['listenerMetadata'] as Map<String, dynamic>?,
     );
   }
 }
@@ -981,6 +1019,31 @@ class AdminApiClient {
       });
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to simulate payment';
+    }
+  }
+
+  // ─── UPI PAYMENT LISTENER WATCHDOG ─────────────────────────────────────────
+
+  static Future<ListenerConfigModel> getListenerConfig() async {
+    try {
+      final res = await _dio.get('/admin/listener-config');
+      return ListenerConfigModel.fromJson(res.data);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to load listener configuration';
+    }
+  }
+
+  static Future<void> sendHeartbeat({
+    double? batteryLevel,
+    String? phoneModel,
+  }) async {
+    try {
+      final data = <String, dynamic>{};
+      if (batteryLevel != null) data['batteryLevel'] = batteryLevel;
+      if (phoneModel != null) data['phoneModel'] = phoneModel;
+      await _dio.post('/admin/listener-heartbeat', data: data);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to transmit listener heartbeat';
     }
   }
 }

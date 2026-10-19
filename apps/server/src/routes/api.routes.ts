@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { Router, Request, Response } from 'express';
 import { walletService } from '../modules/wallet/wallet.service';
 import { paymentService } from '../modules/payment/payment.service';
@@ -290,14 +291,31 @@ router.post('/rooms/:roomId/cancel', authenticateUser, async (req: Authenticated
 
 // ─── Automated Webhook Receiver (Android Notification / Email Forwarder) ───────
 
+function isWebhookAuthorized(authHeader?: string | string[]): boolean {
+  const expectedSecret = config.webhookSecret;
+  const supplied = typeof authHeader === 'string' ? authHeader.replace(/^Bearer /, '') : '';
+  if (expectedSecret && supplied && Buffer.byteLength(supplied) === Buffer.byteLength(expectedSecret)) {
+    if (crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expectedSecret))) {
+      return true;
+    }
+  }
+  if (supplied) {
+    try {
+      const decoded = jwt.verify(supplied, config.jwtSecret) as any;
+      if (decoded && (decoded.role === 'ADMIN' || decoded.role === 'SUPER_ADMIN')) {
+        return true;
+      }
+    } catch {
+      // not an admin jwt
+    }
+  }
+  return false;
+}
+
 router.post('/webhooks/upi-notify', webhookLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const authHeader = req.headers['x-webhook-secret'] || req.headers['authorization'];
-    const expectedSecret = config.webhookSecret;
-
-    const supplied = typeof authHeader === 'string' ? authHeader.replace(/^Bearer /, '') : '';
-    if (!expectedSecret || !supplied || Buffer.byteLength(supplied) !== Buffer.byteLength(expectedSecret)
-        || !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expectedSecret))) {
+    if (!isWebhookAuthorized(authHeader)) {
       res.status(401).json({ error: 'Unauthorized webhook request' });
       return;
     }
@@ -324,11 +342,7 @@ router.post('/webhooks/upi-notify', webhookLimiter, async (req: Request, res: Re
 router.post('/webhooks/listener-heartbeat', webhookLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const authHeader = req.headers['x-webhook-secret'] || req.headers['authorization'];
-    const expectedSecret = config.webhookSecret;
-
-    const supplied = typeof authHeader === 'string' ? authHeader.replace(/^Bearer /, '') : '';
-    if (!expectedSecret || !supplied || Buffer.byteLength(supplied) !== Buffer.byteLength(expectedSecret)
-        || !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expectedSecret))) {
+    if (!isWebhookAuthorized(authHeader)) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
@@ -351,6 +365,63 @@ router.post('/webhooks/listener-heartbeat', webhookLimiter, async (req: Request,
     }
 
     res.json({
+      status: 'ok',
+      acknowledgedAt: new Date().toISOString(),
+      receivedMeta: { batteryLevel, phoneModel },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Admin Listener Management Endpoints ──────────────────────────────────────
+
+router.get('/admin/listener-config', authenticateAdmin, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const lastHeartbeat = await prisma.systemSetting.findUnique({ where: { key: 'last_listener_heartbeat' } });
+    const metaSetting = await prisma.systemSetting.findUnique({ where: { key: 'listener_metadata' } });
+    let listenerMetadata = null;
+    if (metaSetting?.value) {
+      try { listenerMetadata = JSON.parse(metaSetting.value); } catch {}
+    }
+    const lastHeartbeatAt = lastHeartbeat?.value || null;
+    const isOnline = lastHeartbeatAt
+      ? Date.now() - new Date(lastHeartbeatAt).getTime() < 3 * 60 * 1000
+      : false;
+
+    res.json({
+      success: true,
+      webhookSecret: config.webhookSecret,
+      serverUrl: 'http://132.226.186.196:4000',
+      listenerStatus: isOnline ? 'ONLINE' : 'OFFLINE',
+      lastHeartbeatAt,
+      listenerMetadata,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/admin/listener-heartbeat', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { batteryLevel, phoneModel } = req.body || {};
+
+    await prisma.systemSetting.upsert({
+      where: { key: 'last_listener_heartbeat' },
+      update: { value: new Date().toISOString() },
+      create: { key: 'last_listener_heartbeat', value: new Date().toISOString() },
+    });
+
+    if (batteryLevel !== undefined || phoneModel !== undefined) {
+      await prisma.systemSetting.upsert({
+        where: { key: 'listener_metadata' },
+        update: { value: JSON.stringify({ batteryLevel, phoneModel, updatedAt: new Date().toISOString() }) },
+        create: { key: 'listener_metadata', value: JSON.stringify({ batteryLevel, phoneModel, updatedAt: new Date().toISOString() }) },
+      });
+    }
+
+    res.json({
+      success: true,
       status: 'ok',
       acknowledgedAt: new Date().toISOString(),
       receivedMeta: { batteryLevel, phoneModel },

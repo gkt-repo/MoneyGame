@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/colors.dart';
 import '../../core/network/admin_api_client.dart';
+import '../../core/services/listener_service.dart';
 import '../feedback/feedback_screen.dart';
 import '../rooms/rooms_screen.dart';
 import '../settings/admin_settings_screen.dart';
@@ -25,11 +26,47 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   AdminStatsModel? _stats;
   bool _loading = true;
   String? _error;
+  ListenerStatus? _listenerStatus;
+  bool _syncingListener = false;
 
   @override
   void initState() {
     super.initState();
     _fetchStats();
+    _checkListenerStatus();
+  }
+
+  Future<void> _checkListenerStatus() async {
+    try {
+      final status = await ListenerService.getStatus();
+      if (mounted) setState(() => _listenerStatus = status);
+    } catch (_) {}
+  }
+
+  Future<void> _triggerHeartbeat() async {
+    setState(() => _syncingListener = true);
+    try {
+      await ListenerService.sendHeartbeatNow();
+      await _fetchStats();
+      await _checkListenerStatus();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Heartbeat sent! UPI Listener status updated.'),
+            backgroundColor: AppColors.emerald700,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.red600),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _syncingListener = false);
+    }
   }
 
   Future<void> _fetchStats() async {
@@ -187,6 +224,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+
+              _buildListenerCompanionCard(),
 
               // KPI Section Title
               const Text(
@@ -440,6 +479,214 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildListenerCompanionCard() {
+    final isOnline = _stats?.listenerStatus == 'ONLINE';
+    final isPermissionGranted = _listenerStatus?.isPermissionGranted ?? false;
+    final isBatteryIgnored = _listenerStatus?.isBatteryOptimizationIgnored ?? true;
+    final batteryLevel = _stats?.listenerMetadata?['batteryLevel'];
+    final phoneModel = _stats?.listenerMetadata?['phoneModel'];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isOnline ? const Color(0xFFF0FDF4) : const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isOnline ? const Color(0xFF86EFAC) : const Color(0xFFFDE68A),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: isOnline ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isOnline ? Icons.notifications_active : Icons.notifications_off_outlined,
+                  size: 18,
+                  color: isOnline ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isOnline ? 'Built-in UPI Listener: ONLINE' : 'Built-in UPI Listener: OFFLINE / STANDBY',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: isOnline ? const Color(0xFF166534) : const Color(0xFF92400E),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isOnline
+                          ? 'Capturing bank & UPI credit notifications directly on this device.${batteryLevel != null ? " • Battery: $batteryLevel%" : ""}${phoneModel != null ? " • $phoneModel" : ""}'
+                          : 'Zero third-party apps required. Enable notification access below so deposits are auto-verified.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isOnline ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: _syncingListener
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.slate700),
+                      )
+                    : const Icon(Icons.sync, size: 20, color: AppColors.slate700),
+                tooltip: 'Send Heartbeat Now',
+                onPressed: _syncingListener ? null : _triggerHeartbeat,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              InkWell(
+                onTap: isPermissionGranted
+                    ? null
+                    : () async {
+                        await ListenerService.openPermissionSettings();
+                        Future.delayed(const Duration(seconds: 1), _checkListenerStatus);
+                      },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isPermissionGranted ? const Color(0xFFDCFCE7) : AppColors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isPermissionGranted ? const Color(0xFF86EFAC) : const Color(0xFFF59E0B),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isPermissionGranted ? Icons.check_circle : Icons.warning_amber_rounded,
+                        size: 14,
+                        color: isPermissionGranted ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        isPermissionGranted ? 'Notification Access: Active' : 'Grant Notification Access',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: isPermissionGranted ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: isBatteryIgnored
+                    ? null
+                    : () async {
+                        await ListenerService.requestIgnoreBatteryOptimization();
+                        Future.delayed(const Duration(seconds: 1), _checkListenerStatus);
+                      },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isBatteryIgnored ? const Color(0xFFDCFCE7) : AppColors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isBatteryIgnored ? const Color(0xFF86EFAC) : const Color(0xFFF59E0B),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isBatteryIgnored ? Icons.battery_charging_full : Icons.battery_alert,
+                        size: 14,
+                        color: isBatteryIgnored ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        isBatteryIgnored ? 'Battery Limits: Unrestricted' : 'Disable Battery Optimization',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: isBatteryIgnored ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: _syncingListener ? null : _triggerHeartbeat,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.slate900,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.bolt, size: 14, color: AppColors.white),
+                      SizedBox(width: 4),
+                      Text(
+                        'Test Heartbeat',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_listenerStatus != null && _listenerStatus!.lastNotificationAmount > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.white.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors.slate200),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.receipt, size: 14, color: AppColors.slate700),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Last Intercepted: ₹${_listenerStatus!.lastNotificationAmount.toStringAsFixed(0)} ${_listenerStatus!.lastNotificationUtr.isNotEmpty ? "(UTR: ${_listenerStatus!.lastNotificationUtr})" : ""}',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.slate800),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
