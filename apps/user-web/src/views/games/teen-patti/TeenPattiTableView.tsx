@@ -1,40 +1,126 @@
 import React, { useState, useEffect } from 'react';
 import { RoomItem, userApi, UserProfile } from '../../../services/api';
+import { connectSocket } from '../../../services/socket';
 import { PlayingCard, TeenPattiGameState, TeenPattiPlayerState } from '@moneygame/shared-types';
-import { Trophy, Eye, CheckCircle2, XCircle, Clock, Coins, Sparkles, Loader2 } from 'lucide-react';
+import { Trophy, Eye, Clock, Coins, ArrowLeft, CheckCircle2, RotateCcw } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface TeenPattiTableViewProps {
   room: RoomItem;
   user: UserProfile;
   onRefreshBalance: () => void;
+  onBack?: () => void;
 }
 
 export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
   room,
   user,
   onRefreshBalance,
+  onBack,
 }) => {
   const [submittingAction, setSubmittingAction] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [localGameState, setLocalGameState] = useState<TeenPattiGameState | null>(room.gameState || null);
+  const [finishData, setFinishData] = useState<{
+    winnerId: string;
+    winnerUsername: string;
+    prizePool: number;
+    winnerPrize?: number;
+    reason?: string;
+    showdown?: Array<{
+      userId: string;
+      username: string;
+      cards: PlayingCard[];
+      handResult?: any;
+    }>;
+  } | null>(null);
 
+  // Sync initial game state from props if changed
   useEffect(() => {
     if (room.gameState) {
       setLocalGameState(room.gameState);
     }
   }, [room.gameState]);
 
+  // Connect to live WebSockets for instant table interactions
+  useEffect(() => {
+    const socket = connectSocket();
+    socket.emit('join_room_channel', room.id);
+
+    socket.on('teen_patti_state', (state: TeenPattiGameState) => {
+      if (state) {
+        setLocalGameState(state);
+      }
+    });
+
+    socket.on('turn_timer_started', (data: { currentTurnUserId: string; turnExpiresAt: number }) => {
+      setLocalGameState(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          currentTurnUserId: data.currentTurnUserId,
+          turnExpiresAt: data.turnExpiresAt,
+        };
+      });
+    });
+
+    socket.on('player_acted', (data: { userId: string; action: string; betAmount: number; pot: number }) => {
+      setLocalGameState(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          pot: data.pot,
+        };
+      });
+    });
+
+    socket.on('cards_revealed', (data: { cards: PlayingCard[]; hand: any }) => {
+      setLocalGameState(prev => {
+        if (!prev) return prev;
+        const myP = prev.players[user.id];
+        if (!myP) return prev;
+        return {
+          ...prev,
+          players: {
+            ...prev.players,
+            [user.id]: {
+              ...myP,
+              isSeen: true,
+              cards: data.cards,
+            },
+          },
+        };
+      });
+    });
+
+    socket.on('game_finished', (data: any) => {
+      setFinishData(data);
+      if (data.winnerId === user.id) {
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 },
+        });
+      }
+      onRefreshBalance();
+    });
+
+    return () => {
+      socket.emit('leave_room_channel', room.id);
+      socket.disconnect();
+    };
+  }, [room.id, user.id, onRefreshBalance]);
+
   const gameState = localGameState;
-  const isPlaying = room.status === 'PLAYING';
-  const isCompleted = room.status === 'COMPLETED';
+  const isCompleted = room.status === 'COMPLETED' || finishData !== null;
+  const isPlaying = room.status === 'PLAYING' && !isCompleted;
 
   // Find user's player state
   const myPlayerState: TeenPattiPlayerState | undefined = gameState?.players?.[user.id];
   const isMyTurn = gameState?.currentTurnUserId === user.id && isPlaying && !myPlayerState?.isPacked;
 
   // Turn timer calculation
-  const [timeLeft, setTimeLeft] = useState<number>(15);
+  const [timeLeft, setTimeLeft] = useState<number>(25);
   useEffect(() => {
     if (!gameState?.turnExpiresAt || !isPlaying) return;
     const interval = setInterval(() => {
@@ -46,6 +132,11 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
   // Send action to server
   const handleAction = async (action: string, payload: any = {}) => {
+    if (isCompleted) {
+      setActionError('This hand has already concluded');
+      return;
+    }
+
     setSubmittingAction(true);
     setActionError(null);
     try {
@@ -68,8 +159,9 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
   };
 
   const activePlayers = gameState ? Object.values(gameState.players).filter(p => !p.isPacked) : [];
-  const canShow = activePlayers.length === 2 && isMyTurn;
-  const isWinner = room.winnerId === user.id;
+  const canShow = activePlayers.length === 2 && isMyTurn && !isCompleted;
+  const winnerUserId = finishData?.winnerId || room.winnerId;
+  const isWinner = winnerUserId === user.id;
 
   const currentChaalCost = myPlayerState?.isSeen
     ? (gameState?.currentChaalAmount || room.entryFee) * 2
@@ -78,8 +170,8 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
   return (
     <div className="space-y-4">
       {/* ─── POKER FELT TABLE ARENA ─── */}
-      <div className="relative bg-emerald-950 border-4 border-amber-900/60 rounded-3xl p-6 sm:p-10 shadow-2xl overflow-hidden min-h-[460px] flex flex-col justify-between">
-        {/* Subtle Felt Texture & Table Ring */}
+      <div className="relative bg-emerald-950 border-4 border-amber-900/60 rounded-3xl p-6 sm:p-10 shadow-2xl overflow-hidden min-h-[480px] flex flex-col justify-between">
+        {/* Felt Texture & Ring */}
         <div className="absolute inset-4 rounded-2xl border-2 border-emerald-500/20 pointer-events-none" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-800/40 via-emerald-950/80 to-slate-950 pointer-events-none" />
 
@@ -96,49 +188,96 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
           <div className="flex items-center gap-2">
             {isPlaying && (
-              <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold flex items-center gap-1 ${
-                isMyTurn ? 'bg-amber-500 text-slate-950 animate-pulse' : 'bg-emerald-900/60 text-emerald-300'
+              <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1.5 transition ${
+                isMyTurn
+                  ? 'bg-amber-400 text-slate-950 font-bold shadow-md animate-pulse'
+                  : 'bg-emerald-900/70 text-emerald-300'
               }`}>
-                <Clock className="w-3 h-3" />
-                {isMyTurn ? `Your Turn (${timeLeft}s)` : 'Waiting for turn...'}
+                <Clock className="w-3.5 h-3.5" />
+                {isMyTurn ? `Your Turn (${timeLeft}s)` : 'Opponent Thinking...'}
               </span>
             )}
             {isCompleted && (
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500 text-slate-950">
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-400 text-slate-950 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
                 Hand Concluded
               </span>
             )}
           </div>
         </div>
 
-        {/* Center Table Area: Pot & Chips */}
+        {/* Center Table Area: Pot & Chips OR Final Winner Banner */}
         <div className="relative z-10 my-auto text-center py-4">
-          <div className="inline-flex flex-col items-center bg-emerald-900/70 border border-amber-500/30 rounded-2xl px-6 py-3 shadow-lg backdrop-blur-xs">
-            <div className="flex items-center gap-2 text-amber-400">
-              <Coins className="w-5 h-5 animate-bounce" />
-              <span className="text-xs uppercase font-extrabold tracking-widest text-emerald-200">Total Pot</span>
-            </div>
-            <div className="text-2xl sm:text-3xl font-black font-mono text-amber-300 mt-0.5">
-              ₹{(gameState?.pot || room.entryFee * room.players.length).toFixed(2)}
-            </div>
-            {gameState && (
-              <div className="text-[11px] text-emerald-300/80 mt-1 flex gap-3">
-                <span>Chaal: <strong className="text-white">₹{(gameState.currentChaalAmount * 2).toFixed(2)}</strong></span>
-                <span>Blind: <strong className="text-white">₹{gameState.currentChaalAmount.toFixed(2)}</strong></span>
+          {!isCompleted ? (
+            <div className="inline-flex flex-col items-center bg-emerald-900/70 border border-amber-500/30 rounded-2xl px-6 py-3 shadow-lg backdrop-blur-xs">
+              <div className="flex items-center gap-2 text-amber-400">
+                <Coins className="w-5 h-5 animate-bounce" />
+                <span className="text-xs uppercase font-extrabold tracking-widest text-emerald-200">Total Pot</span>
               </div>
-            )}
-          </div>
+              <div className="text-2xl sm:text-3xl font-black font-mono text-amber-300 mt-0.5">
+                ₹{(gameState?.pot || room.entryFee * room.players.length).toFixed(2)}
+              </div>
+              {gameState && (
+                <div className="text-[11px] text-emerald-300/80 mt-1 flex gap-3">
+                  <span>Chaal: <strong className="text-white">₹{(gameState.currentChaalAmount * 2).toFixed(2)}</strong></span>
+                  <span>Blind: <strong className="text-white">₹{gameState.currentChaalAmount.toFixed(2)}</strong></span>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Concluded Game Celebration Card */
+            <div className="bg-amber-950/80 border-2 border-amber-400/60 rounded-2xl p-5 max-w-md mx-auto text-amber-100 shadow-2xl backdrop-blur-md animate-fade-in space-y-3">
+              <div className="w-12 h-12 rounded-full bg-amber-400/20 border border-amber-400/40 flex items-center justify-center mx-auto text-amber-300">
+                <Trophy className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-amber-300">
+                  {isWinner ? '🎉 You Won the Table!' : `🏆 ${finishData?.winnerUsername || room.winner?.username || 'Winner'} Won!`}
+                </h3>
+                <div className="text-xs text-amber-200/90 mt-0.5">
+                  {finishData?.reason || (isWinner ? 'Prize credited to your wallet' : 'Hand completed')}
+                </div>
+              </div>
 
-          {/* Winner Announcement Banner */}
-          {isCompleted && (
-            <div className="mt-4 p-4 bg-amber-500/10 border border-amber-400/30 rounded-xl max-w-sm mx-auto text-amber-200 animate-fade-in">
-              <div className="flex items-center justify-center gap-2 text-base font-bold text-amber-300">
-                <Trophy className="w-5 h-5 text-amber-400" />
-                <span>{isWinner ? 'You Won the Hand!' : `${room.winner?.username || 'Winner'} won!`}</span>
+              <div className="text-2xl font-mono font-black text-emerald-400">
+                +₹{((finishData?.winnerPrize ?? room.winnerPrize) || (gameState?.pot || room.entryFee * room.players.length) * 0.9).toFixed(2)}
               </div>
-              {room.winnerPrize != null && (
-                <div className="text-xs mt-1 text-emerald-300 font-mono font-bold">
-                  Prize: ₹{room.winnerPrize.toFixed(2)} credited!
+
+              {/* Showdown Hands if available */}
+              {finishData?.showdown && finishData.showdown.length > 0 && (
+                <div className="pt-2 border-t border-amber-400/20 space-y-2">
+                  <div className="text-[10px] uppercase font-bold text-amber-300 tracking-wider">Showdown Reveal</div>
+                  <div className="flex flex-wrap justify-center gap-4">
+                    {finishData.showdown.map(s => (
+                      <div key={s.userId} className="flex flex-col items-center">
+                        <span className="text-[10px] text-amber-200 font-semibold mb-1">
+                          {s.username} {s.userId === user.id ? '(You)' : ''}
+                        </span>
+                        <div className="flex -space-x-2">
+                          {s.cards.map((c, i) => (
+                            <CardVisual key={i} card={c} />
+                          ))}
+                        </div>
+                        {s.handResult && (
+                          <span className="text-[9px] font-bold text-amber-400 mt-1 uppercase">
+                            {s.handResult.name || s.handResult.type}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {onBack && (
+                <div className="pt-2">
+                  <button
+                    onClick={onBack}
+                    className="w-full py-2.5 px-4 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-md"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Back to Lobby</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -190,6 +329,15 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                     </span>
                   )}
                 </div>
+
+                {/* Show cards if revealed (e.g. at showdown or after seeing) */}
+                {pState?.cards && pState.cards.length > 0 && (!isMe || isCompleted) && (
+                  <div className="mt-2 flex -space-x-2 justify-center">
+                    {pState.cards.map((c, i) => (
+                      <CardVisual key={i} card={c} />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -198,7 +346,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
         {/* Bottom Drawer: My Hand & Turn Action Controls */}
         <div className="relative z-10 pt-4 border-t border-emerald-800/60 mt-3">
           {actionError && (
-            <p className="text-red-400 text-xs mb-2 text-center bg-red-950/60 py-1 rounded border border-red-800">
+            <p className="text-red-300 text-xs mb-2 text-center bg-red-950/80 py-1.5 px-3 rounded-lg border border-red-700 shadow-xs">
               {actionError}
             </p>
           )}
@@ -259,7 +407,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                     onClick={() => handleAction('BLIND')}
                     className="flex-1 sm:flex-none px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md"
                   >
-                    Blind (₹{gameState?.currentChaalAmount.toFixed(2)})
+                    Blind (₹{(gameState?.currentChaalAmount || room.entryFee).toFixed(2)})
                   </button>
                 ) : (
                   <button
@@ -313,15 +461,15 @@ const CardVisual: React.FC<{ card: PlayingCard }> = ({ card }) => {
   }[card.suit] || '♠';
 
   return (
-    <div className="w-11 h-16 bg-white border border-slate-300 rounded-md shadow-md flex flex-col justify-between p-1 select-none animate-flip-card">
-      <div className={`text-[11px] font-extrabold leading-none ${isRed ? 'text-red-600' : 'text-slate-900'}`}>
+    <div className="w-10 h-14 sm:w-11 sm:h-16 bg-white border border-slate-300 rounded-md shadow-md flex flex-col justify-between p-1 select-none animate-flip-card">
+      <div className={`text-[10px] sm:text-[11px] font-extrabold leading-none ${isRed ? 'text-red-600' : 'text-slate-900'}`}>
         {card.label}
-        <span className="block text-[9px]">{suitSymbol}</span>
+        <span className="block text-[8px] sm:text-[9px]">{suitSymbol}</span>
       </div>
-      <div className={`text-base self-center leading-none ${isRed ? 'text-red-600' : 'text-slate-900'}`}>
+      <div className={`text-sm sm:text-base self-center leading-none ${isRed ? 'text-red-600' : 'text-slate-900'}`}>
         {suitSymbol}
       </div>
-      <div className={`text-[11px] font-extrabold leading-none self-end rotate-180 ${isRed ? 'text-red-600' : 'text-slate-900'}`}>
+      <div className={`text-[10px] sm:text-[11px] font-extrabold leading-none self-end rotate-180 ${isRed ? 'text-red-600' : 'text-slate-900'}`}>
         {card.label}
       </div>
     </div>

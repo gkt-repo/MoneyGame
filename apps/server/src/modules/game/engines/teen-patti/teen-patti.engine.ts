@@ -121,6 +121,8 @@ export class TeenPattiEngine implements IGameEngine {
       playerTurnOrder.push(player.userId);
     }
 
+const TURN_TIMEOUT_MS = 25000;
+
     const gameState: InternalGameState = {
       roomId,
       roomCode: room.roomCode,
@@ -128,7 +130,7 @@ export class TeenPattiEngine implements IGameEngine {
       pot: room.entryFee * room.players.length,
       currentChaalAmount: room.entryFee,
       currentTurnUserId: playerTurnOrder[0],
-      turnExpiresAt: Date.now() + 15000,
+      turnExpiresAt: Date.now() + TURN_TIMEOUT_MS,
       roundNumber: 1,
       status: 'PLAYING',
       players: playersState,
@@ -160,11 +162,11 @@ export class TeenPattiEngine implements IGameEngine {
 
     if (game.turnTimer) clearTimeout(game.turnTimer);
 
-    game.turnExpiresAt = Date.now() + 15000;
+    game.turnExpiresAt = Date.now() + TURN_TIMEOUT_MS;
 
     game.turnTimer = setTimeout(() => {
       void this.handleTurnTimeout(roomId, io);
-    }, 15000);
+    }, TURN_TIMEOUT_MS);
 
     if (io) {
       io.to(`room:${roomId}`).emit('turn_timer_started', {
@@ -191,7 +193,18 @@ export class TeenPattiEngine implements IGameEngine {
   ): Promise<ActionResult> {
     const game = this.games.get(roomId);
     if (!game) {
+      const dbRoom = await prisma.room.findUnique({
+        where: { id: roomId },
+        select: { status: true },
+      });
+      if (dbRoom?.status === 'COMPLETED') {
+        return { success: false, message: 'This hand has already concluded' };
+      }
       return { success: false, message: 'Game not found or inactive' };
+    }
+
+    if (game.status === 'COMPLETED' || game.status === 'SETTLING') {
+      return { success: false, message: 'This hand has already concluded' };
     }
 
     const player = game.players[userId];
@@ -395,6 +408,9 @@ export class TeenPattiEngine implements IGameEngine {
           room: finalRoom,
         });
 
+        // Broadcast final state with all revealed cards
+        this.broadcastGameState(roomId, io);
+
         // Update all players' live balances
         for (const p of Object.values(game.players)) {
           const wallet = await walletService.getWallet(p.userId);
@@ -404,7 +420,10 @@ export class TeenPattiEngine implements IGameEngine {
     } catch (err: any) {
       console.error('[TeenPattiEngine] Settlement failed:', roomId, err.message);
     } finally {
-      this.cleanupRoom(roomId);
+      // Retain finished game state in memory for 2 minutes so late/reconnecting clients receive completed state & cards
+      setTimeout(() => {
+        this.cleanupRoom(roomId);
+      }, 120000);
     }
   }
 

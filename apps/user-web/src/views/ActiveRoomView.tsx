@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { RoomItem, userApi, UserProfile } from '../services/api';
+import { connectSocket } from '../services/socket';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { TeenPattiTableView } from './games/teen-patti/TeenPattiTableView';
@@ -48,9 +49,43 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
   useEffect(() => {
     finished.current = false;
     fetchRoom();
-    const interval = setInterval(() => { if (!finished.current) fetchRoom(); }, 2500);
-    return () => clearInterval(interval);
-  }, [roomId]);
+
+    const socket = connectSocket();
+    socket.emit('join_room_channel', roomId);
+
+    socket.on('room_updated', (data: RoomItem) => {
+      if (data && data.id === roomId) {
+        setRoom(data);
+        if (['COMPLETED', 'CANCELLED'].includes(data.status) && !finished.current) {
+          finished.current = true;
+          if (data.winnerId === user.id) {
+            confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
+          }
+          onRefreshBalance();
+        }
+      }
+    });
+
+    socket.on('game_finished', (data: any) => {
+      if (data?.room) {
+        setRoom(data.room);
+      }
+      if (!finished.current) {
+        finished.current = true;
+        if (data?.winnerId === user.id) {
+          confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
+        }
+        onRefreshBalance();
+      }
+    });
+
+    const interval = setInterval(() => { if (!finished.current) fetchRoom(); }, 3000);
+    return () => {
+      socket.emit('leave_room_channel', roomId);
+      socket.disconnect();
+      clearInterval(interval);
+    };
+  }, [roomId, user.id, onRefreshBalance]);
 
   if (loading || !room) {
     return (
@@ -95,6 +130,7 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
           room={room}
           user={user}
           onRefreshBalance={onRefreshBalance}
+          onBack={onBack}
         />
       ) : (
         <GuessNumberTableView
