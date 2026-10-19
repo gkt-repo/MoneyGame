@@ -20,7 +20,10 @@ CREATE TABLE "new_RoomPlayer" (
 );
 
 INSERT INTO "new_RoomPlayer" ("id", "roomId", "userId", "seatIndex", "status", "guessNumber", "joinedAt")
-SELECT "id", "roomId", "userId", 0, 'ACTIVE', "guessNumber", "joinedAt" FROM "RoomPlayer";
+SELECT "id", "roomId", "userId",
+  (SELECT COUNT(*) FROM "RoomPlayer" rp2 WHERE rp2."roomId" = "RoomPlayer"."roomId" AND (rp2."joinedAt" < "RoomPlayer"."joinedAt" OR (rp2."joinedAt" = "RoomPlayer"."joinedAt" AND rp2."id" < "RoomPlayer"."id"))),
+  'ACTIVE', "guessNumber", "joinedAt"
+FROM "RoomPlayer";
 
 DROP TABLE "RoomPlayer";
 ALTER TABLE "new_RoomPlayer" RENAME TO "RoomPlayer";

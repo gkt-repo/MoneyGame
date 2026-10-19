@@ -28,6 +28,17 @@ case "${1:-start}" in
   start|migrate|rotate-admin) ;;
   *) echo 'Usage: start | migrate | baseline | rotate-admin' >&2; exit 1 ;;
 esac
+
+# Auto-resolve previously failed migration if present, so the corrected migration can deploy
+MIG_STATUS=$(npx prisma migrate status 2>&1 || true)
+if echo "$MIG_STATUS" | grep -q "failed migrations"; then
+  FAILED_NAME=$(echo "$MIG_STATUS" | grep -oE '[0-9]{14}_[a-zA-Z0-9_]+' | head -n 1)
+  if [ -n "$FAILED_NAME" ]; then
+    echo "Resolving failed migration $FAILED_NAME as rolled-back to re-apply updated migration..."
+    npx prisma migrate resolve --rolled-back "$FAILED_NAME" || true
+  fi
+fi
+
 attempt=0
 until npx prisma migrate deploy; do
   attempt=$((attempt + 1))
