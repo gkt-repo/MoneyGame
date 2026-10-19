@@ -1,4 +1,4 @@
-package com.moneygame.user.moneygame_user
+package com.moneygame.user
 
 import android.os.Build
 import android.os.Bundle

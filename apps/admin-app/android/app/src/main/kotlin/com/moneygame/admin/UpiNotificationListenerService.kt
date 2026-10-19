@@ -1,4 +1,4 @@
-package com.moneygame.admin.moneygame_admin
+package com.moneygame.admin
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -84,7 +84,7 @@ class UpiNotificationListenerService : NotificationListenerService() {
 
         val pkg = sbn.packageName ?: return
         // Ignore internal MoneyGame notifications to prevent feedback loops
-        if (pkg == packageName || pkg == "com.moneygame.user") return
+        if (pkg == packageName || pkg == "com.moneygame.user" || pkg == "com.moneygame.app") return
 
         val notif = sbn.notification ?: return
         val extras = notif.extras ?: return

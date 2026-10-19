@@ -1,6 +1,6 @@
 {
-    "name": "moneygame_user",
-    "short_name": "moneygame_user",
+    "name": "MoneyGame",
+    "short_name": "MoneyGame",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

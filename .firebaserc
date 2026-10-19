@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "default": "mgame-1"
+  },
+  "targets": {
+    "mgame-1": {
+      "hosting": {
+        "user-web": [
+          "mgame-1"
+        ],
+        "admin-web": [
+          "mgame-1-admin"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

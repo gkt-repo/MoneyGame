@@ -1,4 +1,4 @@
-package com.moneygame.admin.moneygame_admin
+package com.moneygame.admin
 
 import android.content.Context
 import android.content.Intent

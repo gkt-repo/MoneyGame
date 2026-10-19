@@ -8,7 +8,7 @@
 PRODUCT_NAME = moneygame_user
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.moneygame.user.moneygameUser
+PRODUCT_BUNDLE_IDENTIFIER = com.moneygame.user
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.moneygame.user. All rights reserved.
