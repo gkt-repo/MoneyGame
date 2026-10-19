@@ -30,14 +30,8 @@ case "${1:-start}" in
 esac
 
 # Auto-resolve previously failed migration if present, so the corrected migration can deploy
-MIG_STATUS=$(npx prisma migrate status 2>&1 || true)
-if echo "$MIG_STATUS" | grep -q "failed migrations"; then
-  FAILED_NAME=$(echo "$MIG_STATUS" | grep -oE '[0-9]{14}_[a-zA-Z0-9_]+' | head -n 1)
-  if [ -n "$FAILED_NAME" ]; then
-    echo "Resolving failed migration $FAILED_NAME as rolled-back to re-apply updated migration..."
-    npx prisma migrate resolve --rolled-back "$FAILED_NAME" || true
-  fi
-fi
+node scripts/auto-resolve-migration.cjs
+
 
 attempt=0
 until npx prisma migrate deploy; do
