@@ -10,9 +10,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-money_secure_pass_2026}
     volumes:
       - moneygame_pgdata:/var/lib/postgresql/data
-    ports:
-      # Bound to 127.0.0.1 on port 5433 to completely isolate from existing nith_connect_db on 5432
-      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     networks:
       - moneygame_network
     healthcheck:
