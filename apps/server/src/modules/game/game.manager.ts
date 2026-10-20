@@ -158,10 +158,10 @@ export class GameManager {
         const legacyEngine = gameRegistry.get('GUESS_NUMBER');
         void legacyEngine.startGame(result.id, this.io);
       } else {
-        void engine.onPlayerJoined(updatedRoom as unknown as RoomWithPlayers, userId, this.io);
+        await engine.onPlayerJoined(updatedRoom as unknown as RoomWithPlayers, userId, this.io);
       }
     } else if (result.gameType === 'SPORTS_MATCH') {
-      void engine.onPlayerJoined(updatedRoom as unknown as RoomWithPlayers, userId, this.io);
+      await engine.onPlayerJoined(updatedRoom as unknown as RoomWithPlayers, userId, this.io);
     }
 
     this.io?.to(`room:${result.id}`).emit('room_updated', updatedRoom);

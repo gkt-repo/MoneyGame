@@ -339,7 +339,54 @@ async function run() {
   await sportsService.settleSportsPool(secRoom!.id, 999, 'Test Cleanup');
   console.log('   Multiplayer sports pool is securely protected against unauthorized cancellation ✅ PASS\n');
 
-  console.log('🎉 ALL 10 LIVE SPORTS POOL TESTS PASSED SUCCESSFULLY!');
+  // Test 11: Fixture Integrity - Match title, teams, logos, and countdown start time are never mutated on join
+  console.log('Test 11: Fixture Integrity - Match Title, Teams, Logos & Start Time Preserved on Join');
+  const userA = await createUserWithBalance('ind_nz_host', 500);
+  const userB = await createUserWithBalance('ind_nz_joiner', 500);
+
+  const testFutureStart = new Date(Date.now() + 86400000).toISOString(); // 24 hours in future
+  const indNzRoom = await gameManager.createRoom(
+    userA.id,
+    100,
+    10,
+    1,
+    'SPORTS_MATCH',
+    {
+      matchId: 'fixture-ind-nz-2026',
+      sport: 'Cricket',
+      league: 'ICC World Cup',
+      matchTitle: 'India vs New Zealand',
+      startTime: testFutureStart,
+      team1: { name: 'India', shortName: 'IND', logo: 'https://espn.com/ind.png' },
+      team2: { name: 'New Zealand', shortName: 'NZ', logo: 'https://espn.com/nz.png' },
+      chosenTeam: 'India',
+    }
+  );
+
+  assert(indNzRoom!.status === 'WAITING', 'Room must be WAITING');
+
+  // Player B joins the room
+  await gameManager.joinRoom(userB.id, indNzRoom!.roomCode, 2);
+
+  // Fetch from database directly to verify raw customConfig
+  const rawDb = await prisma.room.findUniqueOrThrow({ where: { id: indNzRoom!.id } });
+  const parsed = JSON.parse(rawDb.customConfig!);
+
+  assert(parsed.matchId === 'fixture-ind-nz-2026', `matchId corrupted: ${parsed.matchId}`);
+  assert(parsed.matchTitle === 'India vs New Zealand', `matchTitle corrupted: ${parsed.matchTitle}`);
+  assert(parsed.team1.name === 'India', `team1 corrupted: ${parsed.team1?.name}`);
+  assert(parsed.team1.shortName === 'IND', `team1 shortName corrupted: ${parsed.team1?.shortName}`);
+  assert(parsed.team1.logo === 'https://espn.com/ind.png', `team1 logo corrupted: ${parsed.team1?.logo}`);
+  assert(parsed.team2.name === 'New Zealand', `team2 corrupted: ${parsed.team2?.name}`);
+  assert(parsed.team2.shortName === 'NZ', `team2 shortName corrupted: ${parsed.team2?.shortName}`);
+  assert(parsed.team2.logo === 'https://espn.com/nz.png', `team2 logo corrupted: ${parsed.team2?.logo}`);
+  assert(parsed.startTime === testFutureStart, `startTime corrupted: ${parsed.startTime}`);
+  assert(parsed.predictions[userB.id]?.teamName === 'New Zealand', 'Player B prediction recorded');
+  assert(rawDb.status === 'WAITING', `Room status must still be WAITING (not full, not started), got: ${rawDb.status}`);
+
+  console.log('   Match Title (IND vs NZ), Teams, Logos, and future StartTime 100% preserved on join ✅ PASS\n');
+
+  console.log('🎉 ALL 11 LIVE SPORTS POOL TESTS PASSED SUCCESSFULLY!');
 }
 
 run().catch(err => {
