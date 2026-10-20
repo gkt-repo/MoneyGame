@@ -182,27 +182,15 @@ export class SportsMatchEngine implements IGameEngine {
   }
 
   /**
-   * Handle in-game action (e.g. manual settle or simulation)
+   * Handle in-game action (sports match pool actions are handled via system settlement)
    */
   async handleAction(
-    roomId: string,
+    _roomId: string,
     _userId: string,
     action: string,
-    payload: any,
+    _payload: any,
     _io: Server | null
   ): Promise<ActionResult> {
-    if (action === 'SIMULATE_RESULT') {
-      const winningTeamIndex = Number(payload?.winningTeamIndex || 1);
-      const winningTeamName = payload?.winningTeamName;
-      const res = await sportsService.settleSportsPool(roomId, winningTeamIndex, winningTeamName);
-      return { success: true, settlement: res };
-    }
-
-    if (action === 'SIMULATE_REFUND') {
-      const res = await sportsService.settleSportsPool(roomId, 999, 'Refund');
-      return { success: true, settlement: res };
-    }
-
     return { success: false, message: `Unsupported sports action: ${action}` };
   }
 

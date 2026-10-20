@@ -11,8 +11,10 @@ import {
   Users,
   AlertCircle,
   XCircle,
+  Dices,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { Dice3D } from './Dice3D';
 
 interface GuessNumberTableViewProps {
   room: RoomItem;
@@ -31,6 +33,18 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isRolling, setIsRolling] = useState(false);
   const [rollTickNumber, setRollTickNumber] = useState<number | null>(null);
+  const [rollIndex, setRollIndex] = useState(1);
+  const [currentRollNumber, setCurrentRollNumber] = useState<number | null>(null);
+  const [isRolling3D, setIsRolling3D] = useState(false);
+  const [isCurrentMatch, setIsCurrentMatch] = useState(false);
+  const [rollsHistory, setRollsHistory] = useState<
+    Array<{
+      rollIndex: number;
+      number: number;
+      isMatch: boolean;
+      winnerUsername?: string;
+    }>
+  >([]);
   const [copiedCode, setCopiedCode] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
@@ -50,6 +64,7 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
           setRoom(freshRoom);
           if (['COMPLETED', 'CANCELLED'].includes(freshRoom.status)) {
             setIsRolling(false);
+            setIsRolling3D(false);
             setCountdown(null);
           }
         }
@@ -64,6 +79,7 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
         setRoom(data);
         if (['COMPLETED', 'CANCELLED'].includes(data.status)) {
           setIsRolling(false);
+          setIsRolling3D(false);
           setCountdown(null);
         }
       }
@@ -78,6 +94,17 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
     const onRollStarted = (data?: { roomId?: string }) => {
       if (!data || !data.roomId || data.roomId === room.id) {
         setIsRolling(true);
+        setIsRolling3D(true);
+        setCountdown(null);
+      }
+    };
+
+    const onRollAttemptStart = (data: { roomId?: string; rollIndex: number }) => {
+      if (!data || !data.roomId || data.roomId === room.id) {
+        setRollIndex(data.rollIndex);
+        setIsRolling(true);
+        setIsRolling3D(true);
+        setIsCurrentMatch(false);
         setCountdown(null);
       }
     };
@@ -88,17 +115,42 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
       }
     };
 
+    const onRollOutcome = (data: {
+      roomId?: string;
+      rollIndex: number;
+      number: number;
+      isMatch: boolean;
+      winnerId?: string | null;
+      winnerUsername?: string | null;
+      rollsHistory?: Array<any>;
+    }) => {
+      if (!data || !data.roomId || data.roomId === room.id) {
+        setRollIndex(data.rollIndex);
+        setCurrentRollNumber(data.number);
+        setIsRolling3D(false);
+        setIsCurrentMatch(data.isMatch);
+        if (data.rollsHistory) {
+          setRollsHistory(data.rollsHistory);
+        }
+      }
+    };
+
     const onGameFinished = (data: any) => {
       if (data?.room && data.room.id !== room.id) return;
       setIsRolling(false);
+      setIsRolling3D(false);
       setCountdown(null);
+      if (data?.winningNumber) {
+        setCurrentRollNumber(data.winningNumber);
+        setIsCurrentMatch(true);
+      }
       if (data?.room) {
         setRoom(data.room);
       }
       if (data?.winnerId === user.id) {
         confetti({
-          particleCount: 100,
-          spread: 70,
+          particleCount: 120,
+          spread: 80,
           origin: { y: 0.6 },
         });
       }
@@ -108,7 +160,9 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
     socket.on('room_updated', onRoomUpdated);
     socket.on('game_countdown', onCountdown);
     socket.on('roll_started', onRollStarted);
+    socket.on('roll_attempt_start', onRollAttemptStart as any);
     socket.on('roll_tick', onRollTick);
+    socket.on('roll_outcome', onRollOutcome as any);
     socket.on('game_finished', onGameFinished);
 
     return () => {
@@ -117,7 +171,9 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
       socket.off('room_updated', onRoomUpdated);
       socket.off('game_countdown', onCountdown);
       socket.off('roll_started', onRollStarted);
+      socket.off('roll_attempt_start', onRollAttemptStart as any);
       socket.off('roll_tick', onRollTick);
+      socket.off('roll_outcome', onRollOutcome as any);
       socket.off('game_finished', onGameFinished);
     };
   }, [room.id, user.id, onRefreshBalance]);
@@ -181,43 +237,65 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
         </div>
       )}
 
-      {/* ─── LIVE GAME STATE BANNER (Matching Flutter App) ─── */}
+      {/* ─── LIVE GAME STATE BANNER ─── */}
       {isCompleted ? (
         /* 1. Finished Game State */
         <div
-          className={`p-6 rounded-2xl border text-center space-y-4 ${
+          className={`p-6 sm:p-8 rounded-3xl border text-center space-y-4 shadow-md transition-all ${
             isWinner
-              ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
-              : 'bg-slate-50 border-slate-200 text-slate-900'
+              ? 'bg-gradient-to-b from-emerald-950 via-slate-900 to-slate-950 border-emerald-500/50 text-white'
+              : 'bg-gradient-to-b from-slate-900 to-slate-950 border-slate-800 text-white'
           }`}
         >
-          <div className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-slate-900 text-white">
-            {isWinner ? '🎉 YOU ARE THE WINNER!' : 'GAME CONCLUDED'}
+          <div className="inline-block px-4 py-1.5 rounded-full text-xs font-black tracking-wider uppercase bg-amber-500/20 border border-amber-400/40 text-amber-300">
+            {isWinner ? '🎉 YOU ARE THE WINNER!' : '🏆 TABLE CONCLUDED'}
           </div>
 
-          <div>
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">
-              Winning Number
-            </span>
-            <div className="w-16 h-16 rounded-2xl bg-slate-900 text-white flex items-center justify-center mx-auto text-3xl font-extrabold mono-num shadow-md">
-              {room.winningNumber ?? 7}
-            </div>
-          </div>
+          {/* 3D Dice settled on winning number */}
+          <Dice3D
+            isRolling={false}
+            targetNumber={room.winningNumber ?? currentRollNumber ?? 7}
+            rollIndex={rollsHistory.length || 1}
+            isMatch={true}
+          />
 
           <div>
-            <div className="text-base font-bold">
+            <div className="text-lg font-extrabold text-white">
               Winner: {room.winner?.username || 'Winner'}
             </div>
-            <div className="text-sm font-bold text-emerald-600 mono-num mt-1">
+            <div className="text-sm font-bold text-emerald-400 mono-num mt-1">
               Payout: ₹{winnerPrize.toFixed(2)} credited to wallet
             </div>
           </div>
 
+          {/* Sequence of rolls until match occurred */}
+          {rollsHistory.length > 0 && (
+            <div className="pt-3 border-t border-slate-800">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">
+                Rolls Sequence ({rollsHistory.length} Roll{rollsHistory.length > 1 ? 's' : ''}):
+              </span>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {rollsHistory.map((hist, i) => (
+                  <span
+                    key={i}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold font-mono border ${
+                      hist.isMatch
+                        ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-300 shadow-sm'
+                        : 'bg-slate-800 border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    Roll #{hist.rollIndex}: <strong className="text-white">#{hist.number}</strong> {hist.isMatch ? '✓ MATCH!' : '✖'}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {onBack && (
-            <div className="pt-2">
+            <div className="pt-3">
               <button
                 onClick={onBack}
-                className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-xs"
+                className="w-full sm:w-auto px-8 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-md"
               >
                 Back to Lobby
               </button>
@@ -232,17 +310,81 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
           <p className="text-xs text-red-700">All player entry stakes have been refunded to wallet.</p>
         </div>
       ) : isRolling ? (
-        /* 3. Rolling Random Winner State (Animated Ticker) */
-        <div className="p-8 bg-emerald-50/60 border border-emerald-300 rounded-2xl text-center space-y-4 animate-pulse">
-          <div className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-            Rolling Random Winner...
+        /* 3. Rolling Random Winner State with 3D 10-Digit Dice */
+        <div className="p-6 sm:p-8 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border border-slate-800 rounded-3xl text-center space-y-5 shadow-xl text-white">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2.5 text-left">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-sm shadow-xs">
+                🎲
+              </div>
+              <div>
+                <h3 className="text-xs font-black tracking-wide uppercase text-white">
+                  3D 10-Digit Dice
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  Rolling 1 time, 2 times... until a picked number hits!
+                </p>
+              </div>
+            </div>
+
+            <div className="px-3.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-black tracking-wider animate-pulse">
+              ROLL ATTEMPT #{rollIndex}
+            </div>
           </div>
-          <div className="w-20 h-20 rounded-2xl bg-emerald-600 text-white flex items-center justify-center mx-auto text-4xl font-extrabold mono-num shadow-lg">
-            {rollTickNumber ?? 7}
+
+          {/* 3D 10-Digit Dice Component */}
+          <Dice3D
+            isRolling={isRolling3D}
+            targetNumber={currentRollNumber ?? rollTickNumber ?? 7}
+            rollIndex={rollIndex}
+            isMatch={isCurrentMatch}
+          />
+
+          {/* Suspense status text */}
+          <div className="py-2.5 px-5 rounded-2xl bg-slate-950/70 border border-slate-800 inline-block">
+            {isRolling3D ? (
+              <span className="text-xs font-bold text-emerald-400 animate-pulse flex items-center gap-2 justify-center">
+                <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                Rolling 3D Dice (Roll #{rollIndex})...
+              </span>
+            ) : isCurrentMatch ? (
+              <span className="text-xs font-black text-amber-400 flex items-center gap-2 justify-center">
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                Roll #{rollIndex} landed on #{currentRollNumber} — MATCH! WINNER FOUND!
+              </span>
+            ) : currentRollNumber !== null ? (
+              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 justify-center">
+                <span className="text-red-400 font-bold">✖ No Match</span> on #{currentRollNumber}! Re-rolling for Roll #{rollIndex + 1}...
+              </span>
+            ) : (
+              <span className="text-xs text-slate-400">
+                Rolling 3D 10-digit dice with verified cryptographic randomness
+              </span>
+            )}
           </div>
-          <p className="text-xs text-slate-500">
-            Determining winner with verifiable cryptographic random roll
-          </p>
+
+          {/* Sequence of previous rolls */}
+          {rollsHistory.length > 0 && (
+            <div className="pt-3 border-t border-slate-800">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">
+                Rolls History:
+              </span>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {rollsHistory.map((hist, i) => (
+                  <span
+                    key={i}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold font-mono border ${
+                      hist.isMatch
+                        ? 'bg-amber-500/20 border-amber-400/60 text-amber-300 shadow-sm'
+                        : 'bg-slate-800/90 border-slate-700 text-slate-300'
+                    }`}
+                  >
+                    Roll #{hist.rollIndex}: <strong className="text-white">#{hist.number}</strong> {hist.isMatch ? '✓ MATCH!' : '✖'}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : countdown !== null ? (
         /* 4. Table Full Countdown State */

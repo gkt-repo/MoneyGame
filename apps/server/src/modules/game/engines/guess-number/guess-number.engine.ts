@@ -22,6 +22,20 @@ export class GuessNumberEngine implements IGameEngine {
   };
 
   private timers = new Map<string, ReturnType<typeof setInterval>>();
+  private activeRolls = new Map<
+    string,
+    {
+      rollIndex: number;
+      currentRoll: number | null;
+      isRolling: boolean;
+      rollsHistory: Array<{
+        rollIndex: number;
+        number: number;
+        isMatch: boolean;
+        winnerUsername?: string;
+      }>;
+    }
+  >();
 
   validateCreateOptions(options: {
     entryFee: number;
@@ -94,26 +108,95 @@ export class GuessNumberEngine implements IGameEngine {
     });
     if (started.count !== 1) return;
 
-    io?.to(`room:${roomId}`).emit('roll_started');
+    io?.to(`room:${roomId}`).emit('roll_started', { roomId });
 
-    // Simulate animated suspense roll ticks
-    for (let i = 0; i < 8; i++) {
-      await new Promise(res => setTimeout(res, 350));
-      const tickNum = crypto.randomInt(1, 11);
-      io?.to(`room:${roomId}`).emit('roll_tick', { number: tickNum });
-    }
-
-    // Determine winning number: roll until one of the chosen player numbers hits!
     const chosenNumbers = room.players
       .map(p => p.guessNumber)
       .filter((n): n is number => n !== null);
 
-    let winningNumber = crypto.randomInt(1, 11);
-    while (!chosenNumbers.includes(winningNumber)) {
-      winningNumber = crypto.randomInt(1, 11);
+    const rollsHistory: Array<{
+      rollIndex: number;
+      number: number;
+      isMatch: boolean;
+      winnerUsername?: string;
+    }> = [];
+
+    let winningPlayer: (typeof room.players)[0] | null = null;
+    let winningNumber = 0;
+    let rollIndex = 1;
+
+    // Roll round-by-round until a chosen player number hits!
+    while (!winningPlayer) {
+      this.activeRolls.set(roomId, {
+        rollIndex,
+        currentRoll: null,
+        isRolling: true,
+        rollsHistory: [...rollsHistory],
+      });
+
+      io?.to(`room:${roomId}`).emit('roll_attempt_start', {
+        roomId,
+        rollIndex,
+      });
+
+      // Suspense ticks during initial 3D tumble (1.5 seconds)
+      for (let t = 0; t < 6; t++) {
+        await new Promise(res => setTimeout(res, 250));
+        const tickNum = crypto.randomInt(1, 11);
+        io?.to(`room:${roomId}`).emit('roll_tick', { number: tickNum, roomId });
+      }
+
+      // Determine outcome of this roll
+      let rolledNumber: number;
+      if (rollIndex >= 4) {
+        // Guarantee match by roll 4 if multiple attempts missed, keeping table snappy
+        rolledNumber = chosenNumbers[crypto.randomInt(0, chosenNumbers.length)];
+      } else {
+        rolledNumber = crypto.randomInt(1, 11);
+      }
+
+      const match = room.players.find(p => p.guessNumber === rolledNumber);
+      const isMatch = Boolean(match);
+
+      rollsHistory.push({
+        rollIndex,
+        number: rolledNumber,
+        isMatch,
+        winnerUsername: match?.user.username,
+      });
+
+      this.activeRolls.set(roomId, {
+        rollIndex,
+        currentRoll: rolledNumber,
+        isRolling: false,
+        rollsHistory: [...rollsHistory],
+      });
+
+      // Emit outcome of this roll attempt
+      io?.to(`room:${roomId}`).emit('roll_tick', { number: rolledNumber, roomId });
+      io?.to(`room:${roomId}`).emit('roll_outcome', {
+        roomId,
+        rollIndex,
+        number: rolledNumber,
+        isMatch,
+        winnerId: match ? match.userId : null,
+        winnerUsername: match ? match.user.username : null,
+        rollsHistory: [...rollsHistory],
+      });
+
+      if (match) {
+        winningPlayer = match;
+        winningNumber = rolledNumber;
+        // Pause 2 seconds so players witness the 3D dice match victory
+        await new Promise(res => setTimeout(res, 2000));
+        break;
+      } else {
+        // No match! Advance to next roll after 2.5s suspense pause
+        rollIndex++;
+        await new Promise(res => setTimeout(res, 2500));
+      }
     }
 
-    const winningPlayer = room.players.find(p => p.guessNumber === winningNumber)!;
     const totalPool = room.entryFee * room.players.length;
 
     const settlement = await walletService.settleRoomWinner(
@@ -131,6 +214,8 @@ export class GuessNumberEngine implements IGameEngine {
         winner: { select: { id: true, username: true } },
       },
     });
+
+    this.activeRolls.delete(roomId);
 
     if (io) {
       io.to(`room:${roomId}`).emit('game_finished', {
@@ -161,8 +246,8 @@ export class GuessNumberEngine implements IGameEngine {
     return { success: false, message: 'Dice Guess does not support in-game actions' };
   }
 
-  getClientState(_roomId: string, _userId?: string): any {
-    return null;
+  getClientState(roomId: string, _userId?: string): any {
+    return this.activeRolls.get(roomId) || null;
   }
 
   cleanupRoom(roomId: string): void {
@@ -171,6 +256,7 @@ export class GuessNumberEngine implements IGameEngine {
       clearInterval(timer);
       this.timers.delete(roomId);
     }
+    this.activeRolls.delete(roomId);
   }
 
   stopAllTimers(): void {

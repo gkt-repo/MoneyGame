@@ -6,6 +6,7 @@ import '../../core/network/api_client.dart';
 import '../../core/network/socket_service.dart';
 import 'teen_patti/teen_patti_table_screen.dart';
 import 'sports_match/sports_match_table_screen.dart';
+import 'widgets/dice_3d_widget.dart';
 
 class ActiveRoomScreen extends StatefulWidget {
   final String roomId;
@@ -29,6 +30,11 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
   int? _countdown;
   bool _isRolling = false;
   int? _rollTickNumber;
+  int _rollIndex = 1;
+  int? _currentRollNumber;
+  bool _isRolling3D = false;
+  bool _isMatch = false;
+  List<Map<String, dynamic>> _rollsHistory = [];
 
   Map<String, dynamic>? _gameFinishedData;
   Timer? _fallbackPollTimer;
@@ -72,6 +78,11 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
         if (data['id'] != null && data['id'] != widget.roomId) return;
         setState(() {
           _room = RoomModel.fromJson(data);
+          if (['COMPLETED', 'CANCELLED'].contains(_room?.status)) {
+            _isRolling = false;
+            _isRolling3D = false;
+            _countdown = null;
+          }
         });
       }
     });
@@ -90,6 +101,20 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
         if (data is Map && data['roomId'] != null && data['roomId'] != widget.roomId) return;
         setState(() {
           _isRolling = true;
+          _isRolling3D = true;
+          _countdown = null;
+        });
+      }
+    });
+
+    _listenSocket('roll_attempt_start', (data) {
+      if (mounted && data is Map) {
+        if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
+        setState(() {
+          _rollIndex = (data['rollIndex'] as num?)?.toInt() ?? 1;
+          _isRolling = true;
+          _isRolling3D = true;
+          _isMatch = false;
           _countdown = null;
         });
       }
@@ -104,12 +129,34 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
       }
     });
 
+    _listenSocket('roll_outcome', (data) {
+      if (mounted && data is Map) {
+        if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
+        setState(() {
+          _rollIndex = (data['rollIndex'] as num?)?.toInt() ?? _rollIndex;
+          _currentRollNumber = (data['number'] as num?)?.toInt();
+          _isRolling3D = false;
+          _isMatch = data['isMatch'] == true;
+          if (data['rollsHistory'] is List) {
+            _rollsHistory = List<Map<String, dynamic>>.from(
+              (data['rollsHistory'] as List).map((e) => Map<String, dynamic>.from(e as Map)),
+            );
+          }
+        });
+      }
+    });
+
     _listenSocket('game_finished', (data) {
       if (mounted && data != null) {
         if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
         setState(() {
           _isRolling = false;
+          _isRolling3D = false;
           _gameFinishedData = Map<String, dynamic>.from(data);
+          if (data['winningNumber'] != null) {
+            _currentRollNumber = (data['winningNumber'] as num).toInt();
+            _isMatch = true;
+          }
           if (data['room'] != null) {
             _room = RoomModel.fromJson(data['room']);
           }
@@ -404,62 +451,95 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: isMeWinner ? AppColors.emerald50 : AppColors.white,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: isMeWinner ? AppColors.emerald600 : AppColors.slate200),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.slate900.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
                 color: isMeWinner ? AppColors.emerald600 : AppColors.slate900,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                isMeWinner ? 'YOU ARE THE WINNER!' : 'GAME CONCLUDED',
+                isMeWinner ? '🎉 YOU ARE THE WINNER!' : '🏆 TABLE CONCLUDED',
                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.white),
               ),
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'WINNING NUMBER',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.slate500),
+            const SizedBox(height: 12),
+
+            // 3D 10-Digit Dice settled on winning number
+            Dice3DWidget(
+              isRolling: false,
+              targetNumber: winningNumber,
+              rollIndex: _rollsHistory.isNotEmpty ? _rollsHistory.length : 1,
+              isMatch: true,
             ),
-            const SizedBox(height: 6),
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: AppColors.slate900,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Text(
-                  '$winningNumber',
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.white,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
+
             Text(
               'Winner: $winnerUsername',
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.slate900),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.slate900),
             ),
             const SizedBox(height: 4),
             Text(
-              winnerPrize != null ? 'Payout: ₹${winnerPrize.toStringAsFixed(2)} credited' : 'Prize credited. See your wallet for the payout.',
+              winnerPrize != null
+                  ? 'Payout: ₹${winnerPrize.toStringAsFixed(2)} credited'
+                  : 'Prize credited. See your wallet for the payout.',
               style: const TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 13,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 color: AppColors.emerald600,
               ),
             ),
+
+            if (_rollsHistory.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              const Divider(height: 1, color: AppColors.slate200),
+              const SizedBox(height: 10),
+              Text(
+                'Rolls Sequence (${_rollsHistory.length} Roll${_rollsHistory.length > 1 ? 's' : ''}):',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.slate500),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                alignment: WrapAlignment.center,
+                children: _rollsHistory.map((hist) {
+                  final isM = hist['isMatch'] == true;
+                  final rNum = hist['number'];
+                  final rIdx = hist['rollIndex'];
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isM ? AppColors.emerald50 : AppColors.slate100,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: isM ? AppColors.emerald600 : AppColors.slate300),
+                    ),
+                    child: Text(
+                      'Roll #$rIdx: #$rNum ${isM ? '✓' : '✖'}',
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: isM ? AppColors.emerald700 : AppColors.slate700,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+
             const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
@@ -479,46 +559,122 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
       );
     }
 
-    // 2. Rolling State
+    // 2. Rolling State with 3D 10-Digit Dice
     if (_isRolling || _room?.status == 'ROLLING') {
       return Container(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: AppColors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.emerald600),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.emerald600, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.emerald600.withValues(alpha: 0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           children: [
-            const Text(
-              'ROLLING RANDOM WINNER...',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.emerald700),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                color: AppColors.emerald600,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Center(
-                child: Text(
-                  '${_rollTickNumber ?? 7}',
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 34,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.white,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Row(
+                  children: [
+                    Text('🎲', style: TextStyle(fontSize: 16)),
+                    SizedBox(width: 6),
+                    Text(
+                      '3D 10-DIGIT DICE ROLL',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.emerald700),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.emerald50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.emerald600.withValues(alpha: 0.4)),
                   ),
+                  child: Text(
+                    'ATTEMPT #$_rollIndex',
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.emerald700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // 3D 10-Digit Animated Dice
+            Dice3DWidget(
+              isRolling: _isRolling3D,
+              targetNumber: _currentRollNumber ?? _rollTickNumber ?? 7,
+              rollIndex: _rollIndex,
+              isMatch: _isMatch,
+            ),
+            const SizedBox(height: 12),
+
+            // Live status badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: _isMatch ? AppColors.amber50 : AppColors.slate100,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _isMatch ? AppColors.amber600 : AppColors.slate200),
+              ),
+              child: Text(
+                _isRolling3D
+                    ? '🎲 Rolling 3D Dice (Roll #$_rollIndex)...'
+                    : _isMatch
+                        ? '🎉 MATCH! Roll #$_rollIndex landed on #$_currentRollNumber!'
+                        : _currentRollNumber != null
+                            ? '✖ Landed on #$_currentRollNumber (No Match). Preparing Roll #${_rollIndex + 1}...'
+                            : 'Determining winner with cryptographic random roll',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: _isMatch ? AppColors.amber800 : AppColors.slate700,
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            const Text(
-              'Determining winner with cryptographic random roll',
-              style: TextStyle(fontSize: 12, color: AppColors.slate500),
-            ),
+
+            if (_rollsHistory.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                alignment: WrapAlignment.center,
+                children: _rollsHistory.map((hist) {
+                  final isM = hist['isMatch'] == true;
+                  final rNum = hist['number'];
+                  final rIdx = hist['rollIndex'];
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isM ? AppColors.emerald50 : AppColors.slate50,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: isM ? AppColors.emerald600 : AppColors.slate300),
+                    ),
+                    child: Text(
+                      'Roll #$rIdx: #$rNum ${isM ? '✓' : '✖'}',
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: isM ? AppColors.emerald700 : AppColors.slate600,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
           ],
         ),
       );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moneygame_user/models/teen_patti_models.dart';
 import 'package:moneygame_user/screens/game/teen_patti/widgets/teen_patti_action_bar.dart';
+import 'package:moneygame_user/screens/game/teen_patti/widgets/teen_patti_card_deal.dart';
 import 'package:moneygame_user/screens/game/teen_patti/widgets/teen_patti_card_visual.dart';
 import 'package:moneygame_user/screens/game/teen_patti/widgets/teen_patti_felt_table.dart';
 import 'package:moneygame_user/screens/game/teen_patti/widgets/teen_patti_player_seat.dart';
@@ -219,5 +220,79 @@ void main() {
       await tester.pump();
       expect(sideShowTapped, isTrue);
     });
+
+    testWidgets('TeenPattiCardDealOverlay renders and animates cards distribution', (tester) async {
+      late AnimationController controller;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StatefulBuilder(
+            builder: (context, setState) {
+              return Scaffold(
+                body: SizedBox(
+                  width: 800,
+                  height: 480,
+                  child: _DealTestWidget(
+                    onControllerCreated: (c) => controller = c,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      // Initially at 0.0 with not animating: overlay returns SizedBox.shrink
+      expect(find.byType(TeenPattiCardDealOverlay), findsOneWidget);
+
+      // Start dealing animation
+      controller.forward(from: 0.0);
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // In mid-deal: cards are being rendered and flying
+      expect(controller.isAnimating, isTrue);
+
+      // Advance to completion
+      await tester.pump(const Duration(milliseconds: 2000));
+      expect(controller.value, 1.0);
+    });
   });
+}
+
+class _DealTestWidget extends StatefulWidget {
+  final ValueChanged<AnimationController> onControllerCreated;
+
+  const _DealTestWidget({required this.onControllerCreated});
+
+  @override
+  State<_DealTestWidget> createState() => _DealTestWidgetState();
+}
+
+class _DealTestWidgetState extends State<_DealTestWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    );
+    widget.onControllerCreated(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TeenPattiCardDealOverlay(
+      controller: _controller,
+      activeSeatsCount: 5,
+    );
+  }
 }

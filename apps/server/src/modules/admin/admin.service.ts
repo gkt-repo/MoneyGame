@@ -807,14 +807,6 @@ export class AdminService {
   }
 
   /**
-   * 1-Click Simulator: Simulates the Android listener receiving a bank push notification
-   */
-  async simulateIncomingWebhook(amount: number, utr?: string) {
-    const generatedUtr = utr || `SIM-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    return paymentService.verifyIncomingPayment(amount, generatedUtr);
-  }
-
-  /**
    * Manually approve a deposit with verified bank UTR
    */
   async approveDeposit(depositId: string, utr: string, adminId: string) {

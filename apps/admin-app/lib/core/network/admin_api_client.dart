@@ -1006,22 +1006,6 @@ class AdminApiClient {
     }
   }
 
-  // ─── SIMULATE WEBHOOK / NOTIFICATION ───────────────────────────────────────
-
-  static Future<void> simulatePayment({
-    required double amount,
-    String? utr,
-  }) async {
-    try {
-      await _dio.post('/admin/simulate-payment', data: {
-        'amount': amount,
-        'utr': utr,
-      });
-    } on DioException catch (e) {
-      throw e.response?.data['error'] ?? 'Failed to simulate payment';
-    }
-  }
-
   // ─── UPI PAYMENT LISTENER WATCHDOG ─────────────────────────────────────────
 
   static Future<ListenerConfigModel> getListenerConfig() async {

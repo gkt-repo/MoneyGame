@@ -18,6 +18,7 @@ import {
   VolumeX,
   Copy,
   Check,
+  RotateCw,
   X,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -66,6 +67,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [isDealing, setIsDealing] = useState(false);
   const [finishData, setFinishData] = useState<{
     winnerId: string;
     winnerUsername: string;
@@ -81,6 +83,14 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
   } | null>(null);
 
   const [myBalance, setMyBalance] = useState<number>(user.wallet?.balance ?? 0);
+
+  const triggerDealAnimation = () => {
+    setIsDealing(true);
+    teenPattiSound.playCardDeal();
+    setTimeout(() => {
+      setIsDealing(false);
+    }, 1600);
+  };
 
   useEffect(() => {
     if (typeof user.wallet?.balance === 'number') {
@@ -119,7 +129,12 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
     socket.on('teen_patti_state', (state: any) => {
       if (state && (!state.roomId || state.roomId === room.id)) {
-        setLocalGameState(state);
+        setLocalGameState(prev => {
+          if (prev && state.roundNumber > prev.roundNumber) {
+            triggerDealAnimation();
+          }
+          return state;
+        });
       }
     });
 
@@ -137,7 +152,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
     });
 
     if (room.status === 'PLAYING') {
-      teenPattiSound.playCardDeal();
+      triggerDealAnimation();
     }
 
     socket.on('player_acted', (data: { roomId?: string; userId: string; action: string; betAmount: number; pot: number }) => {
@@ -287,10 +302,15 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
     if (!gameState?.turnExpiresAt || !isPlaying) return;
     const interval = setInterval(() => {
       const remaining = Math.max(0, Math.ceil((gameState.turnExpiresAt! - Date.now()) / 1000));
-      setTimeLeft(remaining);
+      setTimeLeft(prev => {
+        if (remaining !== prev && remaining <= 5 && remaining > 0 && isMyTurn) {
+          teenPattiSound.playTimerTick();
+        }
+        return remaining;
+      });
     }, 500);
     return () => clearInterval(interval);
-  }, [gameState?.turnExpiresAt, isPlaying]);
+  }, [gameState?.turnExpiresAt, isPlaying, isMyTurn]);
 
   // Send action to server
   const handleAction = async (action: string, payload: any = {}) => {
@@ -398,6 +418,69 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
         <div className="absolute inset-4 rounded-2xl border-2 border-emerald-500/20 pointer-events-none" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-800/40 via-emerald-950/80 to-slate-950 pointer-events-none" />
 
+        {/* Deal Distribution Animation Overlay */}
+        {isDealing && (
+          <div className="absolute inset-0 z-30 pointer-events-none flex flex-col items-center justify-center overflow-hidden">
+            {/* Dealer glowing deck at top */}
+            <div className="absolute top-10 flex flex-col items-center animate-pulse">
+              <div className="w-12 h-16 bg-gradient-to-br from-red-800 to-red-950 border-2 border-amber-300 rounded-lg shadow-[0_0_25px_rgba(251,191,36,0.7)] flex items-center justify-center text-amber-300 font-bold text-sm transform -rotate-3">
+                ♠
+              </div>
+              <span className="text-[10px] font-bold text-amber-300 uppercase tracking-widest mt-1 bg-slate-900/90 px-2.5 py-0.5 rounded-full border border-amber-400/60 shadow-md">
+                Dealing Cards...
+              </span>
+            </div>
+
+            {/* Flying Cards to All Table Seats */}
+            <div className="absolute inset-0 pointer-events-none">
+              <style>{`
+                @keyframes webDealFlight {
+                  0% {
+                    opacity: 0;
+                    transform: translate(-50%, -50%) scale(0.35) rotate(0deg);
+                  }
+                  15% {
+                    opacity: 1;
+                  }
+                  100% {
+                    opacity: 1;
+                    transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(1) rotate(var(--rot));
+                  }
+                }
+              `}</style>
+              {room.players.map((p, pIdx) => {
+                const isMe = p.userId === user.id;
+                const targetX = isMe ? 50 : ((pIdx % 2 === 0) ? 22 : 78);
+                const targetY = isMe ? 85 : ((pIdx < 2) ? 38 : 64);
+
+                return [0, 1, 2].map((cIdx) => {
+                  const delayMs = (pIdx * 3 + cIdx) * 85;
+                  return (
+                    <div
+                      key={`${p.id}-${cIdx}`}
+                      style={{
+                        position: 'absolute',
+                        top: '14%',
+                        left: '50%',
+                        animation: 'webDealFlight 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+                        animationDelay: `${delayMs}ms`,
+                        transform: 'translate(-50%, -50%) scale(0.35)',
+                        opacity: 0,
+                        '--tx': `${targetX - 50}vw`,
+                        '--ty': `${targetY - 14}vh`,
+                        '--rot': `${(cIdx - 1) * 12}deg`,
+                      } as React.CSSProperties}
+                      className="w-10 h-14 bg-gradient-to-br from-red-800 to-red-950 border border-amber-300 rounded-md shadow-2xl flex items-center justify-center text-amber-300 text-xs font-bold"
+                    >
+                      ♠
+                    </div>
+                  );
+                });
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Top Bar: Table Info, Rules, Sound & Turn Notification */}
         <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-200/80 border-b border-emerald-800/50 pb-3">
           <div className="flex items-center gap-2">
@@ -451,6 +534,16 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
               title={soundEnabled ? 'Mute audio' : 'Enable audio'}
             >
               {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5 text-slate-400" />}
+            </button>
+
+            {/* Replay Deal Button */}
+            <button
+              type="button"
+              onClick={triggerDealAnimation}
+              className="p-1.5 bg-emerald-900/80 hover:bg-emerald-800 border border-emerald-700/60 rounded-full text-emerald-300 transition cursor-pointer"
+              title="Replay card distribution animation"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
             </button>
 
             {isPlaying && (
@@ -572,12 +665,15 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
             const isPacked = !!pState?.isPacked;
             const isTurn = gameState?.currentTurnUserId === p.userId && isPlaying && !isPacked;
             const isSeen = pState?.isSeen;
+            const isSeatWinner = finishData?.winnerId === p.userId || (!finishData && isCompleted && room.winnerId === p.userId);
 
             return (
               <div
                 key={p.id}
                 className={`p-2.5 rounded-xl border transition-all duration-300 ${
-                  isPacked
+                  isSeatWinner
+                    ? 'bg-amber-950/70 border-amber-400 ring-2 ring-amber-400/80 shadow-[0_0_20px_rgba(251,191,36,0.4)] scale-[1.03]'
+                    : isPacked
                     ? 'bg-slate-900/60 border-slate-700/50 opacity-40'
                     : isTurn
                     ? 'bg-amber-400/20 border-amber-400 ring-2 ring-amber-400/50 scale-[1.02]'
@@ -592,7 +688,11 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                     {isMe && <span className="text-amber-400 ml-1 text-[10px]">(You)</span>}
                   </span>
                   {/* Status Badge */}
-                  {isPacked ? (
+                  {isSeatWinner ? (
+                    <span className="text-[10px] font-black text-amber-300 uppercase flex items-center gap-0.5 animate-pulse">
+                      👑 Winner
+                    </span>
+                  ) : isPacked ? (
                     <span className="text-[10px] font-bold text-red-400 uppercase">Packed</span>
                   ) : isSeen ? (
                     <span className="text-[10px] font-bold text-cyan-300 uppercase">Seen</span>
@@ -600,6 +700,14 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                     <span className="text-[10px] font-bold text-purple-300 uppercase">Blind</span>
                   )}
                 </div>
+
+                {isPacked && (
+                  <div className="mt-1 flex justify-center">
+                    <span className="px-2 py-0.5 bg-red-950/90 text-red-300 border border-red-500/80 rounded font-black text-[9px] uppercase tracking-wider transform -rotate-6 shadow-md">
+                      PACKED
+                    </span>
+                  </div>
+                )}
 
                 <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-300/80">
                   <span>Bet: ₹{(pState?.totalBet || room.entryFee).toFixed(2)}</span>

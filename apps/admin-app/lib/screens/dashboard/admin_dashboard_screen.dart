@@ -86,77 +86,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-  Future<void> _handleSimulateWebhook() async {
-    final amtController = TextEditingController(text: '100');
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Text(
-          'Simulate Bank Webhook',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.slate900),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Simulate incoming bank notification (Android listener webhook). Automatically finds pending deposit matching this amount and marks APPROVED.',
-              style: TextStyle(fontSize: 12, color: AppColors.slate600, height: 1.4),
-            ),
-            const SizedBox(height: 14),
-            const Text('Deposit Amount (₹)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            TextField(
-              controller: amtController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700),
-              decoration: const InputDecoration(
-                prefixText: '₹ ',
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.slate500)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final amt = double.tryParse(amtController.text) ?? 100;
-              Navigator.of(ctx).pop();
-              try {
-                await AdminApiClient.simulatePayment(amount: amt);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Simulated payment of ₹$amt verified successfully!'),
-                      backgroundColor: AppColors.emerald700,
-                    ),
-                  );
-                  _fetchStats();
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString()), backgroundColor: AppColors.red600),
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.slate900),
-            child: const Text('Dispatch Simulation', style: TextStyle(color: AppColors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -467,13 +396,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => AdminSettingsScreen(admin: widget.admin, onLogout: widget.onLogout)),
                   ),
-                ),
-                const SizedBox(height: 8),
-                _buildActionTile(
-                  icon: Icons.flash_on_outlined,
-                  title: 'Simulate Bank Push Notification',
-                  subtitle: 'Test automated webhook without real bank transfer',
-                  onTap: _handleSimulateWebhook,
                 ),
               ],
             ],

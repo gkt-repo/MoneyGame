@@ -386,13 +386,6 @@ class AdminApiService {
     });
   }
 
-  async simulatePayment(amount: number, utr?: string): Promise<any> {
-    return this.request('/admin/simulate-payment', {
-      method: 'POST',
-      body: JSON.stringify({ amount, utr }),
-    });
-  }
-
   async getRooms(): Promise<any[]> {
     const res = await this.request<{ success: boolean; rooms: any[] }>('/rooms');
     return res.rooms;

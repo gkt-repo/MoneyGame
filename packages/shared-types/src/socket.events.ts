@@ -21,6 +21,21 @@ export interface ServerToClientEvents {
   game_countdown: (data: { countdown: number; roomId?: string }) => void;
   roll_started: (data?: { roomId?: string }) => void;
   roll_tick: (data: { number: number; roomId?: string }) => void;
+  roll_attempt_start: (data: { roomId: string; rollIndex: number }) => void;
+  roll_outcome: (data: {
+    roomId: string;
+    rollIndex: number;
+    number: number;
+    isMatch: boolean;
+    winnerId?: string | null;
+    winnerUsername?: string | null;
+    rollsHistory: Array<{
+      rollIndex: number;
+      number: number;
+      isMatch: boolean;
+      winnerUsername?: string;
+    }>;
+  }) => void;
   game_finished: (data: {
     winnerId: string;
     winnerUsername: string;

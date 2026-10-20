@@ -15,6 +15,9 @@ class TeenPattiPlayerSeat extends StatelessWidget {
   final double currentBet;
   final double userBalance;
   final bool cardsOnRight; // true for left-side seats, false for right-side seats
+  final bool isDealing; // true while card distribution animation is running
+  final bool isWinner; // true when this seat won the showdown
+  final List<PlayingCardModel>? showdownCards;
 
   const TeenPattiPlayerSeat({
     super.key,
@@ -29,6 +32,9 @@ class TeenPattiPlayerSeat extends StatelessWidget {
     this.currentBet = 0.0,
     this.userBalance = 0.0,
     this.cardsOnRight = true,
+    this.isDealing = false,
+    this.isWinner = false,
+    this.showdownCards,
   });
 
   @override
@@ -53,7 +59,10 @@ class TeenPattiPlayerSeat extends StatelessWidget {
               // 1. CARDS (In positive coordinates at top)
               Positioned(
                 top: 0,
-                child: _buildHeroCards(context),
+                child: Opacity(
+                  opacity: isDealing ? 0.0 : 1.0,
+                  child: _buildHeroCards(context),
+                ),
               ),
 
               // 2. AVATAR WITH SWEEP TIMER (Centered below cards)
@@ -109,7 +118,10 @@ class TeenPattiPlayerSeat extends StatelessWidget {
               top: 8,
               left: cardsOnRight ? 46 : null,
               right: cardsOnRight ? null : 46,
-              child: _buildOpponentCards(),
+              child: Opacity(
+                opacity: isDealing ? 0.0 : 1.0,
+                child: _buildOpponentCards(),
+              ),
             ),
 
             // Opponent Avatar
@@ -229,11 +241,13 @@ class TeenPattiPlayerSeat extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color: isCurrentTurn
-                    ? const Color(0xFF76FF03).withValues(alpha: 0.6)
-                    : Colors.black.withValues(alpha: 0.5),
-                blurRadius: isCurrentTurn ? 12 : 6,
-                spreadRadius: isCurrentTurn ? 2 : 0,
+                color: isWinner
+                    ? const Color(0xFFFFD700).withValues(alpha: 0.85)
+                    : isCurrentTurn
+                        ? const Color(0xFF76FF03).withValues(alpha: 0.6)
+                        : Colors.black.withValues(alpha: 0.5),
+                blurRadius: isWinner ? 20 : (isCurrentTurn ? 12 : 6),
+                spreadRadius: isWinner ? 3 : (isCurrentTurn ? 2 : 0),
               ),
             ],
           ),
@@ -257,6 +271,39 @@ class TeenPattiPlayerSeat extends StatelessWidget {
             ),
           ),
         ),
+
+        // Winner Crown on top of avatar
+        if (isWinner)
+          Positioned(
+            top: isHero ? -12 : -8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFD54F), Color(0xFFFF8F00)],
+                ),
+                borderRadius: BorderRadius.circular(6),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 1)),
+                ],
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.emoji_events, size: 10, color: Color(0xFF261005)),
+                  SizedBox(width: 2),
+                  Text(
+                    'WINNER',
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF261005),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -264,6 +311,7 @@ class TeenPattiPlayerSeat extends StatelessWidget {
   Widget _buildHeroCards(BuildContext context) {
     final cards = heroCards ?? player?.cards;
     final isSeen = player?.isSeen == true;
+    final isPacked = player?.isPacked == true;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -373,7 +421,40 @@ class TeenPattiPlayerSeat extends StatelessWidget {
                   ),
                 ),
               ),
+
+            // Stamped PACKED badge over Hero cards
+            if (isPacked)
+              Positioned(
+                top: 22,
+                child: _buildPackedStamp(width: 80),
+              ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPackedStamp({required double width}) {
+    return Transform.rotate(
+      angle: -0.22,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+        decoration: BoxDecoration(
+          color: const Color(0xFF7F1D1D).withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: const Color(0xFFEF4444), width: 1.5),
+          boxShadow: const [
+            BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 2)),
+          ],
+        ),
+        child: const Text(
+          'PACKED',
+          style: TextStyle(
+            color: Color(0xFFFCA5A5),
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.5,
+          ),
         ),
       ),
     );
@@ -400,7 +481,8 @@ class TeenPattiPlayerSeat extends StatelessWidget {
   }
 
   Widget _buildOpponentCards() {
-    final hasRevealed = player?.cards != null && player!.cards!.isNotEmpty;
+    final effectiveCards = showdownCards ?? player?.cards;
+    final hasRevealed = effectiveCards != null && effectiveCards.isNotEmpty;
 
     return SizedBox(
       width: 60,
@@ -414,7 +496,7 @@ class TeenPattiPlayerSeat extends StatelessWidget {
             child: Transform.rotate(
               angle: -0.16,
               child: TeenPattiCardVisual(
-                card: hasRevealed ? player!.cards![0] : null,
+                card: hasRevealed ? effectiveCards[0] : null,
                 isFaceDown: !hasRevealed,
                 width: 22,
                 height: 32,
@@ -427,7 +509,7 @@ class TeenPattiPlayerSeat extends StatelessWidget {
             child: Transform.rotate(
               angle: 0.16,
               child: TeenPattiCardVisual(
-                card: hasRevealed && player!.cards!.length > 2 ? player!.cards![2] : null,
+                card: hasRevealed && effectiveCards.length > 2 ? effectiveCards[2] : null,
                 isFaceDown: !hasRevealed,
                 width: 22,
                 height: 32,
@@ -437,13 +519,20 @@ class TeenPattiPlayerSeat extends StatelessWidget {
           ),
           Positioned(
             child: TeenPattiCardVisual(
-              card: hasRevealed && player!.cards!.length > 1 ? player!.cards![1] : null,
+              card: hasRevealed && effectiveCards.length > 1 ? effectiveCards[1] : null,
               isFaceDown: !hasRevealed,
               width: 22,
               height: 32,
               elevation: 3,
             ),
           ),
+
+          // Stamped PACKED badge over opponent cards
+          if (player?.isPacked == true)
+            Positioned(
+              top: 8,
+              child: _buildPackedStamp(width: 50),
+            ),
         ],
       ),
     );
@@ -453,7 +542,10 @@ class TeenPattiPlayerSeat extends StatelessWidget {
     Color bg = const Color(0xFF1E293B);
     String label = 'BLIND';
 
-    if (isPacked) {
+    if (isWinner) {
+      bg = const Color(0xFFB45309);
+      label = 'WINNER';
+    } else if (isPacked) {
       bg = const Color(0xFF7F1D1D);
       label = 'PACKED';
     } else if (isSeen) {

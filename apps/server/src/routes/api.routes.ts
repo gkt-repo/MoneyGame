@@ -394,30 +394,6 @@ router.post('/sports/sync', async (_req: Request, res: Response): Promise<void> 
   }
 });
 
-router.post('/sports/rooms/:roomId/settle', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  try {
-    const roomId = String(req.params.roomId);
-    const { winningTeamIndex, winningTeamName, refund } = req.body;
-    const { sportsService } = await import('../modules/game/engines/sports-match/sports.service');
-
-    if (refund) {
-      const result = await sportsService.settleSportsPool(roomId, 999, 'Match Cancelled / Refunded');
-      res.json({ success: true, settlement: result });
-      return;
-    }
-
-    if (winningTeamIndex === undefined || winningTeamIndex === null) {
-      res.status(400).json({ error: 'winningTeamIndex is required (1 or 2)' });
-      return;
-    }
-
-    const result = await sportsService.settleSportsPool(roomId, Number(winningTeamIndex), winningTeamName);
-    res.json({ success: true, settlement: result });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
 // ─── Automated Webhook Receiver (Android Notification / Email Forwarder) ───────
 
 async function isWebhookAuthorized(authHeader?: string | string[]): Promise<boolean> {
@@ -685,20 +661,6 @@ router.get('/admin/withdrawals', authenticateAdmin, async (req: Request, res: Re
     res.json({ success: true, withdrawals });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/admin/simulate-payment', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { amount, utr } = req.body;
-    if (!amount) {
-      res.status(400).json({ error: 'Amount is required' });
-      return;
-    }
-    const result = await adminService.simulateIncomingWebhook(Number(amount), utr);
-    res.json(result);
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
   }
 });
 

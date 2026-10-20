@@ -46,11 +46,6 @@ export interface RejectWithdrawalDTO {
   reason: string;
 }
 
-export interface SimulatePaymentDTO {
-  amount: number;
-  utr?: string;
-}
-
 export interface FeedbackDTO {
   id: string;
   userId: string;

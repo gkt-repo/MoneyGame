@@ -409,18 +409,6 @@ class UserApiService {
     return res.match || null;
   }
 
-  async settleSportsRoom(
-    roomId: string,
-    winningTeamIndex: number,
-    winningTeamName?: string,
-    refund?: boolean
-  ): Promise<any> {
-    return this.request(`/sports/rooms/${roomId}/settle`, {
-      method: 'POST',
-      body: JSON.stringify({ winningTeamIndex, winningTeamName, refund }),
-    });
-  }
-
   async syncSports(): Promise<void> {
     await this.request('/sports/sync', { method: 'POST' });
   }

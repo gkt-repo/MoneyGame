@@ -792,9 +792,24 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
             const cfg = parseCustomConfig(room.customConfig);
             const isUnlimited = cfg.isUnlimited || room.maxPlayers >= 100;
-            const matchTitle = cfg.matchTitle || 'Sports Match';
-            const team1 = cfg.team1 || { name: 'Team 1' };
-            const team2 = cfg.team2 || { name: 'Team 2' };
+
+            const team1Raw = cfg.team1?.name || '';
+            const team2Raw = cfg.team2?.name || '';
+            let matchTitle = cfg.matchTitle || '';
+
+            let t1Name = team1Raw;
+            let t2Name = team2Raw;
+            if ((!t1Name || !t2Name) && matchTitle.includes(' vs ')) {
+              const parts = matchTitle.split(' vs ');
+              if (!t1Name && parts.length > 0) t1Name = parts[0].trim();
+              if (!t2Name && parts.length > 1) t2Name = parts[1].trim();
+            }
+            if (!t1Name) t1Name = 'Team 1';
+            if (!t2Name) t2Name = 'Team 2';
+            if (!matchTitle) matchTitle = `${t1Name} vs ${t2Name}`;
+
+            const team1 = { name: t1Name, shortName: cfg.team1?.shortName || t1Name };
+            const team2 = { name: t2Name, shortName: cfg.team2?.shortName || t2Name };
 
             const team1Count = room.players.filter((p) => p.guessNumber === 1).length;
             const team2Count = room.players.filter((p) => p.guessNumber === 2).length;
@@ -802,14 +817,20 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             return (
               <div
                 key={room.id}
-                className={`bg-white rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4 transition border ${
+                className={`rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4 transition border ${
+                  isSports
+                    ? 'bg-blue-50/50 border-blue-200'
+                    : isTeenPatti
+                    ? 'bg-purple-50/50 border-purple-200'
+                    : 'bg-emerald-50/40 border-emerald-200'
+                } ${
                   isPlayerInRoom
                     ? isSports
                       ? 'border-indigo-600 ring-1 ring-indigo-600/30'
                       : isTeenPatti
                       ? 'border-purple-600 ring-1 ring-purple-600/30'
                       : 'border-emerald-600 ring-1 ring-emerald-600/30'
-                    : 'border-slate-200 hover:border-slate-300'
+                    : 'hover:border-slate-300'
                 }`}
               >
                 <div>
@@ -818,13 +839,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       <span
                         className={`text-[10px] font-extrabold px-2 py-0.5 rounded border ${
                           isSports
-                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                            ? 'bg-blue-100 text-blue-700 border-blue-300'
                             : isTeenPatti
-                            ? 'bg-purple-50 text-purple-700 border-purple-200'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            ? 'bg-purple-100 text-purple-700 border-purple-300'
+                            : 'bg-emerald-100 text-emerald-700 border-emerald-300'
                         }`}
                       >
-                        {isSports ? '🏏 SPORTS POOL' : isTeenPatti ? '🃏 3 PATTI' : '🎲 DICE GUESS'}
+                        {isSports ? '🏏 LIVE SPORTS' : isTeenPatti ? '🃏 3 PATTI' : '🎲 DICE GUESS'}
                       </span>
                       <span className="font-mono text-xs font-bold px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded">
                         #{room.roomCode}
@@ -847,21 +868,61 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     </span>
                   </div>
 
-                  {/* Sports Match Title if Sports Room */}
-                  {isSports && (
-                    <div className="mb-2 p-2.5 bg-indigo-50/60 border border-indigo-100 rounded-xl">
-                      <p className="text-xs font-black text-indigo-950 truncate">{matchTitle}</p>
-                      <div className="flex items-center justify-between text-[11px] font-semibold text-indigo-700 mt-1">
-                        <span>
-                          {team1.shortName || team1.name}: {team1Count} picks
-                        </span>
-                        <span className="text-slate-400">vs</span>
-                        <span>
-                          {team2.shortName || team2.name}: {team2Count} picks
-                        </span>
+                  {/* Sports Match Title & Horizontal Picks Bar */}
+                  {isSports && (() => {
+                    const totalPicks = team1Count + team2Count;
+                    const team1Ratio = totalPicks === 0 ? 0.5 : team1Count / totalPicks;
+                    const team1Percent = Math.round(team1Ratio * 100);
+                    const team2Percent = 100 - team1Percent;
+
+                    return (
+                      <div className="mb-2 p-3 bg-white border border-blue-200 rounded-xl space-y-2">
+                        <p className="text-xs font-black text-blue-950 truncate flex items-center gap-1.5">
+                          <span>🏏</span>
+                          <span className="truncate">{matchTitle}</span>
+                        </p>
+
+                        {/* Team Labels Row */}
+                        <div className="flex items-center justify-between text-[11px] font-bold">
+                          <span className="text-blue-700 flex items-center gap-1.5 truncate">
+                            <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+                            <span className="truncate">{team1.shortName || team1.name}: {team1Count}</span>
+                          </span>
+                          <span className="text-purple-700 flex items-center gap-1.5 truncate justify-end">
+                            <span className="truncate">{team2.shortName || team2.name}: {team2Count}</span>
+                            <span className="w-2 h-2 rounded-full bg-purple-600 shrink-0" />
+                          </span>
+                        </div>
+
+                        {/* Horizontal Picks Proportion Bar */}
+                        <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden flex">
+                          {totalPicks === 0 ? (
+                            <>
+                              <div className="h-full bg-blue-300 w-1/2" />
+                              <div className="w-0.5 h-full bg-white shrink-0" />
+                              <div className="h-full bg-purple-300 w-1/2" />
+                            </>
+                          ) : (
+                            <>
+                              {team1Count > 0 && (
+                                <div
+                                  className="h-full bg-blue-600 transition-all duration-300"
+                                  style={{ width: `${team1Percent}%` }}
+                                />
+                              )}
+                              {team1Count > 0 && team2Count > 0 && <div className="w-0.5 h-full bg-white shrink-0" />}
+                              {team2Count > 0 && (
+                                <div
+                                  className="h-full bg-purple-600 transition-all duration-300"
+                                  style={{ width: `${team2Percent}%` }}
+                                />
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="p-2.5 bg-slate-50 rounded-xl">
@@ -990,9 +1051,21 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         </div>
       )}
 
-      {/* ─── MODAL 2: SPORTS POOL JOIN MODAL (Pick India vs Aus) ─── */}
+      {/* ─── MODAL 2: SPORTS POOL JOIN MODAL ─── */}
       {selectedSportsRoom && (() => {
         const sportsCfg = parseCustomConfig(selectedSportsRoom.customConfig);
+        let t1Name = sportsCfg.team1?.name || '';
+        let t2Name = sportsCfg.team2?.name || '';
+        let matchTitle = sportsCfg.matchTitle || '';
+        if ((!t1Name || !t2Name) && matchTitle.includes(' vs ')) {
+          const parts = matchTitle.split(' vs ');
+          if (!t1Name && parts.length > 0) t1Name = parts[0].trim();
+          if (!t2Name && parts.length > 1) t2Name = parts[1].trim();
+        }
+        if (!t1Name) t1Name = 'Team 1';
+        if (!t2Name) t2Name = 'Team 2';
+        if (!matchTitle) matchTitle = `${t1Name} vs ${t2Name}`;
+
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
             <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl p-6 shadow-xl space-y-4">
@@ -1001,8 +1074,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <span className="text-xl">🏏</span>
                   <div>
                     <h3 className="text-base font-bold text-slate-900">Back Your Team</h3>
-                    <p className="text-[11px] text-slate-500">
-                      {sportsCfg.matchTitle || 'Sports Match Pool'}
+                    <p className="text-[11px] font-semibold text-blue-700">
+                      {matchTitle}
                     </p>
                   </div>
                 </div>
@@ -1031,7 +1104,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     }`}
                   >
                     <span className="text-xs font-extrabold line-clamp-1">
-                      {sportsCfg.team1?.name || 'Team 1'}
+                      {t1Name}
                     </span>
                     <span className="text-[11px] text-indigo-600 font-bold">
                       {selectedSportsRoom.players.filter((p) => p.guessNumber === 1).length} picks so far
@@ -1049,7 +1122,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     }`}
                   >
                     <span className="text-xs font-extrabold line-clamp-1">
-                      {sportsCfg.team2?.name || 'Team 2'}
+                      {t2Name}
                     </span>
                     <span className="text-[11px] text-purple-600 font-bold">
                       {selectedSportsRoom.players.filter((p) => p.guessNumber === 2).length} picks so far
@@ -1766,18 +1839,25 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   {/* Next Info Asked: Sports Match Team Pick */}
                   {codeTargetRoom.gameType === 'SPORTS_MATCH' && (() => {
                     const sportsCfg = parseCustomConfig(codeTargetRoom.customConfig);
-                    const t1Name = sportsCfg.team1?.name || 'Team 1';
-                    const t2Name = sportsCfg.team2?.name || 'Team 2';
+                    let t1Name = sportsCfg.team1?.name || '';
+                    let t2Name = sportsCfg.team2?.name || '';
+                    let matchTitle = sportsCfg.matchTitle || '';
+                    if ((!t1Name || !t2Name) && matchTitle.includes(' vs ')) {
+                      const parts = matchTitle.split(' vs ');
+                      if (!t1Name && parts.length > 0) t1Name = parts[0].trim();
+                      if (!t2Name && parts.length > 1) t2Name = parts[1].trim();
+                    }
+                    if (!t1Name) t1Name = 'Team 1';
+                    if (!t2Name) t2Name = 'Team 2';
+                    if (!matchTitle) matchTitle = `${t1Name} vs ${t2Name}`;
                     const t1Count = codeTargetRoom.players.filter((p) => p.guessNumber === 1).length;
                     const t2Count = codeTargetRoom.players.filter((p) => p.guessNumber === 2).length;
 
                     return (
                       <div className="space-y-2">
-                        {sportsCfg.matchTitle && (
-                          <div className="text-center font-bold text-xs text-slate-800 bg-indigo-50/50 py-1.5 px-2.5 rounded-lg border border-indigo-100/60">
-                            {sportsCfg.matchTitle}
-                          </div>
-                        )}
+                        <div className="text-center font-bold text-xs text-blue-900 bg-blue-50 py-1.5 px-2.5 rounded-lg border border-blue-200">
+                          🏏 {matchTitle}
+                        </div>
                         <label className="block text-xs font-bold text-slate-800">
                           Which team will win this match?
                         </label>

@@ -386,19 +386,37 @@ class _LobbyScreenState extends State<LobbyScreen> {
     final isSportsMatch = room.gameType == 'SPORTS_MATCH';
     final winnerPrize = isSportsMatch ? (room.entryFee * room.players.length) : (totalPot * 0.90);
 
-    final matchTitle = room.customConfig?['matchTitle']?.toString() ??
-        (room.customConfig != null && room.customConfig!['team1'] != null && room.customConfig!['team2'] != null
-            ? '${room.customConfig!['team1']['name']} vs ${room.customConfig!['team2']['name']}'
-            : 'Sports Match Pool');
-    final team1Name = room.customConfig?['team1']?['name']?.toString() ?? 'Team 1';
-    final team2Name = room.customConfig?['team2']?['name']?.toString() ?? 'Team 2';
+    // Resolve dynamic match & team names from room's actual customConfig
+    String team1Name = room.customConfig?['team1']?['name']?.toString() ?? '';
+    String team2Name = room.customConfig?['team2']?['name']?.toString() ?? '';
+    String? team1Short = room.customConfig?['team1']?['shortName']?.toString();
+    String? team2Short = room.customConfig?['team2']?['shortName']?.toString();
+    String matchTitle = room.customConfig?['matchTitle']?.toString() ?? '';
+
+    // If team names are missing but matchTitle contains " vs ", dynamically extract them
+    if ((team1Name.isEmpty || team2Name.isEmpty) && matchTitle.contains(' vs ')) {
+      final parts = matchTitle.split(' vs ');
+      if (team1Name.isEmpty && parts.isNotEmpty) team1Name = parts[0].trim();
+      if (team2Name.isEmpty && parts.length > 1) team2Name = parts[1].trim();
+    }
+    if (team1Name.isEmpty) team1Name = 'Team 1';
+    if (team2Name.isEmpty) team2Name = 'Team 2';
+    if (matchTitle.isEmpty) matchTitle = '$team1Name vs $team2Name';
+
+    final team1Label = (team1Short != null && team1Short.isNotEmpty) ? team1Short : team1Name;
+    final team2Label = (team2Short != null && team2Short.isNotEmpty) ? team2Short : team2Name;
+
     final team1Count = room.players.where((p) => p.guessNumber == 1).length;
     final team2Count = room.players.where((p) => p.guessNumber == 2).length;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: isTeenPatti
+            ? const Color(0xFFFAF5FF) // Slightly purple background for Teen Patti
+            : isSportsMatch
+                ? const Color(0xFFEFF6FF) // Slightly blue background for Live Sports
+                : const Color(0xFFF0FDF4), // Slightly emerald background for Dice Guess
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isPlayerInRoom
@@ -407,7 +425,11 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   : isSportsMatch
                       ? const Color(0xFF2563EB)
                       : AppColors.emerald600)
-              : AppColors.slate200,
+              : (isTeenPatti
+                  ? const Color(0xFFE9D5FF)
+                  : isSportsMatch
+                      ? const Color(0xFFBFDBFE)
+                      : const Color(0xFFA7F3D0)),
           width: isPlayerInRoom ? 1.5 : 1,
         ),
       ),
@@ -525,39 +547,115 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   const SizedBox(height: 10),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
+                      color: AppColors.white,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.slate200),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          matchTitle,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate900),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '$team1Name ($team1Count) vs $team2Name ($team2Count backers)',
-                          style: const TextStyle(fontSize: 11, color: AppColors.slate600, fontWeight: FontWeight.w500),
-                        ),
-                        if (room.customConfig?['startTime'] != null) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(Icons.access_time_rounded, size: 11, color: Color(0xFFD97706)),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Locks ${formatMatchDateTime(room.customConfig!['startTime']?.toString())}',
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFFD97706)),
+                        Row(
+                          children: [
+                            const Text('🏏 ', style: TextStyle(fontSize: 13)),
+                            Expanded(
+                              child: Text(
+                                matchTitle,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF1E3A8A),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                            ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // Team picks label row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF2563EB),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$team1Label: $team1Count',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1D4ED8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                Text(
+                                  '$team2Label: $team2Count',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF7E22CE),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF9333EA),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        // Horizontal proportion bar showing picks distribution
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            height: 7,
+                            width: double.infinity,
+                            color: const Color(0xFFE2E8F0),
+                            child: (team1Count + team2Count == 0)
+                                ? Row(
+                                    children: [
+                                      Expanded(child: Container(color: const Color(0xFF93C5FD))),
+                                      const SizedBox(width: 1.5),
+                                      Expanded(child: Container(color: const Color(0xFFD8B4FE))),
+                                    ],
+                                  )
+                                : Row(
+                                    children: [
+                                      if (team1Count > 0)
+                                        Expanded(
+                                          flex: ((team1Count / (team1Count + team2Count)) * 1000).round(),
+                                          child: Container(color: const Color(0xFF2563EB)),
+                                        ),
+                                      if (team1Count > 0 && team2Count > 0)
+                                        const SizedBox(width: 1.5),
+                                      if (team2Count > 0)
+                                        Expanded(
+                                          flex: ((team2Count / (team1Count + team2Count)) * 1000).round(),
+                                          child: Container(color: const Color(0xFF9333EA)),
+                                        ),
+                                    ],
+                                  ),
                           ),
-                        ],
+                        ),
                       ],
                     ),
                   ),
@@ -691,9 +789,21 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
   void _showSportsJoinDialog(RoomModel room) {
     int selectedTeam = 1;
-    final team1Name = room.customConfig?['team1']?['name']?.toString() ?? 'Team 1';
-    final team2Name = room.customConfig?['team2']?['name']?.toString() ?? 'Team 2';
-    final matchTitle = room.customConfig?['matchTitle']?.toString() ?? '$team1Name vs $team2Name';
+    String team1Name = room.customConfig?['team1']?['name']?.toString() ?? '';
+    String team2Name = room.customConfig?['team2']?['name']?.toString() ?? '';
+    String? team1Short = room.customConfig?['team1']?['shortName']?.toString();
+    String? team2Short = room.customConfig?['team2']?['shortName']?.toString();
+
+    String matchTitle = room.customConfig?['matchTitle']?.toString() ?? '';
+
+    if ((team1Name.isEmpty || team2Name.isEmpty) && matchTitle.contains(' vs ')) {
+      final parts = matchTitle.split(' vs ');
+      if (team1Name.isEmpty && parts.isNotEmpty) team1Name = parts[0].trim();
+      if (team2Name.isEmpty && parts.length > 1) team2Name = parts[1].trim();
+    }
+    if (team1Name.isEmpty) team1Name = 'Team 1';
+    if (team2Name.isEmpty) team2Name = 'Team 2';
+    if (matchTitle.isEmpty) matchTitle = '$team1Name vs $team2Name';
     final team1Count = room.players.where((p) => p.guessNumber == 1).length;
     final team2Count = room.players.where((p) => p.guessNumber == 2).length;
 
@@ -721,17 +831,10 @@ class _LobbyScreenState extends State<LobbyScreen> {
                       ),
                       Text(
                         matchTitle,
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.slate500),
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1E3A8A)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      if (room.customConfig?['startTime'] != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'Locks: ${formatMatchDateTime(room.customConfig!['startTime']?.toString())}',
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFFD97706)),
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -2424,24 +2527,34 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
             if (_targetRoom!.gameType == 'SPORTS_MATCH') ...[
               Builder(builder: (context) {
                 final cfg = _targetRoom!.customConfig is Map ? _targetRoom!.customConfig as Map : {};
-                final t1Name = cfg['team1']?['name'] ?? 'Team 1';
-                final t2Name = cfg['team2']?['name'] ?? 'Team 2';
-                final matchTitle = cfg['matchTitle'];
+                String t1Name = cfg['team1']?['name']?.toString() ?? '';
+                String t2Name = cfg['team2']?['name']?.toString() ?? '';
+                String? t1Short = cfg['team1']?['shortName']?.toString();
+                String? t2Short = cfg['team2']?['shortName']?.toString();
+
+                String matchTitle = cfg['matchTitle']?.toString() ?? '';
+
+                if ((t1Name.isEmpty || t2Name.isEmpty) && matchTitle.contains(' vs ')) {
+                  final parts = matchTitle.split(' vs ');
+                  if (t1Name.isEmpty && parts.isNotEmpty) t1Name = parts[0].trim();
+                  if (t2Name.isEmpty && parts.length > 1) t2Name = parts[1].trim();
+                }
+                if (t1Name.isEmpty) t1Name = 'Team 1';
+                if (t2Name.isEmpty) t2Name = 'Team 2';
+                if (matchTitle.isEmpty) matchTitle = '$t1Name vs $t2Name';
                 final t1Picks = _targetRoom!.players.where((p) => p.guessNumber == 1).length;
                 final t2Picks = _targetRoom!.players.where((p) => p.guessNumber == 2).length;
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (matchTitle != null) ...[
-                      Center(
-                        child: Text(
-                          '$matchTitle',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.slate700),
-                        ),
+                    Center(
+                      child: Text(
+                        '🏏 $matchTitle',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1E3A8A)),
                       ),
-                      const SizedBox(height: 8),
-                    ],
+                    ),
+                    const SizedBox(height: 8),
                     const Text(
                       'Which team will win this match?',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate900),

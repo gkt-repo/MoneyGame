@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { RoomItem, UserProfile, userApi } from '../../../services/api';
+import React from 'react';
+import { RoomItem, UserProfile } from '../../../services/api';
 import {
   Trophy,
   Users,
@@ -7,13 +7,11 @@ import {
   Lock,
   CheckCircle2,
   AlertCircle,
-  Sparkles,
   ArrowRight,
   ShieldCheck,
   RefreshCw,
   Flame,
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 
 interface SportsMatchTableViewProps {
   room: RoomItem;
@@ -28,9 +26,6 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
   onRefreshBalance,
   onBack,
 }) => {
-  const [simulating, setSimulating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const config =
     typeof room.customConfig === 'string'
       ? (() => {
@@ -41,11 +36,32 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
           }
         })()
       : (room.customConfig || {});
-  const team1 = config.team1 || { name: 'Team 1', shortName: 'T1' };
-  const team2 = config.team2 || { name: 'Team 2', shortName: 'T2' };
-  const sport = config.sport || 'Cricket';
+  const team1Raw = config.team1?.name || '';
+  const team2Raw = config.team2?.name || '';
+  let rawTitle = config.matchTitle || '';
+  let t1Name = team1Raw;
+  let t2Name = team2Raw;
+  if ((!t1Name || !t2Name) && rawTitle.includes(' vs ')) {
+    const parts = rawTitle.split(' vs ');
+    if (!t1Name && parts.length > 0) t1Name = parts[0].trim();
+    if (!t2Name && parts.length > 1) t2Name = parts[1].trim();
+  }
+  if (!t1Name) t1Name = 'Team 1';
+  if (!t2Name) t2Name = 'Team 2';
+
+  const team1 = {
+    ...(config.team1 || {}),
+    name: t1Name,
+    shortName: config.team1?.shortName || t1Name,
+  };
+  const team2 = {
+    ...(config.team2 || {}),
+    name: t2Name,
+    shortName: config.team2?.shortName || t2Name,
+  };
+  const sport = config.sport || 'Sports';
   const league = config.league || 'Sports Duel';
-  const matchTitle = config.matchTitle || `${team1.name} vs ${team2.name}`;
+  const matchTitle = rawTitle || `${team1.name} vs ${team2.name}`;
   const startTime = config.startTime ? new Date(config.startTime) : null;
   const isUnlimited = config.isUnlimited || room.maxPlayers >= 100;
 
@@ -71,36 +87,6 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
     winningTeamIndex === 1 ? team1.name : winningTeamIndex === 2 ? team2.name : config.settlement?.winningTeamName;
 
   const didIWin = isCompleted && myPick === winningTeamIndex;
-
-  // Simulate result for testing
-  const handleSimulate = async (teamIndex: number, teamName: string) => {
-    setSimulating(true);
-    setError(null);
-    try {
-      await userApi.settleSportsRoom(room.id, teamIndex, teamName);
-      if (myPick === teamIndex) {
-        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-      }
-      onRefreshBalance();
-    } catch (err: any) {
-      setError(err.message || 'Simulation failed');
-    } finally {
-      setSimulating(false);
-    }
-  };
-
-  const handleSimulateRefund = async () => {
-    setSimulating(true);
-    setError(null);
-    try {
-      await userApi.settleSportsRoom(room.id, 0, 'Refund', true);
-      onRefreshBalance();
-    } catch (err: any) {
-      setError(err.message || 'Refund simulation failed');
-    } finally {
-      setSimulating(false);
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -393,50 +379,6 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
         </div>
       </div>
 
-      {/* Simulator Test Bar (Developer / Testing Shortcut) */}
-      {!isCompleted && !isCancelled && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
-              <Sparkles className="w-4 h-4 text-amber-600" />
-              <span>Developer Test Simulation (Immediate Final Result)</span>
-            </div>
-            <span className="text-[11px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-semibold">
-              Instant Settlement
-            </span>
-          </div>
-
-          <p className="text-xs text-amber-800/80">
-            For demonstration or local testing without waiting for match end time, you can simulate which team won:
-          </p>
-
-          {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
-
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <button
-              onClick={() => handleSimulate(1, team1.name)}
-              disabled={simulating}
-              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer"
-            >
-              {simulating ? 'Settling...' : `Simulate ${team1.name} Win`}
-            </button>
-            <button
-              onClick={() => handleSimulate(2, team2.name)}
-              disabled={simulating}
-              className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer"
-            >
-              {simulating ? 'Settling...' : `Simulate ${team2.name} Win`}
-            </button>
-            <button
-              onClick={handleSimulateRefund}
-              disabled={simulating}
-              className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 text-xs font-bold rounded-xl transition cursor-pointer"
-            >
-              Simulate Match Abandoned / Refund
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

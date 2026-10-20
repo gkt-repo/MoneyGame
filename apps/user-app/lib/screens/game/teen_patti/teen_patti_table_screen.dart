@@ -6,6 +6,7 @@ import '../../../../core/network/socket_service.dart';
 import '../../../../models/teen_patti_models.dart';
 import 'widgets/confetti_particles.dart';
 import 'widgets/teen_patti_action_bar.dart';
+import 'widgets/teen_patti_card_deal.dart';
 import 'widgets/teen_patti_chip_toss.dart';
 import 'widgets/teen_patti_felt_table.dart';
 import 'widgets/teen_patti_player_seat.dart';
@@ -41,6 +42,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
   // Turn Timer
   Timer? _timerTicker;
   double _turnProgress = 1.0;
+  int? _lastTickSecond;
 
   // Animations
   late AnimationController _cardFlipController;
@@ -48,6 +50,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
   FlyingChipEvent? _chipTossEvent;
   bool _showConfetti = false;
   GameFinishedModel? _finishData;
+  bool _showVictoryModal = false;
   Timer? _fallbackPollTimer;
   bool _soundEnabled = true;
   final TeenPattiAudioService _audioService = TeenPattiAudioService();
@@ -79,8 +82,8 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
 
     _dealController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
-    );
+      duration: const Duration(milliseconds: 1600),
+    )..addListener(() => setState(() {}));
 
     _initTable();
   }
@@ -114,19 +117,22 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
 
     // Initial Dealing animation if playing
     if (_room?.status == 'PLAYING') {
-      _dealController.forward(from: 0.0);
-      _audioService.playCardDeal();
+      _triggerDealAnimation();
     }
 
     _listenSocket('room_updated', (data) {
       if (mounted && data != null) {
         if (data['id'] != null && data['id'] != widget.roomId) return;
+        final oldStatus = _room?.status;
         setState(() {
           _room = RoomModel.fromJson(data);
           if (_room?.gameState != null) {
             _gameState = TeenPattiGameStateModel.fromJson(_room!.gameState!);
           }
         });
+        if (oldStatus != 'PLAYING' && _room?.status == 'PLAYING') {
+          _triggerDealAnimation();
+        }
       }
     });
 
@@ -134,10 +140,14 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
       if (mounted && data != null) {
         if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
         final parsed = TeenPattiGameStateModel.fromJson(Map<String, dynamic>.from(data));
+        final roundChanged = _gameState != null && parsed.roundNumber > _gameState!.roundNumber;
         setState(() {
           _gameState = parsed;
         });
         _syncMyCardsFromState(parsed);
+        if (roundChanged) {
+          _triggerDealAnimation();
+        }
       }
     });
 
@@ -271,6 +281,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
         final finish = GameFinishedModel.fromJson(Map<String, dynamic>.from(data));
         setState(() {
           _finishData = finish;
+          _showVictoryModal = false;
           _showConfetti = finish.winnerId == widget.user.id;
         });
 
@@ -281,6 +292,15 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
         if (finish.winnerId == widget.user.id) {
           HapticFeedback.heavyImpact();
         }
+
+        // Reveal the victory dialog after chip collection finishes
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          if (mounted && _finishData != null) {
+            setState(() {
+              _showVictoryModal = true;
+            });
+          }
+        });
 
         widget.onBalanceRefresh();
       }
@@ -321,8 +341,15 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
     }
   }
 
+  void _triggerDealAnimation() {
+    _triggerBootChipToss();
+    _dealController.forward(from: 0.0);
+    _audioService.playCardDeal();
+  }
+
   void _startTimerTicker() {
     _timerTicker?.cancel();
+    _lastTickSecond = null;
     _timerTicker = Timer.periodic(const Duration(milliseconds: 100), (_) {
       if (!mounted) return;
       final expiresAt = _gameState?.turnExpiresAt;
@@ -334,6 +361,16 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
           _turnProgress = 0.0;
         });
       } else {
+        final secRemaining = (diff / 1000).ceil();
+        if (secRemaining <= 5 && secRemaining > 0 && secRemaining != _lastTickSecond) {
+          _lastTickSecond = secRemaining;
+          final isMyTurn = _gameState?.currentTurnUserId == widget.user.id;
+          if (isMyTurn) {
+            _audioService.playTimerTick();
+            HapticFeedback.selectionClick();
+          }
+        }
+
         setState(() {
           _turnProgress = (diff / 25000.0).clamp(0.0, 1.0);
         });
@@ -496,6 +533,39 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
     });
   }
 
+  void _triggerBootChipToss() {
+    final screenSize = MediaQuery.of(context).size;
+    final w = screenSize.width;
+    final h = screenSize.height;
+
+    final starts = <Offset>[
+      _getPlayerSeatPosition(widget.user.id, w, h),
+    ];
+    for (final opp in _getOpponentPlayers()) {
+      starts.add(_getPlayerSeatPosition(opp.userId, w, h));
+    }
+
+    final centerPot = Offset(w * 0.5, h * 0.40);
+
+    setState(() {
+      _chipTossEvent = FlyingChipEvent(
+        starts: starts,
+        end: centerPot,
+        count: 2,
+      );
+    });
+    _audioService.playChipToss();
+  }
+
+  List<PlayingCardModel>? _getShowdownCardsForUser(String userId) {
+    if (_finishData == null) return null;
+    final matches = _finishData!.showdown.where((s) => s.userId == userId);
+    if (matches.isNotEmpty) {
+      return matches.first.cards;
+    }
+    return null;
+  }
+
   Offset _getPlayerSeatPosition(String userId, double w, double h) {
     if (userId == widget.user.id) {
       return Offset(w * 0.5, h * 0.80);
@@ -565,7 +635,15 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
                 // 3. TABLE SEATS (HERO + OPPONENTS IN OVAL FORMATION)
                 _buildPlayerSeatsLayer(),
 
-                // 4. FLYING CHIPS OVERLAY
+                // 4. CARD DISTRIBUTION DEAL OVERLAY (Dealer deals to all active seats)
+                Positioned.fill(
+                  child: TeenPattiCardDealOverlay(
+                    controller: _dealController,
+                    activeSeatsCount: 1 + _getOpponentPlayers().length,
+                  ),
+                ),
+
+                // 5. FLYING CHIPS OVERLAY
                 Positioned.fill(
                   child: FlyingChipsOverlay(event: _chipTossEvent),
                 ),
@@ -585,7 +663,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
                   ),
 
                 // 8. VICTORY CELEBRATION MODAL
-                if (_finishData != null)
+                if (_finishData != null && _showVictoryModal)
                   Positioned.fill(
                     child: Container(
                       color: Colors.black.withValues(alpha: 0.65),
@@ -609,7 +687,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left buttons: Back and Rules
+          // Left buttons: Back, Rules, and Replay Deal
           Row(
             children: [
               _buildCircularTopButton(
@@ -627,6 +705,12 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
                     builder: (_) => const TeenPattiRulesDialog(),
                   );
                 },
+              ),
+              const SizedBox(width: 8),
+              _buildCircularTopButton(
+                icon: Icons.refresh,
+                size: 18,
+                onTap: _triggerDealAnimation,
               ),
             ],
           ),
@@ -706,6 +790,9 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
                   seatIndex: 0,
                 ),
             isHero: true,
+            isDealing: _dealController.isAnimating,
+            isWinner: _finishData?.winnerId == widget.user.id,
+            showdownCards: _getShowdownCardsForUser(widget.user.id),
             isCurrentTurn: isMyTurn,
             turnProgress: isMyTurn ? _turnProgress : 1.0,
             isDealer: true,
@@ -724,6 +811,9 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
             top: opponentPositions[i].dy - 35,
             child: TeenPattiPlayerSeat(
               player: opponents.length > i ? opponents[i] : null,
+              isDealing: _dealController.isAnimating,
+              isWinner: opponents.length > i && _finishData?.winnerId == opponents[i].userId,
+              showdownCards: opponents.length > i ? _getShowdownCardsForUser(opponents[i].userId) : null,
               isCurrentTurn: opponents.length > i &&
                   _gameState?.currentTurnUserId == opponents[i].userId,
               turnProgress: (opponents.length > i &&

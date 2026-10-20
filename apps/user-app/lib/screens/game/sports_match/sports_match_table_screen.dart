@@ -136,11 +136,33 @@ class _SportsMatchTableScreenState extends State<SportsMatchTableScreen> {
 
     final room = _room!;
     final config = room.customConfig is Map<String, dynamic> ? room.customConfig as Map<String, dynamic> : {};
-    final team1 = config['team1'] as Map<String, dynamic>? ?? {'name': 'Team 1'};
-    final team2 = config['team2'] as Map<String, dynamic>? ?? {'name': 'Team 2'};
+    final rawTeam1 = config['team1'] as Map<String, dynamic>? ?? {};
+    final rawTeam2 = config['team2'] as Map<String, dynamic>? ?? {};
+    final rawTitle = config['matchTitle'] as String? ?? '';
+    String t1Name = rawTeam1['name']?.toString() ?? '';
+    String t2Name = rawTeam2['name']?.toString() ?? '';
+
+    if ((t1Name.isEmpty || t2Name.isEmpty) && rawTitle.contains(' vs ')) {
+      final parts = rawTitle.split(' vs ');
+      if (t1Name.isEmpty && parts.isNotEmpty) t1Name = parts[0].trim();
+      if (t2Name.isEmpty && parts.length > 1) t2Name = parts[1].trim();
+    }
+    if (t1Name.isEmpty) t1Name = 'Team 1';
+    if (t2Name.isEmpty) t2Name = 'Team 2';
+
+    final team1 = {
+      ...rawTeam1,
+      'name': t1Name,
+      'shortName': rawTeam1['shortName'] ?? t1Name,
+    };
+    final team2 = {
+      ...rawTeam2,
+      'name': t2Name,
+      'shortName': rawTeam2['shortName'] ?? t2Name,
+    };
     final sport = config['sport'] as String? ?? 'Sports';
     final league = config['league'] as String? ?? 'Live Sports Pool';
-    final matchTitle = config['matchTitle'] as String? ?? '${team1['name']} vs ${team2['name']}';
+    final matchTitle = rawTitle.isNotEmpty ? rawTitle : '$t1Name vs $t2Name';
 
     final totalPot = room.entryFee * room.players.length;
     final team1Players = room.players.where((p) => p.guessNumber == 1).toList();

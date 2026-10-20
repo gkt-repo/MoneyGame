@@ -241,11 +241,6 @@
         <a id="upi-intent-link" href="#" class="block bg-slate-800 hover:bg-slate-700 text-emerald-400 font-semibold py-2 rounded-xl text-xs mb-3 border border-slate-700 transition">
           📱 Tap to Pay on Mobile UPI App
         </a>
-
-        <!-- Fast Testing Simulator Button -->
-        <button onclick="simulateCurrentDepositPayment()" class="w-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold py-2 rounded-xl transition">
-          ⚡ 1-Click Simulate Android Webhook (For Testing)
-        </button>
       </div>
 
       <!-- Step 3: Success Screen -->
@@ -329,7 +324,7 @@
         </div>
       </div>
 
-      <!-- Recent Deposits & Simulator -->
+      <!-- Recent Deposits & Webhook Logs -->
       <div>
         <h4 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Recent Deposits & Webhook Logs</h4>
         <div id="admin-deposits-table" class="space-y-2">
@@ -753,16 +748,6 @@
       }, 1000);
     }
 
-    async function simulateCurrentDepositPayment() {
-      if (!activeDeposit) return;
-      await fetch('/api/admin/simulate-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: activeDeposit.totalAmount })
-      });
-      // The poller will catch it on the next 2s tick!
-    }
-
     // ─── WITHDRAWALS ──────────────────────────────────────────────────────────
 
     function openWithdrawModal() {
@@ -877,9 +862,7 @@
               <span class="text-[10px] ${d.status === 'APPROVED' ? 'text-emerald-400' : 'text-amber-400'} font-semibold ml-1">[${d.status}]</span>
             </div>
             ${d.status === 'PENDING' ? `
-              <button onclick="simulateAdminPayment(${d.totalAmount})" class="bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 px-2.5 py-1 rounded text-[11px] transition">
-                Simulate Webhook
-              </button>
+              <span class="text-amber-400 text-[10px] font-mono">Pending Bank Webhook</span>
             ` : `<span class="text-slate-500 text-[10px] font-mono">${d.utr}</span>`}
           </div>
         `).join('');
@@ -908,16 +891,6 @@
         body: JSON.stringify({ withdrawalId: id, payoutUtr: utr })
       });
       alert('Withdrawal marked as completed!');
-      loadAdminDashboard();
-      refreshWallet();
-    }
-
-    async function simulateAdminPayment(amount) {
-      await fetch('/api/admin/simulate-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount })
-      });
       loadAdminDashboard();
       refreshWallet();
     }
