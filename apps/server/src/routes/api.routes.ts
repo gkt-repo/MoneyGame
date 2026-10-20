@@ -5,6 +5,7 @@ import { walletService } from '../modules/wallet/wallet.service';
 import { paymentService } from '../modules/payment/payment.service';
 import { gameManager } from '../modules/game/game.manager';
 import { adminService } from '../modules/admin/admin.service';
+import { notificationService } from '../modules/notification/notification.service';
 import { config } from '../config';
 import { authRouter, adminAuthRouter } from './auth.routes';
 import {
@@ -184,6 +185,71 @@ router.get('/withdrawals/user/:userId', authenticateUser, async (req: Authentica
     if (userId !== req.user!.id) { res.status(403).json({ error: 'Access denied' }); return; }
     const withdrawals = await walletService.getUserWithdrawals(userId);
     res.json({ success: true, withdrawals });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── User Notifications ───────────────────────────────────────────────────────
+
+router.get('/notifications/my', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const notifications = await notificationService.getUserNotifications(userId);
+    const unreadCount = await notificationService.getUnreadCount(userId);
+    res.json({ success: true, notifications, unreadCount });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/notifications/unread-count', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const unreadCount = await notificationService.getUnreadCount(userId);
+    res.json({ success: true, unreadCount });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/notifications/:id/read', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const notificationId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const result = await notificationService.markAsRead(notificationId, userId);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/notifications/mark-all-read', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const result = await notificationService.markAllAsRead(userId);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/notifications/clear-all', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const result = await notificationService.clearAll(userId);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/notifications/:id', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const notificationId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const result = await notificationService.deleteNotification(notificationId, userId);
+    res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

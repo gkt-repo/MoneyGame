@@ -3,6 +3,7 @@ import { moveWallet } from '../../wallet-ledger';
 import { Prisma } from '@prisma/client';
 import { serializable } from '../../transaction';
 import { money, bankReference, toPaise } from '../../money';
+import { notificationService } from '../notification/notification.service';
 
 export class WalletService {
   private io: any = null;
@@ -486,6 +487,20 @@ export class WalletService {
       });
     }
 
+    // Trigger in-app notification for the player
+    notificationService.create({
+      userId: result.withdrawal.userId,
+      title: 'Withdrawal Completed',
+      message: `Your withdrawal of ₹${result.withdrawal.amount.toFixed(2)} has been sent to your UPI ID (${result.withdrawal.upiId}). Bank Payout UTR: ${cleanUtr}`,
+      type: 'WITHDRAWAL_COMPLETED',
+      metadata: {
+        withdrawalId: result.withdrawal.id,
+        amount: result.withdrawal.amount,
+        upiId: result.withdrawal.upiId,
+        payoutUtr: cleanUtr,
+      },
+    }).catch(err => console.error('Failed to create withdrawal completed notification:', err));
+
     return result;
   }
 
@@ -535,6 +550,19 @@ export class WalletService {
         lockedBalance: result.wallet.lockedBalance,
       });
     }
+
+    // Trigger in-app notification for the player
+    notificationService.create({
+      userId: result.withdrawal.userId,
+      title: 'Withdrawal Rejected',
+      message: `Your withdrawal request of ₹${result.withdrawal.amount.toFixed(2)} was rejected${reason ? `: ${reason}` : ''}. ₹${result.withdrawal.amount.toFixed(2)} has been refunded to your wallet.`,
+      type: 'WITHDRAWAL_REJECTED',
+      metadata: {
+        withdrawalId: result.withdrawal.id,
+        amount: result.withdrawal.amount,
+        reason: reason || 'Declined by administrator',
+      },
+    }).catch(err => console.error('Failed to create withdrawal rejected notification:', err));
 
     return result;
   }

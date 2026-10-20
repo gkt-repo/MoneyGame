@@ -11,6 +11,7 @@ import fs from 'fs';
 import { router as apiRouter } from './routes/api.routes';
 import { gameManager } from './modules/game/game.manager';
 import { walletService } from './modules/wallet/wallet.service';
+import { notificationService } from './modules/notification/notification.service';
 import { paymentService } from './modules/payment/payment.service';
 import { sportsService } from './modules/game/engines/sports-match/sports.service';
 
@@ -105,6 +106,7 @@ const io = new Server(server, {
 
 gameManager.setSocketServer(io);
 walletService.setSocketServer(io);
+notificationService.setSocketServer(io);
 paymentService.setSocketServer(io);
 sportsService.setSocketServer(io);
 

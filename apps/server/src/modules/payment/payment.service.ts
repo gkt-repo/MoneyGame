@@ -6,6 +6,7 @@ import { prisma } from '../../db';
 import { config } from '../../config';
 import { serializable } from '../../transaction';
 import { bankReference, money, toPaise } from '../../money';
+import { notificationService } from '../notification/notification.service';
 
 const approvable = ['PENDING', 'CLAIMED', 'EXPIRED'];
 
@@ -113,6 +114,18 @@ export class PaymentService {
     if (result.deposit) this.io.to(`deposit:${result.deposit.id}`).emit('deposit_approved', event);
     this.io.to(`user:${result.userId}`).emit('balance_updated', result.wallet);
     this.io.to('admin_channel').emit('admin_new_deposit', event);
+
+    notificationService.create({
+      userId: result.userId,
+      title: 'Deposit Approved',
+      message: `Deposit of ₹${(result.deposit?.baseAmount || 0).toFixed(2)} has been credited to your wallet.${result.deposit?.utr ? ` UTR: ${result.deposit.utr}` : ''}`,
+      type: 'DEPOSIT_APPROVED',
+      metadata: {
+        depositId: result.deposit?.id,
+        amount: result.deposit?.baseAmount,
+        utr: result.deposit?.utr,
+      },
+    }).catch(err => console.error('Failed to create deposit notification:', err));
   }
 
   async verifyIncomingPayment(amount: number, utr?: string, senderInfo?: { senderUpi?: string; senderName?: string; rawPayload?: any }) {
@@ -201,13 +214,26 @@ export class PaymentService {
   }
 
   async adminRejectDeposit(depositId: string, reason: string, adminId: string) {
-    return serializable(async tx => {
+    const result = await serializable(async tx => {
       const deposit = await tx.deposit.findUnique({ where: { id: depositId } });
       if (!deposit || !approvable.includes(deposit.status)) throw new Error('Deposit cannot be rejected');
       const updated = await tx.deposit.update({ where: { id: depositId }, data: { status: 'REJECTED', claimStatus: 'REJECTED_BY_ADMIN', activeAmountKey: null } });
       await tx.auditLog.create({ data: { actorId: adminId, targetId: deposit.userId, action: 'REJECT_DEPOSIT_CLAIM', details: JSON.stringify({ depositId, reason }) } });
-      return { success: true, deposit: updated, message: 'Deposit rejected.' };
+      return { success: true, deposit: updated, message: 'Deposit rejected.', userId: deposit.userId, baseAmount: deposit.baseAmount };
     });
+
+    notificationService.create({
+      userId: result.userId,
+      title: 'Deposit Rejected',
+      message: `Your deposit request of ₹${result.baseAmount.toFixed(2)} was rejected${reason ? `: ${reason}` : ''}.`,
+      type: 'SYSTEM',
+      metadata: {
+        depositId,
+        reason,
+      },
+    }).catch(err => console.error('Failed to create deposit rejection notification:', err));
+
+    return { success: true, deposit: result.deposit, message: result.message };
   }
 
   async assignUnmatchedPayment(unmatchedId: string, userId: string, adminId: string) {

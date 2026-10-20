@@ -2,6 +2,7 @@ import { prisma } from '../../db';
 import { serializable } from '../../transaction';
 import { walletService, getEffectiveCommissionPercent } from '../wallet/wallet.service';
 import { paymentService } from '../payment/payment.service';
+import { notificationService } from '../notification/notification.service';
 import { toPaise } from '../../money';
 
 export class AdminService {
@@ -718,6 +719,17 @@ export class AdminService {
         },
       });
     }
+
+    notificationService.create({
+      userId: updated.userId,
+      title: 'Support Ticket Reply',
+      message: `Admin replied to your ticket "${updated.subject}": ${adminReply.trim()}`,
+      type: 'FEEDBACK_REPLY',
+      metadata: {
+        feedbackId: updated.id,
+        status: updated.status,
+      },
+    }).catch(err => console.error('Failed to create feedback reply notification:', err));
 
     return updated;
   }
