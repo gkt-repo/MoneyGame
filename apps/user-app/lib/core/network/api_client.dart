@@ -117,6 +117,7 @@ class RoomModel {
   final String? winnerId;
   final String? winnerUsername;
   final List<RoomPlayerModel> players;
+  final Map<String, dynamic>? gameState;
 
   RoomModel({
     required this.id,
@@ -130,6 +131,7 @@ class RoomModel {
     this.winnerId,
     this.winnerUsername,
     required this.players,
+    this.gameState,
   });
 
   factory RoomModel.fromJson(Map<String, dynamic> json) {
@@ -149,6 +151,7 @@ class RoomModel {
       winnerId: json['winnerId'],
       winnerUsername: json['winner']?['username'],
       players: parsedPlayers,
+      gameState: json['gameState'] != null ? Map<String, dynamic>.from(json['gameState']) : null,
     );
   }
 }

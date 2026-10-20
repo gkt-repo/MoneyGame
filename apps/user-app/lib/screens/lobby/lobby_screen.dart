@@ -3,6 +3,7 @@ import '../../core/constants/colors.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/socket_service.dart';
 import '../game/active_room_screen.dart';
+import '../game/teen_patti/teen_patti_table_screen.dart';
 
 class LobbyScreen extends StatefulWidget {
   final UserProfileModel user;
@@ -22,6 +23,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
   List<RoomModel> _rooms = [];
   bool _loading = true;
   String? _error;
+  String _filterGame = 'ALL';
 
   @override
   void initState() {
@@ -58,14 +60,26 @@ class _LobbyScreenState extends State<LobbyScreen> {
     }
   }
 
-  void _navigateToRoom(String roomId) {
+  void _navigateToRoom(String roomId, {String? gameType}) {
+    final room = _rooms.cast<RoomModel?>().firstWhere(
+      (r) => r?.id == roomId,
+      orElse: () => null,
+    );
+    final isTeenPatti = gameType == 'TEEN_PATTI' || room?.gameType == 'TEEN_PATTI';
+
+    final Widget targetScreen = isTeenPatti
+        ? TeenPattiTableScreen(
+            roomId: roomId,
+            user: widget.user,
+            onBalanceRefresh: widget.onBalanceRefresh,
+          )
+        : ActiveRoomScreen(
+            roomId: roomId,
+            user: widget.user,
+          );
+
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ActiveRoomScreen(
-          roomId: roomId,
-          user: widget.user,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => targetScreen),
     ).then((_) {
       _fetchRooms();
       widget.onBalanceRefresh();
@@ -185,6 +199,27 @@ class _LobbyScreenState extends State<LobbyScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 12),
+
+                    // Game Filter Chips
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildFilterTab('ALL', 'All Tables (${_rooms.length})'),
+                          const SizedBox(width: 8),
+                          _buildFilterTab(
+                            'TEEN_PATTI',
+                            '🃏 Teen Patti (${_rooms.where((r) => r.gameType == 'TEEN_PATTI').length})',
+                          ),
+                          const SizedBox(width: 8),
+                          _buildFilterTab(
+                            'GUESS_NUMBER',
+                            '🎲 Dice Guess (${_rooms.where((r) => r.gameType == 'GUESS_NUMBER').length})',
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -258,20 +293,69 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   ),
                 ),
               )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final room = _rooms[index];
-                      return _buildRoomCard(room);
-                    },
-                    childCount: _rooms.length,
-                  ),
-                ),
+            else ...[
+              Builder(
+                builder: (context) {
+                  final filtered = _filterGame == 'ALL'
+                      ? _rooms
+                      : _rooms.where((r) => r.gameType == _filterGame).toList();
+
+                  if (filtered.isEmpty) {
+                    return SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Text(
+                          'No active ${_filterGame == 'TEEN_PATTI' ? 'Teen Patti' : 'Dice Guess'} tables right now.',
+                          style: const TextStyle(color: AppColors.slate500, fontSize: 13),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final room = filtered[index];
+                          return _buildRoomCard(room);
+                        },
+                        childCount: filtered.length,
+                      ),
+                    ),
+                  );
+                },
               ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterTab(String type, String label) {
+    final isSel = _filterGame == type;
+    return InkWell(
+      onTap: () => setState(() => _filterGame = type),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSel
+              ? (type == 'TEEN_PATTI' ? const Color(0xFF6B21A8) : AppColors.slate900)
+              : AppColors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSel ? Colors.transparent : AppColors.slate200,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: isSel ? Colors.white : AppColors.slate700,
+          ),
         ),
       ),
     );
@@ -282,6 +366,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
     final isFull = room.players.length >= room.maxPlayers;
     final totalPot = room.entryFee * room.maxPlayers;
     final winnerPrize = totalPot * 0.90;
+    final isTeenPatti = room.gameType == 'TEEN_PATTI';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -289,7 +374,9 @@ class _LobbyScreenState extends State<LobbyScreen> {
         color: AppColors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isPlayerInRoom ? AppColors.emerald600 : AppColors.slate200,
+          color: isPlayerInRoom
+              ? (isTeenPatti ? const Color(0xFF9333EA) : AppColors.emerald600)
+              : AppColors.slate200,
           width: isPlayerInRoom ? 1.5 : 1,
         ),
       ),
@@ -300,9 +387,13 @@ class _LobbyScreenState extends State<LobbyScreen> {
           borderRadius: BorderRadius.circular(12),
           onTap: () {
             if (isPlayerInRoom) {
-              _navigateToRoom(room.id);
+              _navigateToRoom(room.id, gameType: room.gameType);
             } else if (!isFull) {
-              _showQuickJoinDialog(room);
+              if (isTeenPatti) {
+                _showTeenPattiJoinDialog(room);
+              } else {
+                _showQuickJoinDialog(room);
+              }
             }
           },
           child: Padding(
@@ -315,11 +406,30 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   children: [
                     Row(
                       children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: isTeenPatti ? const Color(0xFFFAF5FF) : AppColors.emerald50,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: isTeenPatti ? const Color(0xFFD8B4FE) : const Color(0xFFA7F3D0),
+                            ),
+                          ),
+                          child: Text(
+                            isTeenPatti ? '🃏 3 PATTI' : '🎲 DICE GUESS',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: isTeenPatti ? const Color(0xFF7E22CE) : AppColors.emerald700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Text(
                           '#${room.roomCode}',
                           style: const TextStyle(
                             fontFamily: 'monospace',
-                            fontSize: 15,
+                            fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: AppColors.slate900,
                           ),
@@ -366,9 +476,9 @@ class _LobbyScreenState extends State<LobbyScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'ENTRY STAKE',
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.slate400),
+                          Text(
+                            isTeenPatti ? 'BOOT AMOUNT' : 'ENTRY STAKE',
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.slate400),
                           ),
                           const SizedBox(height: 2),
                           Text(
@@ -435,21 +545,25 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   height: 38,
                   child: ElevatedButton(
                     onPressed: isPlayerInRoom
-                        ? () => _navigateToRoom(room.id)
+                        ? () => _navigateToRoom(room.id, gameType: room.gameType)
                         : isFull
                             ? null
-                            : () => _showQuickJoinDialog(room),
+                            : () => isTeenPatti ? _showTeenPattiJoinDialog(room) : _showQuickJoinDialog(room),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isPlayerInRoom ? AppColors.slate900 : AppColors.emerald600,
+                      backgroundColor: isPlayerInRoom
+                          ? AppColors.slate900
+                          : isTeenPatti
+                              ? const Color(0xFF7E22CE)
+                              : AppColors.emerald600,
                       disabledBackgroundColor: AppColors.slate100,
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     child: Text(
                       isPlayerInRoom
-                          ? 'Enter Active Room'
+                          ? 'Enter Active Table'
                           : isFull
-                              ? 'Room Full'
+                              ? 'Table Full'
                               : 'Join Table (₹${room.entryFee.toStringAsFixed(0)})',
                       style: TextStyle(
                         fontSize: 13,
@@ -463,6 +577,121 @@ class _LobbyScreenState extends State<LobbyScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showTeenPattiJoinDialog(RoomModel room) {
+    bool joining = false;
+    String? joinError;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: AppColors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                const Text('🃏 ', style: TextStyle(fontSize: 20)),
+                Text(
+                  'Join Teen Patti #${room.roomCode}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFAF5FF),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE9D5FF)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Boot Stake:', style: TextStyle(fontSize: 13, color: AppColors.slate600)),
+                          Text(
+                            '₹${room.entryFee.toStringAsFixed(0)}',
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF7E22CE)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Available Balance:', style: TextStyle(fontSize: 13, color: AppColors.slate600)),
+                          Text(
+                            '₹${widget.user.balance.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Seats Occupied:', style: TextStyle(fontSize: 13, color: AppColors.slate600)),
+                          Text(
+                            '${room.players.length} / ${room.maxPlayers}',
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate700),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (joinError != null) ...[
+                  const SizedBox(height: 12),
+                  Text(joinError!, style: const TextStyle(color: AppColors.red600, fontSize: 12)),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel', style: TextStyle(color: AppColors.slate500)),
+              ),
+              ElevatedButton(
+                onPressed: joining
+                    ? null
+                    : () async {
+                        setDialogState(() {
+                          joining = true;
+                          joinError = null;
+                        });
+                        try {
+                          final joinedRoom = await ApiClient.joinRoom(
+                            userId: widget.user.id,
+                            roomCode: room.roomCode,
+                          );
+                          if (ctx.mounted) Navigator.of(ctx).pop();
+                          _navigateToRoom(joinedRoom.id, gameType: 'TEEN_PATTI');
+                        } catch (e) {
+                          setDialogState(() {
+                            joining = false;
+                            joinError = e.toString();
+                          });
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7E22CE),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Confirm & Take Seat', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -600,16 +829,22 @@ class _CreateTableBottomSheet extends StatefulWidget {
 }
 
 class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
-  double _entryFee = 50;
-  int _maxPlayers = 2;
+  String _selectedGameType = 'TEEN_PATTI';
+  double _entryFee = 20;
+  int _maxPlayers = 6;
   int _chosenNumber = 7;
   bool _submitting = false;
   String? _error;
 
-  final List<double> _stakes = [10, 25, 50, 100, 200, 500];
+  final List<double> _teenPattiStakes = [10, 20, 50, 100, 200, 500];
+  final List<double> _diceStakes = [10, 25, 50, 100];
 
   @override
   Widget build(BuildContext context) {
+    final isTeenPatti = _selectedGameType == 'TEEN_PATTI';
+    final currentStakes = isTeenPatti ? _teenPattiStakes : _diceStakes;
+    final maxPlayerOptions = isTeenPatti ? [2, 3, 4, 5, 6] : [2, 3, 4];
+
     return Padding(
       padding: EdgeInsets.only(
         top: 20,
@@ -625,7 +860,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Create New Table',
+                'Create Game Table',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.slate900),
               ),
               IconButton(
@@ -634,7 +869,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
           if (_error != null) ...[
             Container(
@@ -649,15 +884,104 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
             ),
           ],
 
-          // Entry Stake
+          // Game Selection Cards
           const Text(
-            'Select Entry Stake (₹)',
+            'Select Game',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _selectedGameType = 'TEEN_PATTI';
+                      _entryFee = 20;
+                      _maxPlayers = 6;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: isTeenPatti ? const Color(0xFFFAF5FF) : AppColors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isTeenPatti ? const Color(0xFF9333EA) : AppColors.slate200,
+                        width: isTeenPatti ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text('🃏', style: TextStyle(fontSize: 22)),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Teen Patti',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: isTeenPatti ? const Color(0xFF7E22CE) : AppColors.slate800,
+                          ),
+                        ),
+                        const Text('3 Cards (2-6p)', style: TextStyle(fontSize: 10, color: AppColors.slate500)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _selectedGameType = 'GUESS_NUMBER';
+                      _entryFee = 50;
+                      _maxPlayers = 2;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: !isTeenPatti ? AppColors.emerald50 : AppColors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: !isTeenPatti ? AppColors.emerald600 : AppColors.slate200,
+                        width: !isTeenPatti ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text('🎲', style: TextStyle(fontSize: 22)),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Dice Guess',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: !isTeenPatti ? AppColors.emerald700 : AppColors.slate800,
+                          ),
+                        ),
+                        const Text('Number (2-4p)', style: TextStyle(fontSize: 10, color: AppColors.slate500)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Entry Stake / Boot Amount
+          Text(
+            isTeenPatti ? 'Boot Stake (₹)' : 'Select Entry Stake (₹)',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900),
           ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
-            children: _stakes.map((stake) {
+            children: currentStakes.map((stake) {
               final isSel = _entryFee == stake;
               return ChoiceChip(
                 label: Text('₹${stake.toStringAsFixed(0)}'),
@@ -666,14 +990,20 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                   if (selected) setState(() => _entryFee = stake);
                 },
                 backgroundColor: AppColors.white,
-                selectedColor: AppColors.emerald50,
+                selectedColor: isTeenPatti ? const Color(0xFFF3E8FF) : AppColors.emerald50,
                 labelStyle: TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: isSel ? AppColors.emerald700 : AppColors.slate800,
+                  color: isSel
+                      ? (isTeenPatti ? const Color(0xFF7E22CE) : AppColors.emerald700)
+                      : AppColors.slate800,
                 ),
-                side: BorderSide(color: isSel ? AppColors.emerald600 : AppColors.slate200),
+                side: BorderSide(
+                  color: isSel
+                      ? (isTeenPatti ? const Color(0xFF9333EA) : AppColors.emerald600)
+                      : AppColors.slate200,
+                ),
               );
             }).toList(),
           ),
@@ -686,7 +1016,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
           ),
           const SizedBox(height: 8),
           Row(
-            children: [2, 3, 4].map((count) {
+            children: maxPlayerOptions.map((count) {
               final isSel = _maxPlayers == count;
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
@@ -697,48 +1027,57 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                     if (selected) setState(() => _maxPlayers = count);
                   },
                   backgroundColor: AppColors.white,
-                  selectedColor: AppColors.emerald50,
+                  selectedColor: isTeenPatti ? const Color(0xFFF3E8FF) : AppColors.emerald50,
                   labelStyle: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: isSel ? AppColors.emerald700 : AppColors.slate800,
+                    color: isSel
+                        ? (isTeenPatti ? const Color(0xFF7E22CE) : AppColors.emerald700)
+                        : AppColors.slate800,
                   ),
-                  side: BorderSide(color: isSel ? AppColors.emerald600 : AppColors.slate200),
+                  side: BorderSide(
+                    color: isSel
+                        ? (isTeenPatti ? const Color(0xFF9333EA) : AppColors.emerald600)
+                        : AppColors.slate200,
+                  ),
                 ),
               );
             }).toList(),
           ),
-          const SizedBox(height: 16),
 
-          // Secret Guess Number
-          const Text(
-            'Your Number (1-10)',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: List.generate(10, (idx) {
-              final val = idx + 1;
-              final isSel = _chosenNumber == val;
-              return ChoiceChip(
-                label: Text('$val'),
-                selected: isSel,
-                onSelected: (selected) {
-                  if (selected) setState(() => _chosenNumber = val);
-                },
-                backgroundColor: AppColors.white,
-                selectedColor: AppColors.emerald50,
-                labelStyle: TextStyle(
-                  fontFamily: 'monospace',
-                  fontWeight: FontWeight.w700,
-                  color: isSel ? AppColors.emerald700 : AppColors.slate900,
-                ),
-                side: BorderSide(color: isSel ? AppColors.emerald600 : AppColors.slate200),
-              );
-            }),
-          ),
+          // Secret Guess Number (ONLY for Dice Guess)
+          if (!isTeenPatti) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'Your Number (1-10)',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: List.generate(10, (idx) {
+                final val = idx + 1;
+                final isSel = _chosenNumber == val;
+                return ChoiceChip(
+                  label: Text('$val'),
+                  selected: isSel,
+                  onSelected: (selected) {
+                    if (selected) setState(() => _chosenNumber = val);
+                  },
+                  backgroundColor: AppColors.white,
+                  selectedColor: AppColors.emerald50,
+                  labelStyle: TextStyle(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                    color: isSel ? AppColors.emerald700 : AppColors.slate900,
+                  ),
+                  side: BorderSide(color: isSel ? AppColors.emerald600 : AppColors.slate200),
+                );
+              }),
+            ),
+          ],
+
           const SizedBox(height: 24),
 
           // Submit Button
@@ -764,7 +1103,8 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                           userId: widget.user.id,
                           entryFee: _entryFee,
                           maxPlayers: _maxPlayers,
-                          guessNumber: _chosenNumber,
+                          guessNumber: isTeenPatti ? null : _chosenNumber,
+                          gameType: _selectedGameType,
                         );
                         widget.onRoomCreated(room);
                       } catch (e) {
@@ -775,7 +1115,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                       }
                     },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.emerald600,
+                backgroundColor: isTeenPatti ? const Color(0xFF7E22CE) : AppColors.emerald600,
                 elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),

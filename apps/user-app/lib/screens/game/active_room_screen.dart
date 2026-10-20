@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../core/constants/colors.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/socket_service.dart';
+import 'teen_patti/teen_patti_table_screen.dart';
 
 class ActiveRoomScreen extends StatefulWidget {
   final String roomId;
@@ -141,6 +142,14 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_loading && _error == null && _room?.gameType == 'TEEN_PATTI') {
+      return TeenPattiTableScreen(
+        roomId: widget.roomId,
+        user: widget.user,
+        onBalanceRefresh: () => _loadRoom(silent: true),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.slate50,
       appBar: AppBar(

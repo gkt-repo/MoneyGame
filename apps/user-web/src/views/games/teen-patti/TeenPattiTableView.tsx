@@ -2,7 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { RoomItem, userApi, UserProfile } from '../../../services/api';
 import { connectSocket } from '../../../services/socket';
 import { PlayingCard, TeenPattiGameState, TeenPattiPlayerState } from '@moneygame/shared-types';
-import { Trophy, Eye, Clock, Coins, ArrowLeft, CheckCircle2, RotateCcw } from 'lucide-react';
+import {
+  Trophy,
+  Eye,
+  Clock,
+  Coins,
+  ArrowLeft,
+  CheckCircle2,
+  Plus,
+  Minus,
+  GitCompare,
+  Sparkles,
+} from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface TeenPattiTableViewProps {
@@ -10,6 +21,28 @@ interface TeenPattiTableViewProps {
   user: UserProfile;
   onRefreshBalance: () => void;
   onBack?: () => void;
+}
+
+/**
+ * Evaluates 3-card Teen Patti hand name for UI display
+ */
+function evaluateTeenPattiHandName(cards?: PlayingCard[]): string {
+  if (!cards || cards.length !== 3) return '';
+  const sorted = [...cards].sort((a, b) => b.rank - a.rank);
+  const [c1, c2, c3] = sorted;
+  const isFlush = c1.suit === c2.suit && c2.suit === c3.suit;
+  const isNormalSeq = c1.rank === c2.rank + 1 && c2.rank === c3.rank + 1;
+  const isA23Seq = c1.rank === 14 && c2.rank === 3 && c3.rank === 2;
+  const isSeq = isNormalSeq || isA23Seq;
+
+  if (c1.rank === c2.rank && c2.rank === c3.rank) return `Trail (${c1.label}s)`;
+  if (isSeq && isFlush) return `Pure Sequence (${isA23Seq ? 'A-2-3' : `${c1.label}-${c2.label}-${c3.label}`})`;
+  if (isSeq) return `Sequence (${isA23Seq ? 'A-2-3' : `${c1.label}-${c2.label}-${c3.label}`})`;
+  if (isFlush) return `Color (${c1.label} High)`;
+  if (c1.rank === c2.rank) return `Pair of ${c1.label}s`;
+  if (c2.rank === c3.rank) return `Pair of ${c2.label}s`;
+  if (c1.rank === c3.rank) return `Pair of ${c1.label}s`;
+  return `High Card (${c1.label})`;
 }
 
 export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
@@ -21,6 +54,8 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
   const [submittingAction, setSubmittingAction] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [localGameState, setLocalGameState] = useState<TeenPattiGameState | null>(room.gameState || null);
+  const [betMultiplier, setBetMultiplier] = useState<number>(1);
+  const [sideShowBanner, setSideShowBanner] = useState<string | null>(null);
   const [finishData, setFinishData] = useState<{
     winnerId: string;
     winnerUsername: string;
@@ -49,6 +84,13 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
       setLocalGameState(room.gameState);
     }
   }, [room.gameState]);
+
+  // Reset multiplier when turn changes
+  useEffect(() => {
+    if (localGameState?.currentTurnUserId !== user.id) {
+      setBetMultiplier(1);
+    }
+  }, [localGameState?.currentTurnUserId, user.id]);
 
   // Connect to live WebSockets for instant table interactions
   useEffect(() => {
@@ -80,6 +122,56 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
           pot: data.pot,
         };
       });
+    });
+
+    socket.on('player_packed', (data: { userId: string; seatIndex: number }) => {
+      setLocalGameState(prev => {
+        if (!prev) return prev;
+        const p = prev.players[data.userId];
+        if (!p) return prev;
+        return {
+          ...prev,
+          players: {
+            ...prev.players,
+            [data.userId]: {
+              ...p,
+              isPacked: true,
+            },
+          },
+        };
+      });
+    });
+
+    socket.on('player_seen', (data: { userId: string; seatIndex: number }) => {
+      setLocalGameState(prev => {
+        if (!prev) return prev;
+        const p = prev.players[data.userId];
+        if (!p) return prev;
+        return {
+          ...prev,
+          players: {
+            ...prev.players,
+            [data.userId]: {
+              ...p,
+              isSeen: true,
+            },
+          },
+        };
+      });
+    });
+
+    socket.on('side_show_result', (data: any) => {
+      if (data && data.message) {
+        setSideShowBanner(data.message);
+        setTimeout(() => setSideShowBanner(null), 4500);
+        if (data.winnerId === user.id) {
+          confetti({
+            particleCount: 70,
+            spread: 60,
+            origin: { y: 0.7 },
+          });
+        }
+      }
     });
 
     socket.on('cards_revealed', (data: { cards: PlayingCard[]; hand: any }) => {
@@ -129,6 +221,16 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
     return () => {
       socket.emit('leave_room_channel', room.id);
+      socket.off('teen_patti_state');
+      socket.off('turn_timer_started');
+      socket.off('player_acted');
+      socket.off('player_packed');
+      socket.off('player_seen');
+      socket.off('side_show_result');
+      socket.off('cards_revealed');
+      socket.off('game_finished');
+      socket.off('balance_updated');
+      socket.off('wallet_updated');
       socket.disconnect();
     };
   }, [room.id, user.id, onRefreshBalance]);
@@ -172,12 +274,32 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
         if (res.gameState) {
           setLocalGameState(res.gameState);
         }
+        // If action was SEE_CARDS and cards returned, update immediately
+        if (action === 'SEE_CARDS' && res.cards) {
+          setLocalGameState(prev => {
+            if (!prev) return prev;
+            const myP = prev.players[user.id];
+            if (!myP) return prev;
+            return {
+              ...prev,
+              players: {
+                ...prev.players,
+                [user.id]: {
+                  ...myP,
+                  isSeen: true,
+                  cards: res.cards,
+                },
+              },
+            };
+          });
+        }
         onRefreshBalance();
       }
     } catch (err: any) {
       setActionError(err.message || 'Failed to submit action');
     } finally {
       setSubmittingAction(false);
+      setBetMultiplier(1);
     }
   };
 
@@ -186,14 +308,35 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
   const winnerUserId = finishData?.winnerId || room.winnerId;
   const isWinner = winnerUserId === user.id;
 
-  const blindCost = gameState?.currentChaalAmount || room.entryFee;
-  const currentChaalCost = myPlayerState?.isSeen
-    ? (gameState?.currentChaalAmount || room.entryFee) * 2
-    : (gameState?.currentChaalAmount || room.entryFee);
-  const showCost = currentChaalCost;
+  // Bet cost calculations with raise multiplier
+  const currentChaalBase = gameState?.currentChaalAmount || room.entryFee;
+  const baseBlindCost = currentChaalBase;
+  const baseChaalCost = myPlayerState?.isSeen ? currentChaalBase * 2 : currentChaalBase;
+  const activeBlindCost = baseBlindCost * betMultiplier;
+  const activeChaalCost = baseChaalCost * betMultiplier;
+  const nextMultiplierCost = myPlayerState?.isSeen ? baseChaalCost * 2 : baseBlindCost * 2;
+  const showCost = activeChaalCost;
 
-  const hasEnoughForBlind = myBalance >= blindCost;
-  const hasEnoughForChaal = myBalance >= currentChaalCost;
+  // Determine if Side Show is available:
+  // Requires 3+ active players, my turn, hero seen, and previous active player in turn order seen
+  const canSideShow = (() => {
+    if (!gameState || !isPlaying || !isMyTurn || !myPlayerState?.isSeen) return false;
+    if (activePlayers.length < 3) return false;
+
+    // Active players in clockwise seat order
+    const sorted = [...activePlayers].sort((a, b) => a.seatIndex - b.seatIndex);
+    const myIdx = sorted.findIndex(p => p.userId === user.id);
+    if (myIdx === -1) return false;
+
+    const prevIdx = (myIdx - 1 + sorted.length) % sorted.length;
+    const prevPlayer = sorted[prevIdx];
+
+    const sideShowCost = currentChaalBase * 2;
+    return !!prevPlayer && prevPlayer.isSeen && myBalance >= sideShowCost;
+  })();
+
+  const hasEnoughForBlind = myBalance >= activeBlindCost;
+  const hasEnoughForChaal = myBalance >= activeChaalCost;
   const hasEnoughForShow = myBalance >= showCost;
   const insufficientFundsForTurn = isMyTurn && !myPlayerState?.isPacked && (
     (!myPlayerState?.isSeen && !hasEnoughForBlind) ||
@@ -246,6 +389,16 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
             )}
           </div>
         </div>
+
+        {/* Side Show Event Banner Notification */}
+        {sideShowBanner && (
+          <div className="relative z-20 my-2 text-center animate-fade-in">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900/95 border-2 border-amber-400 rounded-full text-xs font-bold text-amber-300 shadow-xl">
+              <GitCompare className="w-4 h-4 text-amber-400" />
+              <span>{sideShowBanner}</span>
+            </div>
+          </div>
+        )}
 
         {/* Center Table Area: Pot & Chips OR Final Winner Banner */}
         <div className="relative z-10 my-auto text-center py-4">
@@ -404,35 +557,58 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
           )}
 
           {myPlayerState && !myPlayerState.isPacked && isPlaying && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
               {/* My 3 Cards Display */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 {myPlayerState.isSeen && myPlayerState.cards ? (
-                  // Cards Revealed
-                  <div className="flex items-center gap-1.5">
-                    {myPlayerState.cards.map((c, idx) => (
-                      <CardVisual key={idx} card={c} />
-                    ))}
+                  // Cards Revealed with Hand Evaluator Badge
+                  <div className="flex flex-col items-center gap-1.5">
+                    <span className="px-2.5 py-0.5 bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 text-slate-950 font-black text-[10px] rounded-full shadow-md border border-amber-200 uppercase tracking-wider flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-amber-800" />
+                      <span>{evaluateTeenPattiHandName(myPlayerState.cards)}</span>
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {myPlayerState.cards.map((c, idx) => (
+                        <CardVisual key={idx} card={c} />
+                      ))}
+                    </div>
                   </div>
                 ) : (
-                  // Face Down Cards with "See Cards" Button
-                  <div className="flex items-center gap-2">
-                    <div className="flex -space-x-3">
+                  // Face Down Cards with "See Cards" interactive prompt
+                  <div
+                    onClick={() => !submittingAction && handleAction('SEE_CARDS')}
+                    className="group flex items-center gap-2 cursor-pointer select-none"
+                    title="Click cards or button to see your cards"
+                  >
+                    <div className="relative flex -space-x-3 transition group-hover:scale-105">
                       {[0, 1, 2].map((i) => (
                         <div
                           key={i}
-                          className="w-10 h-14 bg-blue-900 border-2 border-white rounded-md shadow-md flex items-center justify-center transform -rotate-3 transition hover:rotate-0"
+                          className={`w-11 h-16 bg-gradient-to-br from-red-800 to-red-950 border-2 border-amber-300/80 rounded-lg shadow-lg flex items-center justify-center transform transition ${
+                            i === 0 ? '-rotate-6' : i === 2 ? 'rotate-6' : 'z-10'
+                          }`}
                         >
-                          <div className="w-7 h-10 border border-blue-700 rounded bg-blue-950 flex items-center justify-center text-blue-400 text-[10px] font-bold">
+                          <div className="w-8 h-12 border border-amber-400/40 rounded bg-red-900/60 flex items-center justify-center text-amber-300 text-xs font-bold">
                             ♠
                           </div>
                         </div>
                       ))}
+
+                      {/* Orange "See" pill in center */}
+                      <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+                        <span className="px-3 py-1 bg-gradient-to-r from-amber-500 to-orange-600 border border-white text-white font-black text-xs rounded-full shadow-lg group-hover:brightness-110">
+                          See
+                        </span>
+                      </div>
                     </div>
                     <button
-                      onClick={() => handleAction('SEE_CARDS')}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAction('SEE_CARDS');
+                      }}
                       disabled={submittingAction}
-                      className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-xs"
+                      className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-md border border-amber-300/60"
                     >
                       <Eye className="w-3.5 h-3.5" />
                       <span>See Cards</span>
@@ -441,64 +617,108 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                 )}
               </div>
 
-              {/* Action Buttons (Turn Controls) */}
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              {/* Action Buttons (Turn Controls with Steppers & Side Show) */}
+              <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
                 {/* Pack / Fold */}
                 <button
                   disabled={!isMyTurn || submittingAction}
                   onClick={() => handleAction('PACK')}
-                  className="flex-1 sm:flex-none px-3.5 py-2 bg-red-900/60 hover:bg-red-800 text-red-200 border border-red-700/60 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-gradient-to-b from-red-700 to-red-900 hover:from-red-600 hover:to-red-800 text-white border border-red-500/60 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md"
                 >
                   Pack (Fold)
                 </button>
 
-                {/* Blind or Chaal */}
-                {!myPlayerState.isSeen ? (
-                  <button
-                    disabled={!isMyTurn || submittingAction || !hasEnoughForBlind}
-                    onClick={() => handleAction('BLIND')}
-                    className="flex-1 sm:flex-none px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-1.5"
-                    title={!hasEnoughForBlind ? `Insufficient balance. Required: ₹${blindCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
-                  >
-                    <span>Blind (₹{blindCost.toFixed(2)})</span>
-                    {!hasEnoughForBlind && (
-                      <span className="text-[10px] bg-red-800/80 px-1.5 py-0.2 rounded font-normal text-red-200">
-                        Low Bal
-                      </span>
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    disabled={!isMyTurn || submittingAction || !hasEnoughForChaal}
-                    onClick={() => handleAction('CHAAL')}
-                    className="flex-1 sm:flex-none px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-1.5"
-                    title={!hasEnoughForChaal ? `Insufficient balance. Required: ₹${currentChaalCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
-                  >
-                    <span>Chaal (₹{currentChaalCost.toFixed(2)})</span>
-                    {!hasEnoughForChaal && (
-                      <span className="text-[10px] bg-red-800/80 px-1.5 py-0.2 rounded font-normal text-red-200">
-                        Low Bal
-                      </span>
-                    )}
-                  </button>
-                )}
-
-                {/* Show (Showdown) */}
+                {/* Show (Showdown - when exactly 2 players remain) */}
                 {canShow && (
                   <button
                     disabled={submittingAction || !hasEnoughForShow}
                     onClick={() => handleAction('SHOW')}
-                    className="flex-1 sm:flex-none px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-extrabold transition shadow-md animate-bounce disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                    className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 border border-amber-200 rounded-xl text-xs font-extrabold transition shadow-md animate-bounce disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1"
                     title={!hasEnoughForShow ? `Insufficient balance. Required: ₹${showCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
                   >
                     <span>Show (₹{showCost.toFixed(2)})!</span>
-                    {!hasEnoughForShow && (
-                      <span className="text-[10px] bg-red-800/80 px-1.5 py-0.2 rounded font-normal text-red-200">
-                        Low Bal
-                      </span>
+                  </button>
+                )}
+
+                {/* Side Show (Available when 3+ players remain and prev player is seen) */}
+                {activePlayers.length >= 3 && (
+                  <button
+                    disabled={!canSideShow || submittingAction}
+                    onClick={() => handleAction('SIDE_SHOW')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md border ${
+                      canSideShow
+                        ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border-cyan-300/80 shadow-cyan-500/20'
+                        : 'bg-slate-800/80 text-slate-400 border-slate-700 opacity-40 cursor-not-allowed'
+                    }`}
+                    title={
+                      canSideShow
+                        ? `Compare hands with previous seen player for ₹${(currentChaalBase * 2).toFixed(2)}`
+                        : !myPlayerState.isSeen
+                        ? 'You must See Cards before asking for Side Show'
+                        : 'Side show only available when previous player is also Seen'
+                    }
+                  >
+                    <GitCompare className="w-3.5 h-3.5" />
+                    <span>Side Show (₹{(currentChaalBase * 2).toFixed(2)})</span>
+                  </button>
+                )}
+
+                {/* Stepper (-) to step down to 1x bet */}
+                <button
+                  type="button"
+                  disabled={!isMyTurn || submittingAction || betMultiplier <= 1}
+                  onClick={() => setBetMultiplier(1)}
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm border transition ${
+                    isMyTurn && betMultiplier > 1
+                      ? 'bg-slate-700 hover:bg-slate-600 text-white border-slate-400 shadow-xs cursor-pointer'
+                      : 'bg-slate-900/60 text-slate-500 border-slate-800 cursor-not-allowed opacity-40'
+                  }`}
+                  title="Step down to 1x bet"
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+
+                {/* Main Bet Button: Blind or Chaal with Multiplier */}
+                {!myPlayerState.isSeen ? (
+                  <button
+                    disabled={!isMyTurn || submittingAction || myBalance < activeBlindCost}
+                    onClick={() => handleAction('BLIND', { multiplier: betMultiplier })}
+                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white border border-purple-400/60 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-1.5"
+                    title={myBalance < activeBlindCost ? `Insufficient balance. Required: ₹${activeBlindCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
+                  >
+                    <span>Blind (₹{activeBlindCost.toFixed(2)})</span>
+                    {betMultiplier === 2 && (
+                      <span className="text-[10px] bg-amber-400 text-slate-950 px-1 rounded font-black">2x</span>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    disabled={!isMyTurn || submittingAction || myBalance < activeChaalCost}
+                    onClick={() => handleAction('CHAAL', { multiplier: betMultiplier })}
+                    className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white border border-amber-300/70 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-1.5"
+                    title={myBalance < activeChaalCost ? `Insufficient balance. Required: ₹${activeChaalCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
+                  >
+                    <span>Chaal (₹{activeChaalCost.toFixed(2)})</span>
+                    {betMultiplier === 2 && (
+                      <span className="text-[10px] bg-amber-200 text-slate-950 px-1 rounded font-black">2x</span>
                     )}
                   </button>
                 )}
+
+                {/* Stepper (+) to raise bet to 2x */}
+                <button
+                  type="button"
+                  disabled={!isMyTurn || submittingAction || betMultiplier >= 2 || myBalance < nextMultiplierCost}
+                  onClick={() => setBetMultiplier(2)}
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm border transition ${
+                    isMyTurn && betMultiplier === 1 && myBalance >= nextMultiplierCost
+                      ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-300 shadow-md cursor-pointer'
+                      : 'bg-slate-900/60 text-slate-500 border-slate-800 cursor-not-allowed opacity-40'
+                  }`}
+                  title="Raise bet to 2x"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
               </div>
             </div>
           )}

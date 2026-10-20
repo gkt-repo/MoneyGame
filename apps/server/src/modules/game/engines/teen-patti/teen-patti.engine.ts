@@ -224,20 +224,28 @@ export class TeenPattiEngine implements IGameEngine {
       player.isSeen = true;
       player.lastAction = 'SEE_CARDS';
 
+      const hand = evaluateTeenPattiHand(player.cards);
+
       if (io) {
         // Send actual cards only to this user
         io.to(`user:${userId}`).emit('cards_revealed', {
           cards: player.cards,
-          hand: evaluateTeenPattiHand(player.cards),
+          hand,
         });
         // Broadcast to table that this player is now 'Seen'
         io.to(`room:${roomId}`).emit('player_seen', { userId, seatIndex: player.seatIndex });
         this.broadcastGameState(roomId, io);
       }
-      return { success: true, message: 'Cards revealed', gameState: this.getClientState(roomId, userId) };
+      return {
+        success: true,
+        message: 'Cards revealed',
+        cards: player.cards,
+        hand,
+        gameState: this.getClientState(roomId, userId),
+      };
     }
 
-    // All betting actions (CHAAL, BLIND, PACK, SHOW) require it to be the player's turn!
+    // All betting actions (CHAAL, BLIND, PACK, SHOW, SIDE_SHOW) require it to be the player's turn!
     if (game.currentTurnUserId !== userId) {
       return { success: false, message: 'Not your turn' };
     }
@@ -270,12 +278,18 @@ export class TeenPattiEngine implements IGameEngine {
         return { success: false, message: 'Cannot play blind after seeing your cards' };
       }
 
-      const betAmount = game.currentChaalAmount;
+      const multiplier = Number(_payload?.multiplier) === 2 ? 2 : 1;
+      const betAmount = _payload?.amount ? Number(_payload.amount) : game.currentChaalAmount * multiplier;
+
       let updatedWallet: any;
       try {
         updatedWallet = await walletService.lockGameBet(userId, roomId, betAmount, 'BLIND');
       } catch (err: any) {
         return { success: false, message: err.message || 'Insufficient wallet balance for Blind' };
+      }
+
+      if (betAmount > game.currentChaalAmount) {
+        game.currentChaalAmount = betAmount;
       }
 
       game.pot += betAmount;
@@ -290,22 +304,29 @@ export class TeenPattiEngine implements IGameEngine {
           action: 'BLIND',
           betAmount,
           pot: game.pot,
+          currentChaalAmount: game.currentChaalAmount,
         });
       }
 
       this.advanceToNextTurn(roomId, io);
-      return { success: true, message: 'Blind placed', wallet: updatedWallet };
+      return { success: true, message: 'Blind placed', wallet: updatedWallet, gameState: this.getClientState(roomId, userId) };
     }
 
     // 4. CHAAL
     if (act === 'CHAAL') {
-      const betAmount = player.isSeen ? game.currentChaalAmount * 2 : game.currentChaalAmount;
+      const baseCost = player.isSeen ? game.currentChaalAmount * 2 : game.currentChaalAmount;
+      const multiplier = Number(_payload?.multiplier) === 2 ? 2 : 1;
+      const betAmount = _payload?.amount ? Number(_payload.amount) : baseCost * multiplier;
 
       let updatedWallet: any;
       try {
         updatedWallet = await walletService.lockGameBet(userId, roomId, betAmount, 'CHAAL');
       } catch (err: any) {
         return { success: false, message: err.message || 'Insufficient wallet balance for Chaal' };
+      }
+
+      if (multiplier === 2 || (_payload?.amount && betAmount > baseCost)) {
+        game.currentChaalAmount = player.isSeen ? betAmount / 2 : betAmount;
       }
 
       game.pot += betAmount;
@@ -320,14 +341,106 @@ export class TeenPattiEngine implements IGameEngine {
           action: 'CHAAL',
           betAmount,
           pot: game.pot,
+          currentChaalAmount: game.currentChaalAmount,
         });
       }
 
       this.advanceToNextTurn(roomId, io);
-      return { success: true, message: 'Chaal placed', wallet: updatedWallet };
+      return { success: true, message: 'Chaal placed', wallet: updatedWallet, gameState: this.getClientState(roomId, userId) };
     }
 
-    // 5. SHOW
+    // 5. SIDE SHOW (Compromise with previous seen player)
+    if (act === 'SIDE_SHOW') {
+      const activePlayers = Object.values(game.players).filter(p => !p.isPacked);
+      if (activePlayers.length <= 2) {
+        return { success: false, message: 'Side show is only available with 3+ players. Use Show instead.' };
+      }
+
+      if (!player.isSeen) {
+        return { success: false, message: 'You must see your cards before requesting a Side Show' };
+      }
+
+      // Find previous active player in turn order
+      const activeOrder = game.playerTurnOrder.filter(uid => !game.players[uid].isPacked);
+      const myIdx = activeOrder.indexOf(userId);
+      const prevIdx = (myIdx - 1 + activeOrder.length) % activeOrder.length;
+      const prevUserId = activeOrder[prevIdx];
+      const prevPlayer = game.players[prevUserId];
+
+      if (!prevPlayer) {
+        return { success: false, message: 'Previous player not found' };
+      }
+
+      if (!prevPlayer.isSeen) {
+        return { success: false, message: `${prevPlayer.username} is playing Blind. Side show only allowed with Seen players.` };
+      }
+
+      const sideShowCost = game.currentChaalAmount * 2;
+      let updatedWallet: any;
+      try {
+        updatedWallet = await walletService.lockGameBet(userId, roomId, sideShowCost, 'SIDE_SHOW');
+      } catch (err: any) {
+        return { success: false, message: err.message || 'Insufficient wallet balance for Side Show' };
+      }
+
+      game.pot += sideShowCost;
+      player.totalBet += sideShowCost;
+      player.lastAction = 'SIDE_SHOW';
+
+      // Compare hands
+      const myHand = evaluateTeenPattiHand(player.cards);
+      const prevHand = evaluateTeenPattiHand(prevPlayer.cards);
+
+      const requesterLost = myHand.score <= prevHand.score;
+      const loser = requesterLost ? player : prevPlayer;
+      const winner = requesterLost ? prevPlayer : player;
+      loser.isPacked = true;
+
+      if (io) {
+        io.to(`user:${userId}`).emit('balance_updated', updatedWallet);
+        io.to(`user:${userId}`).emit('wallet_updated', updatedWallet);
+        io.to(`room:${roomId}`).emit('player_acted', {
+          userId,
+          action: 'SIDE_SHOW',
+          betAmount: sideShowCost,
+          pot: game.pot,
+        });
+        io.to(`room:${roomId}`).emit('side_show_result', {
+          requesterId: userId,
+          requesterUsername: player.username,
+          targetId: prevUserId,
+          targetUsername: prevPlayer.username,
+          winnerId: winner.userId,
+          winnerUsername: winner.username,
+          loserId: loser.userId,
+          loserUsername: loser.username,
+          message: `${loser.username} lost the Side Show (${loser.userId === userId ? 'Your ' + myHand.description : prevHand.description} vs ${loser.userId === userId ? prevHand.description : myHand.description}) and folded!`,
+        });
+        io.to(`room:${roomId}`).emit('player_packed', {
+          userId: loser.userId,
+          seatIndex: loser.seatIndex,
+        });
+        this.broadcastGameState(roomId, io);
+      }
+
+      const remainingActive = Object.values(game.players).filter(p => !p.isPacked);
+      if (remainingActive.length === 1) {
+        game.currentTurnUserId = null;
+        if (game.turnTimer) clearTimeout(game.turnTimer);
+        await this.settleWinner(roomId, remainingActive[0].userId, io, 'Opponent folded after Side Show');
+        return { success: true, message: 'Side Show completed. Table winner decided!' };
+      }
+
+      this.advanceToNextTurn(roomId, io);
+      return {
+        success: true,
+        message: requesterLost ? 'You lost the Side Show and folded.' : `${prevPlayer.username} lost the Side Show and folded!`,
+        wallet: updatedWallet,
+        gameState: this.getClientState(roomId, userId),
+      };
+    }
+
+    // 6. SHOW
     if (act === 'SHOW') {
       const activePlayers = Object.values(game.players).filter(p => !p.isPacked);
       if (activePlayers.length > 2) {

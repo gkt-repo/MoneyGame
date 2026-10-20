@@ -37,6 +37,9 @@ export interface ActionResult {
   message?: string;
   gameState?: any;
   wallet?: any;
+  cards?: any;
+  hand?: any;
+  [key: string]: any;
 }
 
 export interface IGameEngine {

@@ -87,7 +87,7 @@ export interface TeenPattiHandResult {
   sortedCards: PlayingCard[];
 }
 
-export type TeenPattiActionType = 'SEE_CARDS' | 'BLIND' | 'CHAAL' | 'PACK' | 'SHOW';
+export type TeenPattiActionType = 'SEE_CARDS' | 'BLIND' | 'CHAAL' | 'PACK' | 'SHOW' | 'SIDE_SHOW';
 
 export interface TeenPattiPlayerState {
   userId: string;
