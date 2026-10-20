@@ -310,6 +310,42 @@ export class GameManager {
   }
 
   /**
+   * Helper to fetch full room info by room code
+   */
+  async getRoomByCode(roomCode: string, forUserId?: string) {
+    if (typeof roomCode !== 'string') return null;
+    const room = await prisma.room.findUnique({
+      where: { roomCode: roomCode.trim().toUpperCase() },
+      include: {
+        players: {
+          include: {
+            user: { select: { id: true, username: true } },
+          },
+          orderBy: { seatIndex: 'asc' },
+        },
+        winner: {
+          select: { id: true, username: true },
+        },
+      },
+    });
+
+    if (!room) return null;
+
+    const engine = gameRegistry.get(room.gameType);
+    const gameState = engine ? engine.getClientState(room.id, forUserId) : null;
+    let parsedConfig: Record<string, any> | null = null;
+    try {
+      if (room.customConfig) parsedConfig = JSON.parse(room.customConfig);
+    } catch (_) {}
+
+    return {
+      ...room,
+      customConfig: parsedConfig,
+      gameState,
+    };
+  }
+
+  /**
    * Fetch all open/active rooms for the lobby
    */
   async getActiveRooms() {

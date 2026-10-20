@@ -717,6 +717,8 @@ export class SportsService {
         winnerUserIds: winners.map(w => w.userId),
         settledAt: new Date().toISOString(),
       };
+      customConfigObj.settledPool = totalPool;
+      customConfigObj.platformCommission = commissionPaise / 100;
 
       const updated = await tx.room.update({
         where: { id: roomId },

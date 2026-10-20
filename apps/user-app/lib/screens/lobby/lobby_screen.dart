@@ -2115,7 +2115,11 @@ class _JoinCodeBottomSheet extends StatefulWidget {
 
 class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
   final _codeController = TextEditingController();
-  int _chosenNumber = 5;
+  int _step = 1;
+  RoomModel? _targetRoom;
+  int _chosenNumber = 1;
+  int _chosenSportsTeam = 1;
+  bool _lookingUp = false;
   bool _submitting = false;
   String? _error;
 
@@ -2123,6 +2127,92 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
   void dispose() {
     _codeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleLookupCode() async {
+    final code = _codeController.text.trim().toUpperCase();
+    if (code.isEmpty) {
+      setState(() => _error = 'Please enter a valid room code');
+      return;
+    }
+
+    setState(() {
+      _lookingUp = true;
+      _error = null;
+    });
+
+    try {
+      final room = await ApiClient.getRoomByCode(code);
+
+      if (room.status == 'COMPLETED' || room.status == 'CANCELLED') {
+        throw 'This room has already ${room.status.toLowerCase()}.';
+      }
+
+      final isAlreadyIn = room.players.any((p) => p.userId == widget.user.id);
+      if (isAlreadyIn) {
+        if (mounted) Navigator.of(context).pop();
+        widget.onRoomJoined(room);
+        return;
+      }
+
+      if (room.players.length >= room.maxPlayers) {
+        throw 'This room is already full (${room.players.length}/${room.maxPlayers}).';
+      }
+
+      int initialPick = 1;
+      if (room.gameType == 'GUESS_NUMBER') {
+        final taken = room.players.map((p) => p.guessNumber).whereType<int>().toSet();
+        for (int i = 1; i <= 10; i++) {
+          if (!taken.contains(i)) {
+            initialPick = i;
+            break;
+          }
+        }
+      }
+
+      setState(() {
+        _lookingUp = false;
+        _targetRoom = room;
+        _chosenNumber = initialPick;
+        _chosenSportsTeam = 1;
+        _step = 2;
+      });
+    } catch (e) {
+      setState(() {
+        _lookingUp = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  Future<void> _handleConfirmJoin() async {
+    if (_targetRoom == null) return;
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    try {
+      final pick = _targetRoom!.gameType == 'SPORTS_MATCH'
+          ? _chosenSportsTeam
+          : _targetRoom!.gameType == 'GUESS_NUMBER'
+              ? _chosenNumber
+              : null;
+
+      final room = await ApiClient.joinRoom(
+        userId: widget.user.id,
+        roomCode: _targetRoom!.roomCode,
+        guessNumber: pick,
+      );
+      if (mounted) Navigator.of(context).pop();
+      widget.onRoomJoined(room);
+    } catch (e) {
+      setState(() {
+        _submitting = false;
+        _error = e.toString();
+      });
+    }
   }
 
   @override
@@ -2138,140 +2228,413 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Join via Room Code',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.slate900),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close, size: 20, color: AppColors.slate500),
-                onPressed: () => Navigator.of(context).pop(),
+          if (_step == 1) ...[
+            // STEP 1: Ask ONLY Room Code
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Join via Room Code',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20, color: AppColors.slate500),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            if (_error != null) ...[
+              Container(
+                padding: const EdgeInsets.all(10),
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.red50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.red600.withValues(alpha: 0.3)),
+                ),
+                child: Text(_error!, style: const TextStyle(fontSize: 12, color: AppColors.red600)),
               ),
             ],
-          ),
-          const SizedBox(height: 16),
 
-          if (_error != null) ...[
-            Container(
-              padding: const EdgeInsets.all(10),
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(
-                color: AppColors.red50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.red600.withValues(alpha: 0.3)),
+            const Text(
+              'Room Code',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _codeController,
+              textCapitalization: TextCapitalization.characters,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 2,
               ),
-              child: Text(_error!, style: const TextStyle(fontSize: 12, color: AppColors.red600)),
+              decoration: InputDecoration(
+                hintText: 'e.g. R-1234',
+                hintStyle: const TextStyle(fontSize: 14, color: AppColors.slate400, letterSpacing: 0),
+                filled: true,
+                fillColor: AppColors.slate50,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.slate200),
+                ),
+              ),
+              onSubmitted: (_) => _handleLookupCode(),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Enter the room code shared by the host to find the table.',
+              style: TextStyle(fontSize: 11, color: AppColors.slate500),
+            ),
+            const SizedBox(height: 20),
+
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: AppColors.slate200),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('Cancel', style: TextStyle(color: AppColors.slate700, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _lookingUp ? null : _handleLookupCode,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.emerald600,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: _lookingUp
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white))
+                        : const Text('Next', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.white)),
+                  ),
+                ),
+              ],
+            ),
+          ] else if (_targetRoom != null) ...[
+            // STEP 2: Ask Next Info depending on Room Type
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back, size: 20, color: AppColors.slate700),
+                      onPressed: () => setState(() {
+                        _step = 1;
+                        _error = null;
+                      }),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _targetRoom!.gameType == 'SPORTS_MATCH'
+                              ? 'Back Your Team'
+                              : _targetRoom!.gameType == 'GUESS_NUMBER'
+                                  ? 'Pick Lucky Number'
+                                  : 'Table Confirmation',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                        ),
+                        Text(
+                          'Room #${_targetRoom!.roomCode}',
+                          style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: AppColors.slate500),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20, color: AppColors.slate500),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            if (_error != null) ...[
+              Container(
+                padding: const EdgeInsets.all(10),
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.red50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.red600.withValues(alpha: 0.3)),
+                ),
+                child: Text(_error!, style: const TextStyle(fontSize: 12, color: AppColors.red600)),
+              ),
+            ],
+
+            // Room Summary Card
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.slate50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.slate200),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _targetRoom!.gameType == 'SPORTS_MATCH'
+                            ? '🏏 Live Sports Pool'
+                            : _targetRoom!.gameType == 'GUESS_NUMBER'
+                                ? '🎲 Dice Guess'
+                                : '🃏 Teen Patti',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Players: ${_targetRoom!.players.length} / ${_targetRoom!.maxPlayers == 1000 ? 'Unlimited' : _targetRoom!.maxPlayers}',
+                        style: const TextStyle(fontSize: 11, color: AppColors.slate500),
+                      ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const Text('Entry Stake', style: TextStyle(fontSize: 11, color: AppColors.slate500)),
+                      Text(
+                        '₹${_targetRoom!.entryFee.toStringAsFixed(0)}',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.emerald700, fontFamily: 'monospace'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Sports Match Team Selection
+            if (_targetRoom!.gameType == 'SPORTS_MATCH') ...[
+              Builder(builder: (context) {
+                final cfg = _targetRoom!.customConfig is Map ? _targetRoom!.customConfig as Map : {};
+                final t1Name = cfg['team1']?['name'] ?? 'Team 1';
+                final t2Name = cfg['team2']?['name'] ?? 'Team 2';
+                final matchTitle = cfg['matchTitle'];
+                final t1Picks = _targetRoom!.players.where((p) => p.guessNumber == 1).length;
+                final t2Picks = _targetRoom!.players.where((p) => p.guessNumber == 2).length;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (matchTitle != null) ...[
+                      Center(
+                        child: Text(
+                          '$matchTitle',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.slate700),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    const Text(
+                      'Which team will win this match?',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setState(() => _chosenSportsTeam = 1),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: _chosenSportsTeam == 1 ? AppColors.emerald50 : AppColors.white,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _chosenSportsTeam == 1 ? AppColors.emerald600 : AppColors.slate200,
+                                  width: _chosenSportsTeam == 1 ? 2 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    '$t1Name',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                      color: _chosenSportsTeam == 1 ? AppColors.emerald700 : AppColors.slate900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '$t1Picks picks so far',
+                                    style: const TextStyle(fontSize: 10, color: AppColors.slate500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setState(() => _chosenSportsTeam = 2),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: _chosenSportsTeam == 2 ? AppColors.emerald50 : AppColors.white,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _chosenSportsTeam == 2 ? AppColors.emerald600 : AppColors.slate200,
+                                  width: _chosenSportsTeam == 2 ? 2 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    '$t2Name',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                      color: _chosenSportsTeam == 2 ? AppColors.emerald700 : AppColors.slate900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '$t2Picks picks so far',
+                                    style: const TextStyle(fontSize: 10, color: AppColors.slate500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              }),
+            ],
+
+            // Dice Guess Number Selection
+            if (_targetRoom!.gameType == 'GUESS_NUMBER') ...[
+              const Text(
+                'Choose Your Lucky Number (1-10):',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate900),
+              ),
+              const SizedBox(height: 8),
+              Builder(builder: (context) {
+                final taken = _targetRoom!.players.map((p) => p.guessNumber).whereType<int>().toSet();
+                return Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: List.generate(10, (idx) {
+                    final val = idx + 1;
+                    final isTaken = taken.contains(val);
+                    final isSel = _chosenNumber == val;
+
+                    return ChoiceChip(
+                      label: Text(
+                        '$val',
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w700,
+                          decoration: isTaken ? TextDecoration.lineThrough : null,
+                          color: isTaken
+                              ? AppColors.slate400
+                              : isSel
+                                  ? AppColors.emerald700
+                                  : AppColors.slate900,
+                        ),
+                      ),
+                      selected: isSel && !isTaken,
+                      onSelected: isTaken
+                          ? null
+                          : (selected) {
+                              if (selected) setState(() => _chosenNumber = val);
+                            },
+                      backgroundColor: isTaken ? AppColors.slate100 : AppColors.white,
+                      selectedColor: AppColors.emerald50,
+                      side: BorderSide(
+                        color: isTaken
+                            ? AppColors.slate200
+                            : isSel
+                                ? AppColors.emerald600
+                                : AppColors.slate200,
+                      ),
+                    );
+                  }),
+                );
+              }),
+            ],
+
+            // Teen Patti Confirmation
+            if (_targetRoom!.gameType == 'TEEN_PATTI') ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.slate50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Confirming will lock your boot stake and seat you at this Teen Patti table.',
+                  style: TextStyle(fontSize: 12, color: AppColors.slate700),
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 20),
+
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => setState(() {
+                      _step = 1;
+                      _error = null;
+                    }),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: AppColors.slate200),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('Back', style: TextStyle(color: AppColors.slate700, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _submitting ? null : _handleConfirmJoin,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.emerald600,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: _submitting
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white))
+                        : Text(
+                            'Lock ₹${_targetRoom!.entryFee.toStringAsFixed(0)} & Join',
+                            style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.white),
+                          ),
+                  ),
+                ),
+              ],
             ),
           ],
-
-          // Room Code Input
-          const Text(
-            'Room Code',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _codeController,
-            textCapitalization: TextCapitalization.characters,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2,
-            ),
-            decoration: InputDecoration(
-              hintText: 'e.g. R-1234',
-              hintStyle: const TextStyle(fontSize: 14, color: AppColors.slate400, letterSpacing: 0),
-              filled: true,
-              fillColor: AppColors.slate50,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: AppColors.slate200),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Secret Guess Number
-          const Text(
-            'Pick (1 for Team 1 / India, 2 for Team 2 / Aus, or 1-10 for Dice)',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: List.generate(10, (idx) {
-              final val = idx + 1;
-              final isSel = _chosenNumber == val;
-              return ChoiceChip(
-                label: Text('$val'),
-                selected: isSel,
-                onSelected: (selected) {
-                  if (selected) setState(() => _chosenNumber = val);
-                },
-                backgroundColor: AppColors.white,
-                selectedColor: AppColors.emerald50,
-                labelStyle: TextStyle(
-                  fontFamily: 'monospace',
-                  fontWeight: FontWeight.w700,
-                  color: isSel ? AppColors.emerald700 : AppColors.slate900,
-                ),
-                side: BorderSide(color: isSel ? AppColors.emerald600 : AppColors.slate200),
-              );
-            }),
-          ),
-          const SizedBox(height: 24),
-
-          // Submit Button
-          SizedBox(
-            width: double.infinity,
-            height: 46,
-            child: ElevatedButton(
-              onPressed: _submitting
-                  ? null
-                  : () async {
-                      final code = _codeController.text.trim();
-                      if (code.isEmpty) {
-                        setState(() => _error = 'Please enter a valid room code');
-                        return;
-                      }
-
-                      setState(() {
-                        _submitting = true;
-                        _error = null;
-                      });
-
-                      try {
-                        final room = await ApiClient.joinRoom(
-                          userId: widget.user.id,
-                          roomCode: code,
-                          guessNumber: _chosenNumber,
-                        );
-                        widget.onRoomJoined(room);
-                      } catch (e) {
-                        setState(() {
-                          _submitting = false;
-                          _error = e.toString();
-                        });
-                      }
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.emerald600,
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: _submitting
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white))
-                  : const Text(
-                      'Join Table',
-                      style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.white),
-                    ),
-            ),
-          ),
         ],
       ),
     );

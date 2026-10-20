@@ -8,6 +8,7 @@ import {
   Loader2,
   Check,
   ArrowRight,
+  ArrowLeft,
   X,
   Lock,
   Gamepad2,
@@ -136,9 +137,22 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   // Join Room with Code fields
   const [roomCode, setRoomCode] = useState('');
   const [codeJoinNumber, setCodeJoinNumber] = useState(1);
+  const [codeSportsTeam, setCodeSportsTeam] = useState<1 | 2>(1);
+  const [joinCodeStep, setJoinCodeStep] = useState<1 | 2>(1);
+  const [codeTargetRoom, setCodeTargetRoom] = useState<RoomItem | null>(null);
+  const [findingRoom, setFindingRoom] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleCloseJoinCodeModal = () => {
+    setShowJoinCodeModal(false);
+    setJoinCodeStep(1);
+    setCodeTargetRoom(null);
+    setRoomCode('');
+    setError(null);
+    setFindingRoom(false);
+  };
 
   // Stake options
   const teenPattiStakes = [10, 20, 50, 100, 200, 500];
@@ -356,11 +370,93 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     }
   };
 
-  // ─── JOIN VIA CODE ───
-  const handleJoinWithCode = async (e: React.FormEvent) => {
+  // ─── STEP 1: LOOKUP ROOM BY CODE ───
+  const handleLookupRoomCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!roomCode.trim()) {
+    const cleanCode = roomCode.trim().toUpperCase();
+    if (!cleanCode) {
       setError('Please enter a valid room code');
+      return;
+    }
+
+    setFindingRoom(true);
+    setError(null);
+
+    try {
+      // 1. Try local lobby rooms first
+      let target: RoomItem | undefined = rooms.find(
+        (r) => r.roomCode.toUpperCase() === cleanCode
+      );
+
+      // 2. Fall back to backend lookup
+      if (!target) {
+        try {
+          target = await userApi.getRoomByCode(cleanCode);
+        } catch (err: any) {
+          throw new Error(err.message || `No room found for code "${cleanCode}".`);
+        }
+      }
+
+      if (!target) {
+        throw new Error(`Room with code "${cleanCode}" not found.`);
+      }
+
+      // Check status
+      if (target.status === 'COMPLETED' || target.status === 'CANCELLED') {
+        throw new Error(`Table #${cleanCode} has already ended (${target.status.toLowerCase()}).`);
+      }
+
+      // If user is already in this room, go straight to it
+      const isAlreadyIn = target.players?.some((p) => p.userId === user.id);
+      if (isAlreadyIn) {
+        handleCloseJoinCodeModal();
+        onSelectRoom(target.id);
+        return;
+      }
+
+      // Check capacity
+      if (target.players && target.players.length >= target.maxPlayers) {
+        throw new Error(`Table #${cleanCode} is already full (${target.players.length}/${target.maxPlayers} players).`);
+      }
+
+      // Check balance
+      if (balance < target.entryFee) {
+        throw new Error(
+          `Insufficient balance. Entry fee is ₹${target.entryFee}, but your available balance is ₹${balance.toFixed(2)}.`
+        );
+      }
+
+      // Set sensible defaults for step 2
+      if (target.gameType === 'SPORTS_MATCH') {
+        setCodeSportsTeam(1);
+      } else if (target.gameType === 'GUESS_NUMBER') {
+        const taken = new Set(target.players?.map((p) => p.guessNumber).filter(Boolean));
+        let firstFree = 1;
+        for (let i = 1; i <= 10; i++) {
+          if (!taken.has(i)) {
+            firstFree = i;
+            break;
+          }
+        }
+        setCodeJoinNumber(firstFree);
+      }
+
+      setCodeTargetRoom(target);
+      setJoinCodeStep(2);
+    } catch (err: any) {
+      setError(err.message || 'Failed to locate table with that code');
+    } finally {
+      setFindingRoom(false);
+    }
+  };
+
+  // ─── STEP 2: CONFIRM JOIN TABLE ───
+  const handleConfirmCodeJoin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!codeTargetRoom) return;
+
+    if (balance < codeTargetRoom.entryFee) {
+      setError(`Insufficient balance. (Available: ₹${balance.toFixed(2)})`);
       return;
     }
 
@@ -368,12 +464,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     setError(null);
 
     try {
+      const chosenPick =
+        codeTargetRoom.gameType === 'SPORTS_MATCH'
+          ? codeSportsTeam
+          : codeTargetRoom.gameType === 'GUESS_NUMBER'
+          ? codeJoinNumber
+          : undefined;
+
       const res = await userApi.joinRoom(
         user.id,
-        roomCode.trim().toUpperCase(),
-        codeJoinNumber
+        codeTargetRoom.roomCode,
+        chosenPick
       );
-      setShowJoinCodeModal(false);
+      handleCloseJoinCodeModal();
       onSelectRoom(res.room.id);
     } catch (err: any) {
       setError(err.message || 'Failed to join table');
@@ -444,7 +547,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           <button
             onClick={() => {
               setShowJoinCodeModal(true);
+              setJoinCodeStep(1);
+              setCodeTargetRoom(null);
+              setRoomCode('');
               setError(null);
+              setFindingRoom(false);
             }}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 text-xs font-bold rounded-xl transition shadow-xs cursor-pointer"
           >
@@ -1516,77 +1623,278 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       {showJoinCodeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
           <div className="w-full max-w-sm bg-white border border-slate-200 rounded-2xl p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900">Join via Room Code</h3>
-              <button
-                onClick={() => setShowJoinCodeModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {error && (
-              <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs flex items-center gap-1.5">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleJoinWithCode} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Room Code</label>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  maxLength={10}
-                  value={roomCode}
-                  onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. R-1234"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base mono-num uppercase font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-600 tracking-wider"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Pick (1 for Team 1 / India, 2 for Team 2 / Aus, or 1-10 for Dice)
-                </label>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {Array.from({ length: 10 }, (_, i) => i + 1).map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setCodeJoinNumber(val)}
-                      className={`py-1.5 rounded-lg text-xs font-bold font-mono border transition cursor-pointer ${
-                        codeJoinNumber === val
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {val}
-                    </button>
-                  ))}
+            {joinCodeStep === 1 ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-emerald-600" />
+                    <h3 className="text-base font-bold text-slate-900">Join via Room Code</h3>
+                  </div>
+                  <button
+                    onClick={handleCloseJoinCodeModal}
+                    className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowJoinCodeModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting || !roomCode.trim()}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
-                >
-                  {submitting ? 'Joining...' : 'Join Table'}
-                </button>
-              </div>
-            </form>
+                {error && (
+                  <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleLookupRoomCode} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Room Code</label>
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      maxLength={20}
+                      value={roomCode}
+                      onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                      placeholder="e.g. R-1234"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base mono-num uppercase font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-600 tracking-wider"
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1.5">
+                      Enter the room code shared by the host to find the table.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleCloseJoinCodeModal}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={findingRoom || !roomCode.trim()}
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {findingRoom ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Checking...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Next</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </>
+            ) : codeTargetRoom && (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setJoinCodeStep(1);
+                        setError(null);
+                      }}
+                      className="text-slate-400 hover:text-slate-700 p-1 -ml-1 cursor-pointer transition rounded-lg hover:bg-slate-100"
+                      title="Back to Code input"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                    </button>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">
+                        {codeTargetRoom.gameType === 'SPORTS_MATCH'
+                          ? 'Back Your Team'
+                          : codeTargetRoom.gameType === 'GUESS_NUMBER'
+                          ? 'Choose Lucky Number'
+                          : 'Table Confirmation'}
+                      </h3>
+                      <p className="text-[11px] text-slate-500 font-mono">
+                        Room #{codeTargetRoom.roomCode}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleCloseJoinCodeModal}
+                    className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {error && (
+                  <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                {/* Table Details Summary */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs">
+                  <div className="flex justify-between items-center text-slate-700">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Game</span>
+                    <span className="font-bold text-slate-900 flex items-center gap-1">
+                      {codeTargetRoom.gameType === 'SPORTS_MATCH'
+                        ? '🏏 Live Sports Pool'
+                        : codeTargetRoom.gameType === 'GUESS_NUMBER'
+                        ? '🎲 Dice Guess'
+                        : '🃏 Teen Patti'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-700">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Entry Stake</span>
+                    <span className="font-bold font-mono text-slate-900">₹{codeTargetRoom.entryFee}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-700">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Available Balance</span>
+                    <span className="font-bold font-mono text-emerald-700">₹{balance.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-700">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Current Players</span>
+                    <span className="font-medium text-slate-700">
+                      {codeTargetRoom.players.length} / {codeTargetRoom.maxPlayers === 1000 ? 'Unlimited' : codeTargetRoom.maxPlayers}
+                    </span>
+                  </div>
+                </div>
+
+                <form onSubmit={handleConfirmCodeJoin} className="space-y-4">
+                  {/* Next Info Asked: Sports Match Team Pick */}
+                  {codeTargetRoom.gameType === 'SPORTS_MATCH' && (() => {
+                    const sportsCfg = parseCustomConfig(codeTargetRoom.customConfig);
+                    const t1Name = sportsCfg.team1?.name || 'Team 1';
+                    const t2Name = sportsCfg.team2?.name || 'Team 2';
+                    const t1Count = codeTargetRoom.players.filter((p) => p.guessNumber === 1).length;
+                    const t2Count = codeTargetRoom.players.filter((p) => p.guessNumber === 2).length;
+
+                    return (
+                      <div className="space-y-2">
+                        {sportsCfg.matchTitle && (
+                          <div className="text-center font-bold text-xs text-slate-800 bg-indigo-50/50 py-1.5 px-2.5 rounded-lg border border-indigo-100/60">
+                            {sportsCfg.matchTitle}
+                          </div>
+                        )}
+                        <label className="block text-xs font-bold text-slate-800">
+                          Which team will win this match?
+                        </label>
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => setCodeSportsTeam(1)}
+                            className={`p-3 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                              codeSportsTeam === 1
+                                ? 'bg-indigo-50 border-indigo-600 text-indigo-950 ring-2 ring-indigo-600/20'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span className="text-xs font-extrabold line-clamp-1">{t1Name}</span>
+                            <span className="text-[10px] text-indigo-600 font-bold">
+                              {t1Count} picks so far
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCodeSportsTeam(2)}
+                            className={`p-3 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                              codeSportsTeam === 2
+                                ? 'bg-purple-50 border-purple-600 text-purple-950 ring-2 ring-purple-600/20'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span className="text-xs font-extrabold line-clamp-1">{t2Name}</span>
+                            <span className="text-[10px] text-purple-600 font-bold">
+                              {t2Count} picks so far
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Next Info Asked: Dice Guess Lucky Number */}
+                  {codeTargetRoom.gameType === 'GUESS_NUMBER' && (() => {
+                    const taken = new Set(codeTargetRoom.players.map((p) => p.guessNumber).filter(Boolean));
+                    return (
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold text-slate-800">
+                          Choose Your Lucky Number (1-10):
+                        </label>
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => {
+                            const isTaken = taken.has(num);
+                            const isSelected = codeJoinNumber === num;
+                            return (
+                              <button
+                                key={num}
+                                type="button"
+                                disabled={isTaken}
+                                onClick={() => setCodeJoinNumber(num)}
+                                className={`py-2 rounded-lg text-xs font-mono font-bold border transition ${
+                                  isTaken
+                                    ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed line-through'
+                                    : isSelected
+                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs ring-2 ring-emerald-600/30'
+                                    : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50 cursor-pointer'
+                                }`}
+                              >
+                                {num}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Next Info Asked: Teen Patti Seat Confirmation */}
+                  {codeTargetRoom.gameType === 'TEEN_PATTI' && (
+                    <div className="p-3 bg-purple-50/60 border border-purple-100 rounded-xl text-xs text-purple-900 space-y-1">
+                      <p className="font-semibold">Ready to join this Teen Patti table?</p>
+                      <p className="text-[11px] text-purple-700">
+                        Confirming will reserve your seat and commit the ₹{codeTargetRoom.entryFee} boot stake.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setJoinCodeStep(1);
+                        setError(null);
+                      }}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {submitting ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Joining...</span>
+                        </>
+                      ) : (
+                        <span>
+                          {codeTargetRoom.gameType === 'SPORTS_MATCH'
+                            ? `Lock ₹${codeTargetRoom.entryFee} & Back Team`
+                            : codeTargetRoom.gameType === 'TEEN_PATTI'
+                            ? `Lock ₹${codeTargetRoom.entryFee} & Sit`
+                            : `Lock ₹${codeTargetRoom.entryFee} & Join Table`}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
           </div>
         </div>
       )}

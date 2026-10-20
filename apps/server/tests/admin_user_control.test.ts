@@ -183,7 +183,55 @@ async function runAdminControlTests() {
     console.log(`   Live Support WhatsApp: ${c?.whatsapp}`);
     console.log(`   Live Support Telegram: ${c?.telegram}`);
 
-    console.log('\n🎉 ALL 15 ADMIN CONTROL & SUPPORT CONFIGURATION TESTS PASSED SUCCESSFULLY!\n');
+    // 16. Platform House Rake Verification with Unlimited Capacity Sports Room (Regression Test)
+    console.log('\nTest 16: Admin Stats Platform House Rake Verification (Unlimited Capacity Room)');
+    const testRoom = await prisma.room.create({
+      data: {
+        roomCode: 'R-TEST1000',
+        gameType: 'SPORTS_MATCH',
+        entryFee: 200,
+        maxPlayers: 1000,
+        status: 'COMPLETED',
+        winnerPrize: 400,
+        customConfig: JSON.stringify({
+          settlement: {
+            status: 'SETTLED',
+            totalPot: 400,
+            distributablePool: 400,
+            commissionAmount: 0,
+            winningTeamIndex: 1,
+            winnersCount: 1,
+            losersCount: 1,
+            payoutPerWinner: 400,
+          },
+        }),
+        players: {
+          create: [
+            { userId, seatIndex: 0, guessNumber: 1 },
+          ],
+        },
+      },
+    });
+
+    const statsRes = await apiCall('/admin/stats', 'GET', undefined, adminToken);
+    console.log(`Status: ${statsRes.status}`, statsRes.data.success ? '✅ PASS' : '❌ FAIL');
+    console.log(`   Platform Profit / House Rake: ₹${statsRes.data.stats.platformProfit}`);
+
+    if (statsRes.data.stats.platformProfit > 1000) {
+      throw new Error(`Platform house rake is erroneously high: ₹${statsRes.data.stats.platformProfit} (Expected 0)`);
+    }
+
+    const auditRes = await apiCall('/admin/solvency-audit', 'GET', undefined, adminToken);
+    console.log(`   Solvency Audit Commission: ₹${auditRes.data.audit.totalPlatformCommission} (Variance: ₹${auditRes.data.audit.varianceRupees})`);
+    if (auditRes.data.audit.totalPlatformCommission > 1000) {
+      throw new Error(`Solvency audit commission is erroneously high: ₹${auditRes.data.audit.totalPlatformCommission}`);
+    }
+
+    // Clean up test room
+    await prisma.roomPlayer.deleteMany({ where: { roomId: testRoom.id } });
+    await prisma.room.delete({ where: { id: testRoom.id } });
+
+    console.log('\n🎉 ALL 16 ADMIN CONTROL & PLATFORM RAKE TESTS PASSED SUCCESSFULLY!\n');
   } finally {
     // Cleanup
     await prisma.user.deleteMany({

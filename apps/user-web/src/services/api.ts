@@ -371,6 +371,11 @@ class UserApiService {
     return res.room;
   }
 
+  async getRoomByCode(roomCode: string): Promise<RoomItem> {
+    const res = await this.request<{ success: boolean; room: RoomItem }>(`/rooms/by-code/${encodeURIComponent(roomCode.trim().toUpperCase())}`);
+    return res.room;
+  }
+
   async getContactInfo(): Promise<SupportContactInfo> {
     const res = await this.request<{ success: boolean; contact: SupportContactInfo }>('/support/contact-info');
     return res.contact;

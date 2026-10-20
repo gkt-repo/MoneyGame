@@ -12,7 +12,11 @@ export class AdminService {
     const totalUsers = await prisma.user.count();
     const deposits = await prisma.deposit.findMany();
     const withdrawals = await prisma.withdrawal.findMany();
-    const rooms = await prisma.room.findMany();
+    const rooms = await prisma.room.findMany({
+      include: {
+        players: { select: { id: true, userId: true } },
+      },
+    });
     const assignedPayments = await prisma.unmatchedPayment.findMany({ where: { status: 'ASSIGNED' } });
     const assignedVolume = assignedPayments.reduce((acc, u) => acc + u.amount, 0);
 
@@ -46,22 +50,53 @@ export class AdminService {
       let roomPool = 0;
       let roomCommission = 0;
 
-      if (typeof configObj.settledPool === 'number') {
-        roomPool = configObj.settledPool;
-        roomCommission = typeof configObj.platformCommission === 'number'
-          ? configObj.platformCommission
-          : (toPaise(roomPool) - toPaise(r.winnerPrize || 0)) / 100;
-      } else if (r.winnerPrize != null && r.winnerPrize > 0) {
-        if (configObj.playerStakes) {
-          const inGameStakes = Object.values(configObj.playerStakes as Record<string, number>).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
-          roomPool = r.entryFee * r.maxPlayers + inGameStakes;
-        } else {
-          roomPool = r.entryFee * r.maxPlayers;
-        }
-        roomCommission = (toPaise(roomPool) - toPaise(r.winnerPrize)) / 100;
+      // 1. Check for explicit commission recorded in customConfig or settlement metadata
+      const explicitCommission = typeof configObj.platformCommission === 'number'
+        ? configObj.platformCommission
+        : typeof configObj.settlement?.commissionAmount === 'number'
+          ? configObj.settlement.commissionAmount
+          : null;
+
+      // 2. Check for explicit settled pool / total pot
+      const explicitPool = typeof configObj.settledPool === 'number'
+        ? configObj.settledPool
+        : typeof configObj.settlement?.totalPot === 'number'
+          ? configObj.settlement.totalPot
+          : null;
+
+      if (explicitCommission !== null) {
+        roomCommission = explicitCommission;
+        roomPool = explicitPool !== null
+          ? explicitPool
+          : (r.winnerPrize != null ? (toPaise(r.winnerPrize) + toPaise(roomCommission)) / 100 : roomCommission);
+      } else if (explicitPool !== null) {
+        roomPool = explicitPool;
+        roomCommission = r.winnerPrize != null
+          ? (toPaise(roomPool) - toPaise(r.winnerPrize)) / 100
+          : (roomPool * commissionPercent) / 100;
       } else {
-        roomPool = r.entryFee * r.maxPlayers;
-        roomCommission = (roomPool * commissionPercent) / 100;
+        // Fallback: strictly calculate using actual participating players (never max room capacity)
+        const participantsCount = Array.isArray(r.players) && r.players.length > 0
+          ? r.players.length
+          : configObj.predictions && typeof configObj.predictions === 'object'
+            ? Object.keys(configObj.predictions).length
+            : 0;
+
+        if (configObj.playerStakes) {
+          const inGameStakes = Object.values(configObj.playerStakes as Record<string, number>).reduce(
+            (a, b) => a + (typeof b === 'number' ? b : 0),
+            0
+          );
+          roomPool = r.entryFee * participantsCount + inGameStakes;
+        } else {
+          roomPool = r.entryFee * participantsCount;
+        }
+
+        if (r.winnerPrize != null && r.winnerPrize > 0) {
+          roomCommission = (toPaise(roomPool) - toPaise(r.winnerPrize)) / 100;
+        } else {
+          roomCommission = (roomPool * commissionPercent) / 100;
+        }
       }
 
       totalRoomVolume += roomPool;
@@ -855,7 +890,13 @@ export class AdminService {
 
     const completedRooms = await prisma.room.findMany({
       where: { status: 'COMPLETED' },
-      select: { entryFee: true, maxPlayers: true, winnerPrize: true, customConfig: true },
+      select: {
+        entryFee: true,
+        maxPlayers: true,
+        winnerPrize: true,
+        customConfig: true,
+        players: { select: { id: true } },
+      },
     });
     const totalPlatformCommissionPaise = completedRooms.reduce((sum, r) => {
       let configObj: Record<string, any> = {};
@@ -866,16 +907,32 @@ export class AdminService {
       if (typeof configObj.platformCommission === 'number') {
         return sum + toPaise(configObj.platformCommission);
       }
+      if (typeof configObj.settlement?.commissionAmount === 'number') {
+        return sum + toPaise(configObj.settlement.commissionAmount);
+      }
       if (typeof configObj.settledPool === 'number' && r.winnerPrize != null) {
         return sum + Math.max(0, toPaise(configObj.settledPool) - toPaise(r.winnerPrize));
       }
+      if (typeof configObj.settlement?.totalPot === 'number' && r.winnerPrize != null) {
+        return sum + Math.max(0, toPaise(configObj.settlement.totalPot) - toPaise(r.winnerPrize));
+      }
+
+      const participantsCount = Array.isArray(r.players) && r.players.length > 0
+        ? r.players.length
+        : configObj.predictions && typeof configObj.predictions === 'object'
+          ? Object.keys(configObj.predictions).length
+          : 0;
+
       if (configObj.playerStakes && r.winnerPrize != null) {
-        const inGameStakes = Object.values(configObj.playerStakes as Record<string, number>).reduce((a, b) => a + (typeof b === 'number' ? toPaise(b) : 0), 0);
-        const pool = toPaise(r.entryFee) * r.maxPlayers + inGameStakes;
+        const inGameStakes = Object.values(configObj.playerStakes as Record<string, number>).reduce(
+          (a, b) => a + (typeof b === 'number' ? toPaise(b) : 0),
+          0
+        );
+        const pool = toPaise(r.entryFee) * participantsCount + inGameStakes;
         const prize = toPaise(r.winnerPrize);
         return sum + Math.max(0, pool - prize);
       }
-      const pool = toPaise(r.entryFee) * r.maxPlayers;
+      const pool = toPaise(r.entryFee) * participantsCount;
       const prize = toPaise(r.winnerPrize || 0);
       return sum + Math.max(0, pool - prize);
     }, 0);

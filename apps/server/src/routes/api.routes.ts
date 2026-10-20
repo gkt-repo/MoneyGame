@@ -268,6 +268,49 @@ router.post('/rooms/:roomId/action', authenticateUser, async (req: Authenticated
   }
 });
 
+router.get('/rooms/by-code/:code', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const rawCode = Array.isArray(req.params.code) ? req.params.code[0] : req.params.code;
+    const code = String(rawCode || '').trim().toUpperCase();
+    if (!code) {
+      res.status(400).json({ error: 'Room code is required' });
+      return;
+    }
+
+    let userId: string | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.substring(7);
+        const decoded = jwt.verify(token, config.jwtSecret, {
+          algorithms: ['HS256'],
+          audience: [config.userAudience, config.adminAudience],
+        }) as any;
+        if (decoded?.userId) {
+          const user = await prisma.user.findUnique({
+            where: { id: decoded.userId },
+            select: { id: true, status: true },
+          });
+          if (user && user.status === 'ACTIVE') {
+            userId = user.id;
+          }
+        }
+      } catch (_) {
+        // spectator fallback
+      }
+    }
+
+    const room = await gameManager.getRoomByCode(code, userId);
+    if (!room) {
+      res.status(404).json({ error: `Room not found with code ${code}` });
+      return;
+    }
+    res.json({ success: true, room });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/rooms/:roomId', async (req: Request, res: Response): Promise<void> => {
   try {
     const roomId = Array.isArray(req.params.roomId) ? req.params.roomId[0] : req.params.roomId;

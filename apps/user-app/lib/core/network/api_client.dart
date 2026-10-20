@@ -499,6 +499,15 @@ class ApiClient {
     }
   }
 
+  static Future<RoomModel> getRoomByCode(String roomCode) async {
+    try {
+      final res = await _dio.get('/rooms/by-code/${Uri.encodeComponent(roomCode.trim().toUpperCase())}');
+      return RoomModel.fromJson(res.data['room']);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Room not found with that code';
+    }
+  }
+
   static Future<RoomModel> joinRoom({
     required String userId,
     required String roomCode,
