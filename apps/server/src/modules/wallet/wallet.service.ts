@@ -90,8 +90,11 @@ export class WalletService {
       throw new Error(`Insufficient wallet balance. Required: ₹${entryFee.toFixed(2)}, Available: ₹${wallet?.balance.toFixed(2) || '0.00'}`);
     }
 
-    // Check if guess is already taken in this room (for games that use guess numbers)
-    if (guessNumber !== undefined && guessNumber !== null) {
+    const room = await tx.room.findUnique({ where: { id: roomId } });
+    if (!room) throw new Error('Room not found');
+
+    // Check if guess is already taken in this room (only for games that require unique numbers like GUESS_NUMBER)
+    if (room.gameType === 'GUESS_NUMBER' && guessNumber !== undefined && guessNumber !== null) {
       const existingGuess = await tx.roomPlayer.findFirst({
         where: { roomId, guessNumber },
       });
@@ -107,9 +110,6 @@ export class WalletService {
     if (existingPlayer) {
       throw new Error('You have already joined this room.');
     }
-
-    const room = await tx.room.findUnique({ where: { id: roomId } });
-    if (!room) throw new Error('Room not found');
 
     // Assign next available seat if seatIndex not specified
     if (seatIndex === undefined || seatIndex === null) {

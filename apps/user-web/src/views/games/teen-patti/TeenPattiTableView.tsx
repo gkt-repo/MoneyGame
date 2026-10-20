@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { teenPattiSound } from './services/teenPattiSound';
 
 interface TeenPattiTableViewProps {
   room: RoomItem;
@@ -28,50 +29,6 @@ interface TeenPattiTableViewProps {
   onRefreshBalance: () => void;
   onBack?: () => void;
 }
-
-const playTableSound = (type: 'card' | 'chip' | 'win', enabled: boolean) => {
-  if (!enabled) return;
-  try {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    if (type === 'chip') {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(1100, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.08);
-      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.08);
-    } else if (type === 'card') {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(750, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(250, audioCtx.currentTime + 0.06);
-      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.06);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.06);
-    } else if (type === 'win') {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.2);
-      gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.6);
-    }
-  } catch (_) {}
-};
 
 /**
  * Evaluates 3-card Teen Patti hand name for UI display
@@ -179,9 +136,13 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
       }
     });
 
+    if (room.status === 'PLAYING') {
+      teenPattiSound.playCardDeal();
+    }
+
     socket.on('player_acted', (data: { roomId?: string; userId: string; action: string; betAmount: number; pot: number }) => {
       if (!data || (data.roomId && data.roomId !== room.id)) return;
-      playTableSound('chip', soundEnabled);
+      teenPattiSound.playChipToss();
       setLocalGameState(prev => {
         if (!prev) return prev;
         return {
@@ -193,6 +154,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
     socket.on('player_packed', (data: { roomId?: string; userId: string; seatIndex: number }) => {
       if (!data || (data.roomId && data.roomId !== room.id)) return;
+      teenPattiSound.playFold();
       setLocalGameState(prev => {
         if (!prev) return prev;
         const p = prev.players[data.userId];
@@ -231,6 +193,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
     socket.on('side_show_result', (data: any) => {
       if (!data || (data.roomId && data.roomId !== room.id)) return;
+      teenPattiSound.playChipToss();
       if (data && data.message) {
         setSideShowBanner(data.message);
         setTimeout(() => setSideShowBanner(null), 4500);
@@ -246,7 +209,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
     socket.on('cards_revealed', (data: { roomId?: string; cards: PlayingCard[]; hand: any }) => {
       if (!data || (data.roomId && data.roomId !== room.id)) return;
-      playTableSound('card', soundEnabled);
+      teenPattiSound.playCardFlip();
       setLocalGameState(prev => {
         if (!prev) return prev;
         const myP = prev.players[user.id];
@@ -267,7 +230,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
     socket.on('game_finished', (data: any) => {
       if (!data || (data.roomId && data.roomId !== room.id)) return;
-      playTableSound('win', soundEnabled);
+      teenPattiSound.playWin();
       setFinishData(data);
       if (data.winnerId === user.id) {
         confetti({
@@ -349,6 +312,15 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
         if (res.gameState) {
           setLocalGameState(res.gameState);
         }
+        // Sound feedback on successful actions
+        if (action === 'SEE_CARDS') {
+          teenPattiSound.playCardFlip();
+        } else if (action === 'PACK') {
+          teenPattiSound.playFold();
+        } else if (action === 'CHAAL' || action === 'BLIND' || action === 'SIDE_SHOW' || action === 'SHOW') {
+          teenPattiSound.playChipToss();
+        }
+
         // If action was SEE_CARDS and cards returned, update immediately
         if (action === 'SEE_CARDS' && res.cards) {
           setLocalGameState(prev => {
@@ -471,7 +443,10 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
             {/* Sound Toggle Button */}
             <button
               type="button"
-              onClick={() => setSoundEnabled(!soundEnabled)}
+              onClick={() => {
+                const nextVal = teenPattiSound.toggleSound();
+                setSoundEnabled(nextVal);
+              }}
               className="p-1.5 bg-emerald-900/80 hover:bg-emerald-800 border border-emerald-700/60 rounded-full text-emerald-300 transition cursor-pointer"
               title={soundEnabled ? 'Mute audio' : 'Enable audio'}
             >

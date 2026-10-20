@@ -152,7 +152,7 @@ export class GameManager {
 
     const updatedRoom = await this.getRoomDetails(result.id, userId);
 
-    // Trigger engine hooks if table is full
+    // Trigger engine hooks if table is full or for ongoing sports pool tracking
     if (result.full) {
       if (result.gameType === 'GUESS_NUMBER') {
         const legacyEngine = gameRegistry.get('GUESS_NUMBER');
@@ -160,6 +160,8 @@ export class GameManager {
       } else {
         void engine.onPlayerJoined(updatedRoom as unknown as RoomWithPlayers, userId, this.io);
       }
+    } else if (result.gameType === 'SPORTS_MATCH') {
+      void engine.onPlayerJoined(updatedRoom as unknown as RoomWithPlayers, userId, this.io);
     }
 
     this.io?.to(`room:${result.id}`).emit('room_updated', updatedRoom);
@@ -197,6 +199,13 @@ export class GameManager {
       if (!room) throw new Error('Room not found');
       if (userId && !room.players.some(p => p.userId === userId)) throw new Error('Only participants can cancel a room');
       if (userId && room.status !== 'WAITING') throw new Error('Only waiting rooms can be cancelled');
+      if (userId && room.gameType === 'SPORTS_MATCH') {
+        const isHost = room.players[0]?.userId === userId;
+        if (!isHost) throw new Error('Only the room creator can cancel this pool');
+        if (room.players.length > 1) {
+          throw new Error('Cannot cancel pool once other players have joined');
+        }
+      }
       if (!['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'].includes(room.status)) return [];
 
       await tx.room.update({ where: { id: roomId }, data: { status: 'CANCELLED' } });
@@ -250,7 +259,10 @@ export class GameManager {
 
   async recoverInterruptedRooms() {
     const rooms = await prisma.room.findMany({
-      where: { status: { in: ['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'] } },
+      where: {
+        status: { in: ['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'] },
+        gameType: { not: 'SPORTS_MATCH' },
+      },
       select: { id: true },
     });
     for (const room of rooms) {

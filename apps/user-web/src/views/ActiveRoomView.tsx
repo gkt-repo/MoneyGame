@@ -5,6 +5,7 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { TeenPattiTableView } from './games/teen-patti/TeenPattiTableView';
 import { GuessNumberTableView } from './games/guess-number/GuessNumberTableView';
+import { SportsMatchTableView } from './games/sports-match/SportsMatchTableView';
 
 interface ActiveRoomViewProps {
   roomId: string;
@@ -124,8 +125,12 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
       </div>
 
       {error && <p role="alert" className="text-red-600 text-sm">{error}</p>}
-      {room.status === 'WAITING' && room.players.some(p => p.userId === user.id) && (
-        <button className="text-sm text-red-600" onClick={async () => {
+      {room.status === 'WAITING' && (
+        room.gameType === 'SPORTS_MATCH'
+          ? room.players[0]?.userId === user.id && room.players.length === 1
+          : room.players.some(p => p.userId === user.id)
+      ) && (
+        <button className="text-sm text-red-600 hover:text-red-700 underline cursor-pointer" onClick={async () => {
           try { await userApi.cancelRoom(roomId); await fetchRoom(); onRefreshBalance(); }
           catch (err) { setError(err instanceof Error ? err.message : 'Cancellation failed'); }
         }}>Cancel table and refund all entries</button>
@@ -133,6 +138,13 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
       {/* Dynamic Game Table Rendering based on room.gameType */}
       {room.gameType === 'TEEN_PATTI' ? (
         <TeenPattiTableView
+          room={room}
+          user={user}
+          onRefreshBalance={onRefreshBalance}
+          onBack={onBack}
+        />
+      ) : room.gameType === 'SPORTS_MATCH' ? (
+        <SportsMatchTableView
           room={room}
           user={user}
           onRefreshBalance={onRefreshBalance}

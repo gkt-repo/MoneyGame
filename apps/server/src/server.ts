@@ -12,6 +12,7 @@ import { router as apiRouter } from './routes/api.routes';
 import { gameManager } from './modules/game/game.manager';
 import { walletService } from './modules/wallet/wallet.service';
 import { paymentService } from './modules/payment/payment.service';
+import { sportsService } from './modules/game/engines/sports-match/sports.service';
 
 const app = express();
 const server = http.createServer(app);
@@ -105,6 +106,7 @@ const io = new Server(server, {
 gameManager.setSocketServer(io);
 walletService.setSocketServer(io);
 paymentService.setSocketServer(io);
+sportsService.setSocketServer(io);
 
 configureSockets(io);
 
@@ -133,6 +135,7 @@ async function bootstrap() {
     console.log(`\n🛑 Received ${signal}. Starting graceful shutdown...`);
     clearInterval(periodicExpiry);
     gameManager.stopTimers();
+    sportsService.stopAutoSync();
 
     runningServer.close(async () => {
       try {

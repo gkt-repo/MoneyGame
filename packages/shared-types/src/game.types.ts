@@ -1,4 +1,4 @@
-export type GameType = 'GUESS_NUMBER' | 'TEEN_PATTI' | 'TWENTY_NINE';
+export type GameType = 'GUESS_NUMBER' | 'TEEN_PATTI' | 'TWENTY_NINE' | 'SPORTS_MATCH';
 
 export type RoomStatus = 'WAITING' | 'COUNTDOWN' | 'PLAYING' | 'ROLLING' | 'COMPLETED' | 'CANCELLED';
 
@@ -114,5 +114,67 @@ export interface TeenPattiGameState {
     handResult: TeenPattiHandResult;
     prize: number;
   }[];
+}
+
+// ─── Sports Match Types ───────────────────────────────────────────────────────
+export interface SportsTeam {
+  id?: string;
+  name: string;
+  shortName?: string;
+  logo?: string;
+  score?: string;
+  isWinner?: boolean;
+}
+
+export interface SportsMatch {
+  id: string;
+  sport: 'Cricket' | 'Football' | string;
+  league: string;
+  name: string;
+  shortName?: string;
+  startTime: string; // ISO date string
+  status: 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'CANCELLED';
+  team1: SportsTeam;
+  team2: SportsTeam;
+  winnerTeamIndex?: number; // 1 = team1, 2 = team2, 0 = draw
+  winnerName?: string;
+  summary?: string;
+}
+
+export interface SportsRoomPrediction {
+  userId: string;
+  username: string;
+  teamIndex: number;
+  teamName: string;
+  selectedAt: string;
+}
+
+export interface SportsRoomSettlement {
+  status: 'SETTLED' | 'REFUNDED';
+  totalPot: number;
+  distributablePool?: number;
+  commissionAmount?: number;
+  winningTeamIndex?: number;
+  winningTeamName?: string;
+  winnersCount?: number;
+  losersCount?: number;
+  payoutPerWinner?: number;
+  winnerUserIds?: string[];
+  settledAt: string;
+  reason?: string;
+}
+
+export interface SportsRoomConfig {
+  matchId: string;
+  sport: string;
+  league: string;
+  matchTitle: string;
+  startTime: string;
+  team1: SportsTeam;
+  team2: SportsTeam;
+  isUnlimited?: boolean;
+  chosenTeam?: string;
+  predictions?: Record<string, SportsRoomPrediction>;
+  settlement?: SportsRoomSettlement;
 }
 

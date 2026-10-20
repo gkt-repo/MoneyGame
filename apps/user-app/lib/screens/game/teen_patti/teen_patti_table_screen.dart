@@ -11,6 +11,7 @@ import 'widgets/teen_patti_felt_table.dart';
 import 'widgets/teen_patti_player_seat.dart';
 import 'widgets/teen_patti_rules_dialog.dart';
 import 'widgets/teen_patti_victory_dialog.dart';
+import 'services/teen_patti_audio_service.dart';
 
 class TeenPattiTableScreen extends StatefulWidget {
   final String roomId;
@@ -49,6 +50,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
   GameFinishedModel? _finishData;
   Timer? _fallbackPollTimer;
   bool _soundEnabled = true;
+  final TeenPattiAudioService _audioService = TeenPattiAudioService();
   final List<MapEntry<String, dynamic Function(dynamic)>> _socketListeners = [];
 
   void _listenSocket(String event, dynamic Function(dynamic) handler) {
@@ -60,6 +62,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
   void initState() {
     super.initState();
     _myBalance = widget.user.balance;
+    _audioService.init();
 
     // Force landscape mode and immersive sticky full screen
     SystemChrome.setPreferredOrientations([
@@ -88,6 +91,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
     _fallbackPollTimer?.cancel();
     _cardFlipController.dispose();
     _dealController.dispose();
+    _audioService.dispose();
 
     // Restore portrait mode and standard UI
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -111,6 +115,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
     // Initial Dealing animation if playing
     if (_room?.status == 'PLAYING') {
       _dealController.forward(from: 0.0);
+      _audioService.playCardDeal();
     }
 
     _listenSocket('room_updated', (data) {
@@ -167,6 +172,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
           });
         }
         _triggerChipToss(actUserId);
+        _audioService.playChipToss();
         HapticFeedback.lightImpact();
       }
     });
@@ -192,6 +198,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
           }
         }
         _cardFlipController.forward(from: 0.0);
+        _audioService.playCardFlip();
         HapticFeedback.mediumImpact();
       }
     });
@@ -211,6 +218,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
                 },
               );
             });
+            _audioService.playFold();
           }
         }
       }
@@ -222,6 +230,8 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
         final msg = data['message']?.toString() ?? 'Side Show completed';
         final winnerId = data['winnerId']?.toString();
         final loserId = data['loserId']?.toString();
+
+        _audioService.playChipToss();
 
         if (loserId == widget.user.id) {
           HapticFeedback.heavyImpact();
@@ -266,6 +276,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
 
         // Trigger chip flight from pot to winner
         _triggerPotToWinnerFlight(finish.winnerId);
+        _audioService.playWin();
 
         if (finish.winnerId == widget.user.id) {
           HapticFeedback.heavyImpact();
@@ -624,7 +635,10 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
           _buildCircularTopButton(
             icon: _soundEnabled ? Icons.volume_up : Icons.volume_off,
             size: 18,
-            onTap: () => setState(() => _soundEnabled = !_soundEnabled),
+            onTap: () {
+              _audioService.toggleSound();
+              setState(() => _soundEnabled = _audioService.enabled);
+            },
           ),
         ],
       ),

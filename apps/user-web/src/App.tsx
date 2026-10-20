@@ -166,6 +166,17 @@ export const App: React.FC = () => {
                 onSelectRoom={(id) => setActiveRoomId(id)}
               />
             )}
+            {currentTab === 'sports' && (
+              <LobbyView
+                rooms={rooms}
+                user={user}
+                balance={balance}
+                loading={loadingRooms}
+                onRefresh={refreshRooms}
+                onSelectRoom={(id) => setActiveRoomId(id)}
+                defaultFilter="SPORTS_MATCH"
+              />
+            )}
             {currentTab === 'wallet' && (
               <WalletView
                 user={user}

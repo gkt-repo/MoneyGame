@@ -314,6 +314,67 @@ router.post('/rooms/:roomId/cancel', authenticateUser, async (req: Authenticated
   } catch (err: any) { res.status(400).json({ error: err.message }); }
 });
 
+// ─── Sports Pool & Live Matches Endpoints ─────────────────────────────────────
+router.get('/sports/matches', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { sportsService } = await import('../modules/game/engines/sports-match/sports.service');
+    const sport = typeof req.query.sport === 'string' ? req.query.sport : undefined;
+    const matches = await sportsService.getAllMatches(sport);
+    res.json({ success: true, matches });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/sports/matches/:matchId', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { sportsService } = await import('../modules/game/engines/sports-match/sports.service');
+    const matchId = String(req.params.matchId);
+    const match = await sportsService.getMatchById(matchId);
+    if (!match) {
+      res.status(404).json({ error: 'Match not found' });
+      return;
+    }
+    res.json({ success: true, match });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/sports/sync', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const { sportsService } = await import('../modules/game/engines/sports-match/sports.service');
+    await sportsService.checkAndSyncRooms();
+    res.json({ success: true, message: 'Sync complete' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/sports/rooms/:roomId/settle', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const roomId = String(req.params.roomId);
+    const { winningTeamIndex, winningTeamName, refund } = req.body;
+    const { sportsService } = await import('../modules/game/engines/sports-match/sports.service');
+
+    if (refund) {
+      const result = await sportsService.settleSportsPool(roomId, 999, 'Match Cancelled / Refunded');
+      res.json({ success: true, settlement: result });
+      return;
+    }
+
+    if (winningTeamIndex === undefined || winningTeamIndex === null) {
+      res.status(400).json({ error: 'winningTeamIndex is required (1 or 2)' });
+      return;
+    }
+
+    const result = await sportsService.settleSportsPool(roomId, Number(winningTeamIndex), winningTeamName);
+    res.json({ success: true, settlement: result });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ─── Automated Webhook Receiver (Android Notification / Email Forwarder) ───────
 
 async function isWebhookAuthorized(authHeader?: string | string[]): Promise<boolean> {

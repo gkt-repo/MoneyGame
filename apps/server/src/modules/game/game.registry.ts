@@ -3,6 +3,7 @@ import { IGameEngine } from './engine.interface';
 import { guessNumberEngine } from './engines/guess-number/guess-number.engine';
 import { teenPattiEngine } from './engines/teen-patti/teen-patti.engine';
 import { twentyNineEngine } from './engines/twenty-nine/twenty-nine.engine';
+import { sportsMatchEngine } from './engines/sports-match/sports-match.engine';
 
 export class GameRegistry {
   private engines = new Map<GameType, IGameEngine>();
@@ -34,4 +35,5 @@ export const gameRegistry = new GameRegistry();
 gameRegistry.register(guessNumberEngine);
 gameRegistry.register(teenPattiEngine);
 gameRegistry.register(twentyNineEngine);
+gameRegistry.register(sportsMatchEngine);
 

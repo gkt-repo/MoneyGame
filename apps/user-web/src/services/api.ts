@@ -82,6 +82,7 @@ export interface RoomItem {
   winnerId?: string | null;
   winner?: { username: string } | null;
   gameState?: any;
+  customConfig?: any;
   players: Array<{
     id: string;
     userId: string;
@@ -390,6 +391,33 @@ class UserApiService {
   async getMyFeedbacks(): Promise<UserFeedbackItem[]> {
     const res = await this.request<{ success: boolean; feedbacks: UserFeedbackItem[] }>('/support/my-feedback');
     return res.feedbacks || [];
+  }
+
+  async getSportsMatches(sport?: string): Promise<any[]> {
+    const query = sport ? `?sport=${encodeURIComponent(sport)}` : '';
+    const res = await this.request<{ success: boolean; matches: any[] }>(`/sports/matches${query}`);
+    return res.matches || [];
+  }
+
+  async getSportsMatch(matchId: string): Promise<any | null> {
+    const res = await this.request<{ success: boolean; match: any }>(`/sports/matches/${matchId}`);
+    return res.match || null;
+  }
+
+  async settleSportsRoom(
+    roomId: string,
+    winningTeamIndex: number,
+    winningTeamName?: string,
+    refund?: boolean
+  ): Promise<any> {
+    return this.request(`/sports/rooms/${roomId}/settle`, {
+      method: 'POST',
+      body: JSON.stringify({ winningTeamIndex, winningTeamName, refund }),
+    });
+  }
+
+  async syncSports(): Promise<void> {
+    await this.request('/sports/sync', { method: 'POST' });
   }
 
   logout() {

@@ -1,8 +1,8 @@
 import React from 'react';
 import { UserProfile } from '../services/api';
-import { Wallet, Gamepad2, LogOut, HelpCircle } from 'lucide-react';
+import { Wallet, Gamepad2, LogOut, HelpCircle, Trophy } from 'lucide-react';
 
-export type UserTab = 'lobby' | 'wallet' | 'support';
+export type UserTab = 'lobby' | 'sports' | 'wallet' | 'support';
 
 interface UserNavbarProps {
   user: UserProfile;
@@ -47,6 +47,20 @@ export const UserNavbar: React.FC<UserNavbarProps> = ({
             >
               <Gamepad2 className="w-4 h-4 text-slate-500" />
               <span>Tables</span>
+            </button>
+            <button
+              onClick={() => onTabChange('sports')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition ${
+                currentTab === 'sports'
+                  ? 'bg-indigo-50 text-indigo-900 font-bold border border-indigo-200/60'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <Trophy className="w-4 h-4 text-indigo-600" />
+              <span className="flex items-center gap-1.5">
+                <span>Live Sports</span>
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              </span>
             </button>
             <button
               onClick={() => onTabChange('wallet')}
@@ -99,11 +113,11 @@ export const UserNavbar: React.FC<UserNavbarProps> = ({
         </div>
       </div>
 
-      {/* Mobile Bottom Navigation (Streamlined 3 tabs without repetitive buttons) */}
-      <div className="sm:hidden border-t border-slate-200 bg-white px-4 py-2 flex items-center justify-around">
+      {/* Mobile Bottom Navigation (Streamlined 4 tabs) */}
+      <div className="sm:hidden border-t border-slate-200 bg-white px-2 py-2 flex items-center justify-around">
         <button
           onClick={() => onTabChange('lobby')}
-          className={`flex items-center gap-1.5 py-1 px-3 text-xs font-semibold rounded-lg ${
+          className={`flex items-center gap-1 py-1 px-2 text-xs font-semibold rounded-lg ${
             currentTab === 'lobby' ? 'bg-slate-100 text-slate-900' : 'text-slate-500'
           }`}
         >
@@ -111,17 +125,26 @@ export const UserNavbar: React.FC<UserNavbarProps> = ({
           <span>Tables</span>
         </button>
         <button
+          onClick={() => onTabChange('sports')}
+          className={`flex items-center gap-1 py-1 px-2 text-xs font-semibold rounded-lg ${
+            currentTab === 'sports' ? 'bg-indigo-50 text-indigo-900 font-bold' : 'text-slate-500'
+          }`}
+        >
+          <Trophy className="w-4 h-4 text-indigo-600" />
+          <span>Sports</span>
+        </button>
+        <button
           onClick={() => onTabChange('wallet')}
-          className={`flex items-center gap-1.5 py-1 px-3 text-xs font-semibold rounded-lg ${
+          className={`flex items-center gap-1 py-1 px-2 text-xs font-semibold rounded-lg ${
             currentTab === 'wallet' ? 'bg-emerald-50 text-emerald-800' : 'text-slate-500'
           }`}
         >
           <Wallet className="w-4 h-4" />
-          <span>My Wallet</span>
+          <span>Wallet</span>
         </button>
         <button
           onClick={() => onTabChange('support')}
-          className={`flex items-center gap-1.5 py-1 px-3 text-xs font-semibold rounded-lg ${
+          className={`flex items-center gap-1 py-1 px-2 text-xs font-semibold rounded-lg ${
             currentTab === 'support' ? 'bg-slate-100 text-slate-900' : 'text-slate-500'
           }`}
         >
