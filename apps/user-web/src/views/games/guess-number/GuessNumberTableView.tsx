@@ -1,127 +1,365 @@
-import React from 'react';
-import { RoomItem, UserProfile } from '../../../services/api';
-import { Trophy, Award, Users } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { RoomItem, UserProfile, userApi } from '../../../services/api';
+import { connectSocket } from '../../../services/socket';
+import {
+  Trophy,
+  Copy,
+  Check,
+  RotateCcw,
+  Clock,
+  Sparkles,
+  Users,
+  AlertCircle,
+  XCircle,
+} from 'lucide-react';
+import confetti from 'canvas-confetti';
 
 interface GuessNumberTableViewProps {
   room: RoomItem;
   user: UserProfile;
+  onRefreshBalance?: () => void;
+  onBack?: () => void;
 }
 
-export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({ room, user }) => {
+export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
+  room: initialRoom,
+  user,
+  onRefreshBalance,
+  onBack,
+}) => {
+  const [room, setRoom] = useState<RoomItem>(initialRoom);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [isRolling, setIsRolling] = useState(false);
+  const [rollTickNumber, setRollTickNumber] = useState<number | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRoom(initialRoom);
+  }, [initialRoom]);
+
+  // Connect to room channel for real-time multiplayer roll animations
+  useEffect(() => {
+    const socket = connectSocket();
+    socket.emit('join_room_channel', room.id);
+
+    socket.on('room_updated', (data: RoomItem) => {
+      if (data && data.id === room.id) {
+        setRoom(data);
+        if (['COMPLETED', 'CANCELLED'].includes(data.status)) {
+          setIsRolling(false);
+          setCountdown(null);
+        }
+      }
+    });
+
+    socket.on('game_countdown', (data: { countdown: number }) => {
+      if (data && typeof data.countdown === 'number') {
+        setCountdown(data.countdown);
+      }
+    });
+
+    socket.on('roll_started', () => {
+      setIsRolling(true);
+      setCountdown(null);
+    });
+
+    socket.on('roll_tick', (data: { number: number }) => {
+      if (data && typeof data.number === 'number') {
+        setRollTickNumber(data.number);
+      }
+    });
+
+    socket.on('game_finished', (data: any) => {
+      setIsRolling(false);
+      setCountdown(null);
+      if (data?.room) {
+        setRoom(data.room);
+      }
+      if (data?.winnerId === user.id) {
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 },
+        });
+      }
+      if (onRefreshBalance) onRefreshBalance();
+    });
+
+    return () => {
+      socket.emit('leave_room_channel', room.id);
+      socket.off('room_updated');
+      socket.off('game_countdown');
+      socket.off('roll_started');
+      socket.off('roll_tick');
+      socket.off('game_finished');
+      socket.disconnect();
+    };
+  }, [room.id, user.id, onRefreshBalance]);
+
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(room.roomCode);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleCancelTable = async () => {
+    if (!window.confirm('Cancel this table and refund all entry fees to players?')) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      await userApi.cancelRoom(room.id);
+      if (onRefreshBalance) onRefreshBalance();
+    } catch (err: any) {
+      setCancelError(err.message || 'Failed to cancel table');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const isFull = room.players.length >= room.maxPlayers;
   const isWinner = room.winnerId === user.id;
-  const prizePool = room.entryFee * room.maxPlayers;
+  const isCompleted = room.status === 'COMPLETED';
+  const isCancelled = room.status === 'CANCELLED';
+  const totalPot = room.entryFee * room.maxPlayers;
+  const winnerPrize = room.winnerPrize ?? totalPot * 0.90;
+  const isMeInRoom = room.players.some((p) => p.userId === user.id);
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 shadow-xs text-center space-y-6">
-      <div>
-        <span
-          className={`inline-block px-3 py-1 rounded text-xs font-semibold mb-2 ${
-            room.status === 'COMPLETED'
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : room.status === 'CANCELLED'
-              ? 'bg-red-50 text-red-800 border border-red-200'
-              : isFull
-              ? 'bg-amber-50 text-amber-800 border border-amber-200'
-              : 'bg-slate-100 text-slate-700 border border-slate-200'
-          }`}
-        >
-          {room.status === 'COMPLETED'
-            ? 'Game Concluded'
-            : room.status === 'CANCELLED'
-            ? 'Cancelled — entry fees refunded'
-            : isFull
-            ? 'Evaluating Guesses...'
-            : 'Waiting for Players'}
-        </span>
-
-        <h2 className="text-2xl font-bold text-slate-900 mono-num">
-          Prize Pool: ₹{prizePool.toFixed(2)}
-        </h2>
-        <p className="text-xs text-slate-500 mt-1">
-          Stake per player: <span className="font-bold mono-num text-slate-800">₹{room.entryFee.toFixed(2)}</span>
-        </p>
+    <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
+      {/* ─── TOP METRICS BAR ─── */}
+      <div className="grid grid-cols-3 gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+        <div>
+          <span className="text-[11px] font-semibold text-slate-500 block">ENTRY STAKE</span>
+          <span className="text-lg font-bold mono-num text-slate-900">
+            ₹{room.entryFee.toFixed(0)}
+          </span>
+        </div>
+        <div>
+          <span className="text-[11px] font-semibold text-emerald-700 block">WINNER PAYOUT</span>
+          <span className="text-lg font-bold mono-num text-emerald-600">
+            ₹{winnerPrize.toFixed(0)}
+          </span>
+        </div>
+        <div className="text-right">
+          <span className="text-[11px] font-semibold text-slate-500 block">OCCUPANCY</span>
+          <span className="text-xs font-bold mono-num px-2 py-0.5 rounded bg-slate-200/80 text-slate-800 inline-block mt-0.5">
+            {room.players.length} / {room.maxPlayers} Seats
+          </span>
+        </div>
       </div>
 
-      {/* Winner Announcement Banner */}
-      {room.status === 'COMPLETED' && (
-        <div
-          className={`p-5 rounded-xl border text-center ${
-            isWinner
-              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-              : 'bg-slate-50 border-slate-200 text-slate-800'
-          }`}
-        >
-          <div className="w-12 h-12 rounded-full bg-white border border-slate-200 flex items-center justify-center mx-auto mb-2 text-emerald-600 shadow-xs">
-            <Trophy className="w-6 h-6" />
-          </div>
-
-          <div className="text-lg font-bold">
-            {isWinner ? '🎉 You Won the Table!' : `${room.winner?.username || 'Winner'} Won the Prize!`}
-          </div>
-
-          <div className="text-xs text-slate-600 mt-1">
-            Winning Lucky Number: <strong className="font-mono text-base text-slate-900">#{room.winningNumber}</strong>
-          </div>
-
-          {isWinner && (
-            <div className="mt-3 text-sm font-bold text-emerald-700 mono-num">
-              {room.winnerPrize != null
-                ? `₹${room.winnerPrize.toFixed(2)} credited to your wallet balance!`
-                : 'Prize credited. See your wallet for the payout.'}
-            </div>
-          )}
+      {cancelError && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{cancelError}</span>
         </div>
       )}
 
-      {/* Players Seats */}
-      <div>
-        <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 text-left">
-          Table Seats ({room.players.length}/{room.maxPlayers})
-        </div>
+      {/* ─── LIVE GAME STATE BANNER (Matching Flutter App) ─── */}
+      {isCompleted ? (
+        /* 1. Finished Game State */
+        <div
+          className={`p-6 rounded-2xl border text-center space-y-4 ${
+            isWinner
+              ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+              : 'bg-slate-50 border-slate-200 text-slate-900'
+          }`}
+        >
+          <div className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-slate-900 text-white">
+            {isWinner ? '🎉 YOU ARE THE WINNER!' : 'GAME CONCLUDED'}
+          </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          {room.players.map((p) => {
-            const isMe = p.userId === user.id;
-            const isPlayerWinner = room.winnerId === p.userId;
+          <div>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">
+              Winning Number
+            </span>
+            <div className="w-16 h-16 rounded-2xl bg-slate-900 text-white flex items-center justify-center mx-auto text-3xl font-extrabold mono-num shadow-md">
+              {room.winningNumber ?? 7}
+            </div>
+          </div>
 
-            return (
-              <div
-                key={p.id}
-                className={`p-4 rounded-xl border text-left transition ${
-                  isPlayerWinner
-                    ? 'bg-emerald-50 border-emerald-300'
-                    : isMe
-                    ? 'bg-slate-50 border-slate-300'
-                    : 'bg-white border-slate-200'
-                }`}
+          <div>
+            <div className="text-base font-bold">
+              Winner: {room.winner?.username || 'Winner'}
+            </div>
+            <div className="text-sm font-bold text-emerald-600 mono-num mt-1">
+              Payout: ₹{winnerPrize.toFixed(2)} credited to wallet
+            </div>
+          </div>
+
+          {onBack && (
+            <div className="pt-2">
+              <button
+                onClick={onBack}
+                className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-xs"
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-800 truncate">
-                    {p.user?.username || 'Player'}
-                    {isMe && <span className="ml-1 text-[11px] text-emerald-600 font-normal">(You)</span>}
-                  </span>
-                  {isPlayerWinner && <Award className="w-4 h-4 text-emerald-600" />}
-                </div>
-
-                <div className="text-xs text-slate-500">
-                  Chosen Guess:
-                  <span className="mono-num font-bold text-base text-slate-900 ml-1.5">
-                    #{p.guessNumber}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Empty Seat placeholder */}
-          {!isFull && (
-            <div className="p-4 rounded-xl border border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 text-xs py-6">
-              <Users className="w-5 h-5 mb-1 text-slate-300" />
-              <span>Waiting for opponent...</span>
+                Back to Lobby
+              </button>
             </div>
           )}
         </div>
+      ) : isCancelled ? (
+        /* 2. Cancelled State */
+        <div className="p-6 bg-red-50 border border-red-200 rounded-2xl text-center space-y-2">
+          <XCircle className="w-8 h-8 text-red-500 mx-auto" />
+          <h3 className="text-sm font-bold text-red-900">Table Cancelled</h3>
+          <p className="text-xs text-red-700">All player entry stakes have been refunded to wallet.</p>
+        </div>
+      ) : isRolling ? (
+        /* 3. Rolling Random Winner State (Animated Ticker) */
+        <div className="p-8 bg-emerald-50/60 border border-emerald-300 rounded-2xl text-center space-y-4 animate-pulse">
+          <div className="text-xs font-bold uppercase tracking-wider text-emerald-800">
+            Rolling Random Winner...
+          </div>
+          <div className="w-20 h-20 rounded-2xl bg-emerald-600 text-white flex items-center justify-center mx-auto text-4xl font-extrabold mono-num shadow-lg">
+            {rollTickNumber ?? 7}
+          </div>
+          <p className="text-xs text-slate-500">
+            Determining winner with verifiable cryptographic random roll
+          </p>
+        </div>
+      ) : countdown !== null ? (
+        /* 4. Table Full Countdown State */
+        <div className="p-8 bg-amber-50/70 border border-amber-300 rounded-2xl text-center space-y-3">
+          <div className="text-xs font-bold uppercase tracking-wider text-amber-800">
+            Table Full — Starting In
+          </div>
+          <div className="text-5xl font-extrabold font-mono text-amber-600 animate-bounce">
+            {countdown}
+          </div>
+          <p className="text-xs text-slate-500">Prepare for the number reveal!</p>
+        </div>
+      ) : (
+        /* 5. Waiting for Players */
+        <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-center space-y-2">
+          <div className="w-10 h-10 rounded-full bg-slate-200/80 flex items-center justify-center mx-auto text-slate-500">
+            <Users className="w-5 h-5" />
+          </div>
+          <h3 className="text-sm font-bold text-slate-800">
+            Waiting for {room.maxPlayers - room.players.length} more player
+            {room.maxPlayers - room.players.length > 1 ? 's' : ''}
+          </h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            The roll will begin automatically once all seats are filled. Share the table code with friends to start immediately!
+          </p>
+        </div>
+      )}
+
+      {/* ─── TABLE PARTICIPANTS (Secret Guess Number Masking!) ─── */}
+      <div className="space-y-3">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          Table Participants
+        </h4>
+
+        <div className="space-y-2.5">
+          {Array.from({ length: room.maxPlayers }).map((_, index) => {
+            const p = room.players[index];
+            if (p) {
+              const isMe = p.userId === user.id;
+              const isPlayerWinner = room.winnerId === p.userId;
+              // Mask opponent guess until game completed (Matching Flutter app privacy protection!)
+              const showSecret = isMe || isCompleted;
+
+              return (
+                <div
+                  key={p.id}
+                  className={`p-3.5 rounded-xl border flex items-center justify-between transition ${
+                    isPlayerWinner
+                      ? 'bg-emerald-50 border-emerald-300'
+                      : isMe
+                      ? 'bg-emerald-50/40 border-emerald-500/40'
+                      : 'bg-white border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs text-white ${
+                        isMe ? 'bg-emerald-600' : 'bg-slate-800'
+                      }`}
+                    >
+                      {p.user?.username ? p.user.username[0].toUpperCase() : 'P'}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-bold text-slate-900">
+                          {p.user?.username || 'Player'}
+                        </span>
+                        {isMe && (
+                          <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800">
+                            YOU
+                          </span>
+                        )}
+                        {isPlayerWinner && (
+                          <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
+                            WINNER
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        {index === 0 ? 'Table Host' : 'Challenger'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Secret Number Badge */}
+                  <div className="px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold font-mono text-slate-800">
+                    {showSecret ? `No. ${p.guessNumber}` : 'No. ? [🔒]'}
+                  </div>
+                </div>
+              );
+            }
+
+            // Empty seat placeholder
+            return (
+              <div
+                key={`empty-${index}`}
+                className="p-3.5 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 flex items-center justify-between text-xs text-slate-400"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-300">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <span>Empty Seat</span>
+                </div>
+                <span>Waiting...</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ─── ROOM CODE SHARE PILL & HOST ACTIONS ─── */}
+      <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl w-full sm:w-auto">
+          <span className="text-slate-500 font-medium">Table Code:</span>
+          <span className="font-mono font-bold text-slate-900 tracking-wider">
+            {room.roomCode}
+          </span>
+          <button
+            onClick={handleCopyCode}
+            className="p-1 hover:text-emerald-600 transition ml-1"
+            title="Copy Code"
+          >
+            {copiedCode ? (
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
+            ) : (
+              <Copy className="w-3.5 h-3.5 text-slate-400" />
+            )}
+          </button>
+        </div>
+
+        {room.status === 'WAITING' && isMeInRoom && (
+          <button
+            onClick={handleCancelTable}
+            disabled={cancelling}
+            className="text-xs text-red-600 hover:text-red-700 font-semibold hover:underline"
+          >
+            {cancelling ? 'Cancelling...' : 'Cancel table and refund all entries'}
+          </button>
+        )}
       </div>
     </div>
   );

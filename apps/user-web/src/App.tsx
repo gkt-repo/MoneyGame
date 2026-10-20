@@ -4,8 +4,7 @@ import { AuthModal } from './components/AuthModal';
 import { UserNavbar, UserTab } from './components/UserNavbar';
 import { LobbyView } from './views/LobbyView';
 import { ActiveRoomView } from './views/ActiveRoomView';
-import { AddCashView } from './views/AddCashView';
-import { WithdrawView } from './views/WithdrawView';
+import { WalletView } from './views/WalletView';
 import { SupportFeedbackView } from './views/SupportFeedbackView';
 import { Loader2 } from 'lucide-react';
 import { connectSocket } from './services/socket';
@@ -167,21 +166,12 @@ export const App: React.FC = () => {
                 onSelectRoom={(id) => setActiveRoomId(id)}
               />
             )}
-            {currentTab === 'deposit' && (
-              <AddCashView
-                user={user}
-                onPaymentSuccess={() => {
-                  refreshBalance();
-                  setCurrentTab('lobby');
-                }}
-              />
-            )}
-            {currentTab === 'withdraw' && (
-              <WithdrawView
+            {currentTab === 'wallet' && (
+              <WalletView
                 user={user}
                 balance={balance}
                 lockedBalance={lockedBalance}
-                onWithdrawSuccess={refreshBalance}
+                onRefreshBalance={refreshBalance}
               />
             )}
             {currentTab === 'support' && (

@@ -420,72 +420,93 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
             </div>
           ) : (
             <>
-              <div>
-                <div className="text-3xl font-extrabold mono-num text-slate-900">
-                  ₹{deposit.totalAmount.toFixed(2)}
+              {/* Top: Exact Payable Amount & Copy Pill */}
+              <div className="space-y-2">
+                <span className="text-[11px] font-bold tracking-wider uppercase text-slate-500">
+                  Exact Amount to Pay
+                </span>
+                <div className="flex items-center justify-center gap-3">
+                  <div className="text-3xl sm:text-4xl font-extrabold mono-num text-slate-900">
+                    ₹{deposit.totalAmount.toFixed(2)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyAmount}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition border border-slate-200 cursor-pointer"
+                    title="Copy Amount"
+                  >
+                    {copiedAmount ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-700">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy</span>
+                      </>
+                    )}
+                  </button>
                 </div>
-                <p className="text-xs text-amber-700 font-semibold mt-1">
-                  ⚠️ Pay exact amount with paise ({deposit.offsetPaise}p) for instant verification.
+              </div>
+
+              {/* Paise Offset Alert Notice */}
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-left flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-900 leading-relaxed">
+                  Pay <span className="font-bold">EXACTLY ₹{deposit.totalAmount.toFixed(2)}</span> (including {deposit.offsetPaise} paise offset). Do not round off or auto-credit will fail.
                 </p>
               </div>
 
-              {/* QR Code Canvas */}
-              <div className="inline-block p-4 bg-white border border-slate-200 rounded-2xl shadow-xs">
-                <QRCodeSVG value={deposit.upiDeepLink || deposit.upiUri || ''} size={190} level="M" />
-              </div>
-
-              {/* Direct Pay Link for Mobile — Fix #2: starts countdown + Android intent:// */}
+              {/* Primary 1-Tap UPI Intent Button (Green) */}
               <div>
                 <button
                   type="button"
                   onClick={handleOpenUpiApp}
-                  className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold transition shadow-xs"
+                  className="w-full inline-flex items-center justify-center gap-2 px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition shadow-xs cursor-pointer"
                 >
                   <ExternalLink className="w-4 h-4" />
-                  <span>Open in UPI App (GPay / PhonePe / Paytm)</span>
+                  <span>Pay via UPI App (GPay / PhonePe / Paytm)</span>
                 </button>
               </div>
 
-              {/* Payable Amount & Guidance Details */}
-              <div className="space-y-2 text-left pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                  <div>
-                    <span className="text-slate-500 block text-[11px]">Exact Payable Amount</span>
-                    <span className="font-mono font-bold text-emerald-700">₹{deposit.totalAmount.toFixed(2)}</span>
-                  </div>
-                  <button
-                    onClick={handleCopyAmount}
-                    className="p-1.5 text-slate-500 hover:text-emerald-600 transition"
-                    title="Copy Amount"
-                  >
-                    {copiedAmount ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                  </button>
+              {/* OR SCAN QR CODE Divider */}
+              <div className="relative flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-200" />
                 </div>
-
-                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex items-start gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Tap the button above to pay directly via your UPI app, or scan the QR code. Your balance is auto-credited once payment is received.</span>
+                <div className="relative px-3 bg-white text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  OR SCAN QR CODE
                 </div>
               </div>
 
-              {/* Post-Payment 1-Minute Verification Workflow */}
+              {/* QR Code Canvas Box */}
+              <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs inline-block mx-auto">
+                <QRCodeSVG value={deposit.upiDeepLink || deposit.upiUri || ''} size={190} level="M" />
+                <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 rounded-full text-[11px] font-semibold text-slate-600">
+                  <QrCode className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Scan with any UPI Scanner app</span>
+                </div>
+              </div>
+
+              {/* Post-Payment Verification Workflow (Distinct Dark Slate CTA) */}
               {!hasTappedPaid ? (
-                /* Stage A: User has not yet tapped "I Have Paid" */
-                <div className="space-y-2 pt-1">
+                /* Stage A: User has not yet tapped "I Have Completed Payment" */
+                <div className="space-y-1.5 pt-2">
                   <button
                     type="button"
                     onClick={handlePaidClicked}
-                    className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold transition shadow-xs cursor-pointer"
+                    className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-bold transition shadow-xs cursor-pointer"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>I Have Paid via UPI</span>
+                    <span>I Have Completed Payment</span>
                   </button>
                   <p className="text-[11px] text-slate-500 text-center">
-                    Tap above after completing payment in your UPI app. 1-minute automated bank verification will begin.
+                    Tap after paying in your UPI app to start automated bank verification.
                   </p>
                 </div>
               ) : paidCountdown > 0 ? (
-                /* Stage B: User tapped "I Have Paid", 1-minute countdown actively verifying */
+                /* Stage B: User tapped "I Have Completed Payment", 1-minute countdown actively verifying */
                 <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-2.5 text-center">
                   <div className="flex items-center justify-center gap-2">
                     <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
@@ -504,7 +525,7 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
                   </div>
                 </div>
               ) : utrSubmitted ? (
-                /* Stage D — Fix #3: UTR submitted, background auto-verify still running */
+                /* Stage D: UTR submitted, background auto-verify still running */
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-2.5 text-center">
                   <div className="flex items-center justify-center gap-2">
                     <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
@@ -518,7 +539,7 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
                   <button
                     type="button"
                     onClick={() => { setShowUtrModal(true); setUtrSuccessMsg(null); }}
-                    className="text-[11px] text-blue-600 underline underline-offset-2"
+                    className="text-[11px] text-blue-600 underline underline-offset-2 cursor-pointer"
                   >
                     Wrong UTR? Tap to correct it
                   </button>

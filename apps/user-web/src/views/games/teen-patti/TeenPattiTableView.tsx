@@ -13,6 +13,12 @@ import {
   Minus,
   GitCompare,
   Sparkles,
+  BookOpen,
+  Volume2,
+  VolumeX,
+  Copy,
+  Check,
+  X,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -22,6 +28,50 @@ interface TeenPattiTableViewProps {
   onRefreshBalance: () => void;
   onBack?: () => void;
 }
+
+const playTableSound = (type: 'card' | 'chip' | 'win', enabled: boolean) => {
+  if (!enabled) return;
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (type === 'chip') {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1100, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.08);
+    } else if (type === 'card') {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(750, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(250, audioCtx.currentTime + 0.06);
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.06);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.06);
+    } else if (type === 'win') {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.6);
+    }
+  } catch (_) {}
+};
 
 /**
  * Evaluates 3-card Teen Patti hand name for UI display
@@ -56,6 +106,9 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
   const [localGameState, setLocalGameState] = useState<TeenPattiGameState | null>(room.gameState || null);
   const [betMultiplier, setBetMultiplier] = useState<number>(1);
   const [sideShowBanner, setSideShowBanner] = useState<string | null>(null);
+  const [showRulesModal, setShowRulesModal] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [finishData, setFinishData] = useState<{
     winnerId: string;
     winnerUsername: string;
@@ -115,6 +168,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
     });
 
     socket.on('player_acted', (data: { userId: string; action: string; betAmount: number; pot: number }) => {
+      playTableSound('chip', soundEnabled);
       setLocalGameState(prev => {
         if (!prev) return prev;
         return {
@@ -175,6 +229,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
     });
 
     socket.on('cards_revealed', (data: { cards: PlayingCard[]; hand: any }) => {
+      playTableSound('card', soundEnabled);
       setLocalGameState(prev => {
         if (!prev) return prev;
         const myP = prev.players[user.id];
@@ -194,6 +249,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
     });
 
     socket.on('game_finished', (data: any) => {
+      playTableSound('win', soundEnabled);
       setFinishData(data);
       if (data.winnerId === user.id) {
         confetti({
@@ -351,8 +407,8 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
         <div className="absolute inset-4 rounded-2xl border-2 border-emerald-500/20 pointer-events-none" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-800/40 via-emerald-950/80 to-slate-950 pointer-events-none" />
 
-        {/* Top Bar: Table Info & Turn Notification */}
-        <div className="relative z-10 flex items-center justify-between text-xs text-emerald-200/80 border-b border-emerald-800/50 pb-3">
+        {/* Top Bar: Table Info, Rules, Sound & Turn Notification */}
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-200/80 border-b border-emerald-800/50 pb-3">
           <div className="flex items-center gap-2">
             <span className="font-bold tracking-wider uppercase text-amber-400 flex items-center gap-1">
               <span>🃏</span> Teen Patti
@@ -364,9 +420,45 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
               <span className="text-amber-400">💰</span>
               <span>₹{myBalance.toFixed(2)}</span>
             </span>
+
+            {/* Copy Room Code Button */}
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(room.roomCode);
+                setCopiedCode(true);
+                setTimeout(() => setCopiedCode(false), 2000);
+              }}
+              className="px-2 py-0.5 bg-emerald-900/80 hover:bg-emerald-800 border border-emerald-700/50 rounded font-mono text-[11px] text-emerald-200 flex items-center gap-1 transition cursor-pointer"
+              title="Copy table code"
+            >
+              {copiedCode ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-emerald-300" />}
+              <span>#{room.roomCode}</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Rules Dialog Button (Matching Flutter App) */}
+            <button
+              type="button"
+              onClick={() => setShowRulesModal(true)}
+              className="px-2.5 py-1 bg-purple-900/80 hover:bg-purple-800 border border-purple-600/60 rounded-full text-purple-200 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer shadow-xs"
+              title="View Hand Rankings & Rules"
+            >
+              <BookOpen className="w-3 h-3 text-purple-300" />
+              <span>Rules</span>
+            </button>
+
+            {/* Sound Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className="p-1.5 bg-emerald-900/80 hover:bg-emerald-800 border border-emerald-700/60 rounded-full text-emerald-300 transition cursor-pointer"
+              title={soundEnabled ? 'Mute audio' : 'Enable audio'}
+            >
+              {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5 text-slate-400" />}
+            </button>
+
             {isPlaying && (
               <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1.5 transition ${
                 isMyTurn
@@ -377,7 +469,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                 {isMyTurn
                   ? `Your Turn (${timeLeft}s)`
                   : myPlayerState?.isPacked
-                  ? 'You Folded (Waiting for hand to finish...)'
+                  ? 'You Folded (Waiting)'
                   : 'Opponent Thinking...'}
               </span>
             )}
@@ -736,6 +828,60 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* ─── RULES & HAND RANKINGS MODAL (Matching Flutter TeenPattiRulesDialog) ─── */}
+      {showRulesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-[#190623] border-2 border-amber-400 rounded-2xl p-6 shadow-2xl text-white space-y-4">
+            <div className="flex items-center justify-between border-b border-white/20 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🃏</span>
+                <h3 className="font-extrabold text-amber-300 text-sm sm:text-base">
+                  Hand Rankings (High to Low)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRulesModal(false)}
+                className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 text-xs max-h-[380px] overflow-y-auto pr-1">
+              {[
+                { rank: '1', title: 'Trail / Trio / Set', desc: 'Three cards of the same rank (e.g. A-A-A, K-K-K). AAA is highest.' },
+                { rank: '2', title: 'Pure Sequence / Straight Flush', desc: 'Three consecutive cards of the same suit (e.g. A-K-Q♠, A-2-3♥).' },
+                { rank: '3', title: 'Sequence / Normal Run', desc: 'Three consecutive cards not all in same suit (e.g. A-K-Q, 9-8-7).' },
+                { rank: '4', title: 'Color / Flush', desc: 'Three cards of the same suit that are not in sequence (e.g. A-K-J♦).' },
+                { rank: '5', title: 'Pair', desc: 'Two cards of the same rank (e.g. A-A-K, 8-8-J).' },
+                { rank: '6', title: 'High Card', desc: 'Three cards that do not belong to above categories. Highest card wins.' },
+              ].map((r) => (
+                <div key={r.rank} className="flex items-start gap-3 p-3 bg-white/5 rounded-xl border border-white/10">
+                  <div className="w-6 h-6 rounded-full bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
+                    {r.rank}
+                  </div>
+                  <div>
+                    <div className="font-bold text-amber-200 text-xs sm:text-sm">{r.title}</div>
+                    <div className="text-slate-300 text-[11px] leading-relaxed mt-0.5">{r.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowRulesModal(false)}
+                className="w-full py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-xs transition cursor-pointer shadow-md"
+              >
+                Got It
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

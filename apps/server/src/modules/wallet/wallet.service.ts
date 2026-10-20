@@ -79,7 +79,8 @@ export class WalletService {
     roomId: string,
     entryFee: number,
     guessNumber?: number | null,
-    seatIndex?: number
+    seatIndex?: number,
+    skipTransaction = false
   ) {
     const wallet = await tx.wallet.findUnique({
       where: { userId },
@@ -128,22 +129,26 @@ export class WalletService {
       },
     });
 
-    // Audit ledger
-    await tx.transaction.create({
-      data: {
-        userId,
-        amount: -entryFee,
-        type: 'ROOM_ENTRY',
-        referenceId: roomId,
-        description: `Entry fee locked for Room #${roomId.slice(0, 8)}${guessNumber != null ? ` (Guess: ${guessNumber})` : ''}`,
-      },
-    });
+    // Audit ledger - only if not deferred to round settlement
+    if (!skipTransaction) {
+      await tx.transaction.create({
+        data: {
+          userId,
+          amount: -entryFee,
+          type: 'ROOM_ENTRY',
+          referenceId: roomId,
+          description: `Entry fee locked for Room #${roomId.slice(0, 8)}${guessNumber != null ? ` (Guess: ${guessNumber})` : ''}`,
+        },
+      });
+    }
 
     return { wallet: updatedWallet, player: playerRecord };
   }
 
   /**
    * Deducts in-game bet (Chaal, Blind, Show) from available balance and moves to lockedBalance in real-time.
+   * Atomically verifies balance to strictly prevent negative balance, but skips intermediate passbook records
+   * so only the final round settlement is shown in transaction history.
    */
   async lockGameBet(userId: string, roomId: string, amount: number, actionName: string) {
     return serializable(async (tx) => {
@@ -155,17 +160,6 @@ export class WalletService {
       }
 
       const updatedWallet = await moveWallet(tx, userId, -amount, amount);
-
-      await tx.transaction.create({
-        data: {
-          userId,
-          amount: -amount,
-          type: 'ROOM_BET',
-          referenceId: roomId,
-          description: `Placed ${actionName} bet in Table #${roomId.slice(0, 8)}: ₹${amount.toFixed(2)}`,
-        },
-      });
-
       return updatedWallet;
     });
   }
@@ -239,19 +233,65 @@ export class WalletService {
         },
       });
 
-      // 4. Log winner transaction
-      await tx.transaction.create({
-        data: {
-          userId: winnerId,
-          amount: winnerPrize,
-          type: 'ROOM_WIN',
-          idempotencyKey: `room-win:${roomId}`,
-          referenceId: roomId,
-          description: room.gameType === 'GUESS_NUMBER'
-            ? `Won Room #${room.roomCode} (Roll: ${winningNumber}). Net prize: ₹${winnerPrize.toFixed(2)}`
-            : `Won Room #${room.roomCode} (${room.gameType}). Net prize: ₹${winnerPrize.toFixed(2)}`,
-        },
-      });
+      // 4. Log transactions: For dynamic round-settled games (TEEN_PATTI), record final settlement per participant
+      if (room.gameType === 'TEEN_PATTI' || playerBets) {
+        for (const p of room.players) {
+          const totalBet = playerBets && typeof playerBets[p.userId] === 'number'
+            ? playerBets[p.userId]
+            : entryFee;
+
+          if (p.userId === winnerId) {
+            const netEarnings = (toPaise(winnerPrize) - toPaise(totalBet)) / 100;
+            if (netEarnings >= 0) {
+              await tx.transaction.create({
+                data: {
+                  userId: winnerId,
+                  amount: netEarnings,
+                  type: 'ROOM_WIN',
+                  idempotencyKey: `room-win:${roomId}`,
+                  referenceId: roomId,
+                  description: `Won Table #${room.roomCode} (${room.gameType}). Net prize: ₹${netEarnings.toFixed(2)} (Prize: ₹${winnerPrize.toFixed(2)} - Bet: ₹${totalBet.toFixed(2)})`,
+                },
+              });
+            } else {
+              await tx.transaction.create({
+                data: {
+                  userId: winnerId,
+                  amount: netEarnings,
+                  type: 'ROOM_ENTRY',
+                  idempotencyKey: `room-win:${roomId}`,
+                  referenceId: roomId,
+                  description: `Table #${room.roomCode} (${room.gameType}). Net settlement: -₹${Math.abs(netEarnings).toFixed(2)}`,
+                },
+              });
+            }
+          } else {
+            await tx.transaction.create({
+              data: {
+                userId: p.userId,
+                amount: -totalBet,
+                type: 'ROOM_ENTRY',
+                idempotencyKey: `room-loss:${roomId}:${p.userId}`,
+                referenceId: roomId,
+                description: `Table #${room.roomCode} (${room.gameType}): Round settlement (Lost ₹${totalBet.toFixed(2)})`,
+              },
+            });
+          }
+        }
+      } else {
+        await tx.transaction.create({
+          data: {
+            userId: winnerId,
+            amount: winnerPrize,
+            type: 'ROOM_WIN',
+            idempotencyKey: `room-win:${roomId}`,
+            referenceId: roomId,
+            description: room.gameType === 'GUESS_NUMBER'
+              ? `Won Room #${room.roomCode} (Roll: ${winningNumber}). Net prize: ₹${winnerPrize.toFixed(2)}`
+              : `Won Room #${room.roomCode} (${room.gameType}). Net prize: ₹${winnerPrize.toFixed(2)}`,
+          },
+        });
+      }
 
       return {
         winnerId,

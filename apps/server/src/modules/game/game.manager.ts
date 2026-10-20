@@ -53,7 +53,8 @@ export class GameManager {
         created.id,
         entryFee,
         guessNumber ?? null,
-        0 // Host gets seat 0
+        0, // Host gets seat 0
+        gameType === 'TEEN_PATTI'
       );
 
       return created;
@@ -115,7 +116,8 @@ export class GameManager {
         room.id,
         room.entryFee,
         guessNumber ?? null,
-        seatIndex
+        seatIndex,
+        room.gameType === 'TEEN_PATTI'
       );
 
       const full = room.players.length + 1 === room.maxPlayers;
@@ -182,16 +184,21 @@ export class GameManager {
 
       for (const player of room.players) {
         await moveWallet(tx, player.userId, room.entryFee, -room.entryFee);
-        await tx.transaction.create({
-          data: {
-            userId: player.userId,
-            amount: room.entryFee,
-            type: 'REFUND',
-            referenceId: roomId,
-            idempotencyKey: `room-refund:${roomId}:${player.userId}`,
-            description: 'Cancelled game entry refunded',
-          },
+        const entryTx = await tx.transaction.findFirst({
+          where: { userId: player.userId, referenceId: roomId, type: 'ROOM_ENTRY' },
         });
+        if (entryTx) {
+          await tx.transaction.create({
+            data: {
+              userId: player.userId,
+              amount: room.entryFee,
+              type: 'REFUND',
+              referenceId: roomId,
+              idempotencyKey: `room-refund:${roomId}:${player.userId}`,
+              description: 'Cancelled game entry refunded',
+            },
+          });
+        }
       }
       return room.players;
     });

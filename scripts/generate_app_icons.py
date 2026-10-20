@@ -5,8 +5,8 @@ from PIL import Image
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 
-USER_ICON_SRC = "/home/gulshan/.gemini/antigravity/brain/0c888058-3e37-45a1-b327-ee06c15ad4f6/moneygame_app_icon_fullbleed_1792401601458.jpg"
-ADMIN_ICON_SRC = "/home/gulshan/.gemini/antigravity/brain/0c888058-3e37-45a1-b327-ee06c15ad4f6/moneygame_admin_square_icon_1792401845072.jpg"
+USER_ICON_SRC = "/home/gulshan/.gemini/antigravity/brain/0c888058-3e37-45a1-b327-ee06c15ad4f6/inr_500_mg_black_sans.png"
+ADMIN_ICON_SRC = "/home/gulshan/.gemini/antigravity/brain/0c888058-3e37-45a1-b327-ee06c15ad4f6/inr_500_mg_black_sans_admin.png"
 
 def process_app_icons(app_type, src_path):
     print(f"\nProcessing icons for {app_type} from {src_path}...")

@@ -162,15 +162,91 @@ async function run() {
   assert(Math.abs(afterChaal2.balance - 50.0) < 0.001, 'Available balance should reduce from 80 to 50');
   assert(Math.abs(afterChaal2.lockedBalance - 50.0) < 0.001, 'Locked balance should increase from 20 to 50');
 
-  // 4. Verify transaction ledger entries
+  // 4. Verify that intermediate in-game bets (Chaal/Blind) do NOT create passbook spam
   const txs = await prisma.transaction.findMany({
     where: { userId: testUser.id, type: 'ROOM_BET' },
   });
-  assert(txs.length === 2, 'Should have 2 ROOM_BET transaction records');
-  assert(txs[0].amount === -20.0, 'First transaction should be -20.0');
-  assert(txs[1].amount === -30.0, 'Second transaction should be -30.0');
+  assert(txs.length === 0, 'Should have 0 ROOM_BET records during gameplay (no chaal spam)');
 
-  console.log('Test 5: Real-time game bet deduction & balance locking ✅ PASS');
+  // 5. Test Round Settlement: Verify final settlement creates exactly 1 passbook entry per player
+  const opponentUser = await prisma.user.create({
+    data: {
+      username: `tp_opponent_${Date.now()}`,
+      phone: `998${Math.floor(1000000 + Math.random() * 9000000)}`,
+      passwordHash: 'dummy',
+      wallet: {
+        create: {
+          balance: 100.0,
+          lockedBalance: 0.0,
+        },
+      },
+    },
+    include: { wallet: true },
+  });
+
+  const testRoom = await prisma.room.create({
+    data: {
+      roomCode: `TP-${Date.now().toString().slice(-4)}`,
+      gameType: 'TEEN_PATTI',
+      entryFee: 10.0,
+      maxPlayers: 2,
+      status: 'PLAYING',
+      players: {
+        create: [
+          { userId: testUser.id, seatIndex: 0 },
+          { userId: opponentUser.id, seatIndex: 1 },
+        ],
+      },
+    },
+    include: { players: true },
+  });
+
+  // testUser bet 50 total (already locked above in steps 1 & 3: 20 + 30 = 50)
+  // opponentUser locks 50
+  await walletService.lockGameBet(opponentUser.id, testRoom.id, 50.0, 'CHAAL');
+
+  const playerBets: Record<string, number> = {
+    [testUser.id]: 50.0,
+    [opponentUser.id]: 50.0,
+  };
+
+  // testUser wins total pot 100 with 10% commission (prize = 90)
+  await walletService.settleRoomWinner(
+    testRoom.id,
+    testUser.id,
+    null,
+    100.0,
+    10,
+    playerBets
+  );
+
+  // Winner (testUser) started with 100, bet 50, won 90 -> ending balance 140 (+40 net profit)
+  const winnerWallet = await walletService.getWallet(testUser.id);
+  assert(Math.abs(winnerWallet!.balance - 140.0) < 0.001, 'Winner balance should be exactly 140.00');
+  assert(winnerWallet!.lockedBalance === 0, 'Winner lockedBalance should be 0');
+
+  // Winner passbook must have exactly 1 settlement entry: +40.00 net profit
+  const winnerTxs = await prisma.transaction.findMany({
+    where: { userId: testUser.id },
+  });
+  assert(winnerTxs.length === 1, 'Winner should have exactly 1 passbook settlement entry');
+  assert(winnerTxs[0].type === 'ROOM_WIN', 'Winner entry type must be ROOM_WIN');
+  assert(Math.abs(winnerTxs[0].amount - 40.0) < 0.001, 'Winner passbook entry must show net profit +40.00');
+
+  // Loser (opponentUser) started with 100, bet 50 -> ending balance 50 (-50 loss)
+  const loserWallet = await walletService.getWallet(opponentUser.id);
+  assert(Math.abs(loserWallet!.balance - 50.0) < 0.001, 'Loser balance should be exactly 50.00');
+  assert(loserWallet!.lockedBalance === 0, 'Loser lockedBalance should be 0');
+
+  // Loser passbook must have exactly 1 settlement entry: -50.00 loss
+  const loserTxs = await prisma.transaction.findMany({
+    where: { userId: opponentUser.id },
+  });
+  assert(loserTxs.length === 1, 'Loser should have exactly 1 passbook settlement entry');
+  assert(loserTxs[0].type === 'ROOM_ENTRY', 'Loser entry type must be ROOM_ENTRY');
+  assert(Math.abs(loserTxs[0].amount - (-50.0)) < 0.001, 'Loser passbook entry must show round loss -50.00');
+
+  console.log('Test 5: Secure real-time bet locking, zero chaal spam & single final settlement ✅ PASS');
 
   console.log('\n🎉 ALL TEEN PATTI UNIT TESTS PASSED SUCCESSFULLY!\n');
 }
