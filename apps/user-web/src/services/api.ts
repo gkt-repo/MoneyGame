@@ -115,6 +115,17 @@ export interface SupportContactInfo {
   upiHelpText: string;
 }
 
+export interface NotificationItem {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: 'WITHDRAWAL_COMPLETED' | 'WITHDRAWAL_REJECTED' | 'DEPOSIT_APPROVED' | 'ROOM_WIN' | 'FEEDBACK_REPLY' | 'SYSTEM';
+  isRead: boolean;
+  metadata?: any;
+  createdAt: string;
+}
+
 
 class UserApiService {
   private token: string | null = null;
@@ -411,6 +422,35 @@ class UserApiService {
 
   async syncSports(): Promise<void> {
     await this.request('/sports/sync', { method: 'POST' });
+  }
+
+  async getMyNotifications(): Promise<{ notifications: NotificationItem[]; unreadCount: number }> {
+    const res = await this.request<{ success: boolean; notifications: NotificationItem[]; unreadCount: number }>('/notifications/my');
+    return {
+      notifications: res.notifications || [],
+      unreadCount: res.unreadCount || 0,
+    };
+  }
+
+  async getUnreadNotificationCount(): Promise<number> {
+    const res = await this.request<{ success: boolean; unreadCount: number }>('/notifications/unread-count');
+    return res.unreadCount || 0;
+  }
+
+  async markNotificationAsRead(id: string): Promise<{ success: boolean; unreadCount: number }> {
+    return this.request(`/notifications/${id}/read`, { method: 'PATCH' });
+  }
+
+  async markAllNotificationsAsRead(): Promise<{ success: boolean; unreadCount: number }> {
+    return this.request('/notifications/mark-all-read', { method: 'POST' });
+  }
+
+  async deleteNotification(id: string): Promise<{ success: boolean; unreadCount: number }> {
+    return this.request(`/notifications/${id}`, { method: 'DELETE' });
+  }
+
+  async clearAllNotifications(): Promise<{ success: boolean; unreadCount: number }> {
+    return this.request('/notifications/clear-all', { method: 'DELETE' });
   }
 
   logout() {

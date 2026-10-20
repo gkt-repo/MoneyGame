@@ -9,6 +9,8 @@ class SocketService {
   static void connect(String userId, {
     Function(double balance)? onBalanceUpdated,
     Function(double balance)? onDepositApproved,
+    Function(NotificationItemModel notification)? onNewNotification,
+    Function(int unreadCount)? onNotificationUnreadCount,
   }) {
     disconnect();
 
@@ -64,6 +66,23 @@ class SocketService {
       if (data != null && data['balance'] != null) {
         final bal = (data['balance'] as num).toDouble();
         onDepositApproved?.call(bal);
+      }
+    });
+
+    _socket?.on('new_notification', (data) {
+      if (data != null && data is Map) {
+        try {
+          onNewNotification?.call(
+            NotificationItemModel.fromJson(Map<String, dynamic>.from(data)),
+          );
+        } catch (_) {}
+      }
+    });
+
+    _socket?.on('notification_unread_count', (data) {
+      if (data != null && data['unreadCount'] != null) {
+        final count = (data['unreadCount'] as num).toInt();
+        onNotificationUnreadCount?.call(count);
       }
     });
   }

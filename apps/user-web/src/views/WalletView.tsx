@@ -76,8 +76,9 @@ export const WalletView: React.FC<WalletViewProps> = ({
       case 'ROOM_BET':
         return <Gamepad2 className="w-4 h-4 text-slate-500" />;
       case 'WITHDRAWAL_LOCK':
-      case 'WITHDRAWAL_COMPLETE':
         return <ArrowUpRight className="w-4 h-4 text-red-500" />;
+      case 'WITHDRAWAL_COMPLETE':
+        return <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
       case 'REFUND':
         return <RotateCcw className="w-4 h-4 text-blue-500" />;
       case 'MANUAL_CREDIT':
@@ -278,7 +279,9 @@ export const WalletView: React.FC<WalletViewProps> = ({
                   <div className="flex items-center gap-3 min-w-0">
                     <div
                       className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
-                        isZero
+                        tx.type === 'WITHDRAWAL_COMPLETE'
+                          ? 'bg-emerald-50 border-emerald-100'
+                          : isZero
                           ? 'bg-slate-50 border-slate-200'
                           : credit
                           ? 'bg-emerald-50 border-emerald-100'
@@ -299,10 +302,22 @@ export const WalletView: React.FC<WalletViewProps> = ({
 
                   <div
                     className={`text-sm font-bold mono-num shrink-0 ${
-                      isZero ? 'text-slate-600' : credit ? 'text-emerald-600' : 'text-red-600'
+                      tx.type === 'WITHDRAWAL_COMPLETE'
+                        ? 'text-emerald-600'
+                        : isZero
+                        ? 'text-slate-600'
+                        : credit
+                        ? 'text-emerald-600'
+                        : 'text-red-600'
                     }`}
                   >
-                    {sign}₹{Math.abs(tx.amount).toFixed(2)}
+                    {tx.type === 'WITHDRAWAL_COMPLETE' && isZero ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-100 text-emerald-800 tracking-wide">
+                        PAID
+                      </span>
+                    ) : (
+                      `${sign}₹${Math.abs(tx.amount).toFixed(2)}`
+                    )}
                   </div>
                 </div>
               );

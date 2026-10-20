@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserProfile } from '../services/api';
-import { Wallet, Gamepad2, LogOut, HelpCircle, Trophy, RotateCw } from 'lucide-react';
+import { Wallet, Gamepad2, LogOut, HelpCircle, Trophy, RotateCw, Bell } from 'lucide-react';
 
 export type UserTab = 'lobby' | 'sports' | 'wallet' | 'support';
 
@@ -12,6 +12,8 @@ interface UserNavbarProps {
   onLogout: () => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  onOpenNotifications?: () => void;
+  unreadNotificationsCount?: number;
 }
 
 export const UserNavbar: React.FC<UserNavbarProps> = ({
@@ -22,6 +24,8 @@ export const UserNavbar: React.FC<UserNavbarProps> = ({
   onLogout,
   onRefresh,
   isRefreshing = false,
+  onOpenNotifications,
+  unreadNotificationsCount = 0,
 }) => {
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
@@ -116,6 +120,20 @@ export const UserNavbar: React.FC<UserNavbarProps> = ({
               <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs transition group-hover:scale-105">
                 +
               </div>
+            </button>
+
+            {/* Notification Bell */}
+            <button
+              onClick={onOpenNotifications}
+              title="Notifications"
+              className="relative p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition border border-transparent hover:border-slate-200 cursor-pointer"
+            >
+              <Bell className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-[10px] font-bold text-white flex items-center justify-center ring-2 ring-white">
+                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                </span>
+              )}
             </button>
 
             <button

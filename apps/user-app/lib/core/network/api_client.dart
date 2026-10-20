@@ -229,6 +229,66 @@ class TransactionModel {
   }
 }
 
+class NotificationItemModel {
+  final String id;
+  final String userId;
+  final String title;
+  final String message;
+  final String type;
+  final bool isRead;
+  final Map<String, dynamic>? metadata;
+  final DateTime createdAt;
+
+  NotificationItemModel({
+    required this.id,
+    required this.userId,
+    required this.title,
+    required this.message,
+    required this.type,
+    required this.isRead,
+    this.metadata,
+    required this.createdAt,
+  });
+
+  factory NotificationItemModel.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic>? meta;
+    if (json['metadata'] != null) {
+      if (json['metadata'] is Map) {
+        meta = Map<String, dynamic>.from(json['metadata']);
+      } else if (json['metadata'] is String) {
+        try {
+          meta = Map<String, dynamic>.from(jsonDecode(json['metadata']));
+        } catch (_) {}
+      }
+    }
+    return NotificationItemModel(
+      id: json['id'] ?? '',
+      userId: json['userId'] ?? '',
+      title: json['title'] ?? '',
+      message: json['message'] ?? '',
+      type: json['type'] ?? 'SYSTEM',
+      isRead: json['isRead'] ?? false,
+      metadata: meta,
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt']).toLocal()
+          : DateTime.now(),
+    );
+  }
+
+  NotificationItemModel copyWith({bool? isRead}) {
+    return NotificationItemModel(
+      id: id,
+      userId: userId,
+      title: title,
+      message: message,
+      type: type,
+      isRead: isRead ?? this.isRead,
+      metadata: metadata,
+      createdAt: createdAt,
+    );
+  }
+}
+
 class ApiClient {
   static final _session = AuthenticatedClient(
     baseUrl: () => ApiConstants.baseUrl,
@@ -552,5 +612,50 @@ class ApiClient {
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Room not found';
     }
+  }
+
+  // ─── Notification Methods ───────────────────────────────────────────────────
+
+  static Future<List<NotificationItemModel>> getMyNotifications() async {
+    try {
+      final res = await _dio.get('/notifications/my');
+      final list = res.data['notifications'] as List? ?? [];
+      return list.map((e) => NotificationItemModel.fromJson(Map<String, dynamic>.from(e))).toList();
+    } on DioException catch (e) {
+      throw _extractDioError(e, defaultMessage: 'Failed to fetch notifications');
+    }
+  }
+
+  static Future<int> getUnreadNotificationCount() async {
+    try {
+      final res = await _dio.get('/notifications/unread-count');
+      return (res.data['unreadCount'] as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Future<void> markNotificationAsRead(String id) async {
+    try {
+      await _dio.patch('/notifications/$id/read');
+    } catch (_) {}
+  }
+
+  static Future<void> markAllNotificationsAsRead() async {
+    try {
+      await _dio.post('/notifications/mark-all-read');
+    } catch (_) {}
+  }
+
+  static Future<void> deleteNotification(String id) async {
+    try {
+      await _dio.delete('/notifications/$id');
+    } catch (_) {}
+  }
+
+  static Future<void> clearAllNotifications() async {
+    try {
+      await _dio.delete('/notifications/clear-all');
+    } catch (_) {}
   }
 }

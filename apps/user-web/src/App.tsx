@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { userApi, UserProfile, RoomItem } from './services/api';
+import { userApi, UserProfile, RoomItem, NotificationItem } from './services/api';
 import { AuthModal } from './components/AuthModal';
 import { UserNavbar, UserTab } from './components/UserNavbar';
+import { NotificationDrawer } from './components/NotificationDrawer';
 import { LobbyView } from './views/LobbyView';
 import { ActiveRoomView } from './views/ActiveRoomView';
 import { WalletView } from './views/WalletView';
@@ -19,6 +20,11 @@ export const App: React.FC = () => {
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   // Authenticate on Mount
   useEffect(() => {
@@ -68,23 +74,84 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Fetch Notifications
+  const loadNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      setLoadingNotifications(true);
+      const res = await userApi.getMyNotifications();
+      setNotifications(res.notifications);
+      setUnreadNotificationsCount(res.unreadCount);
+    } catch (err) {
+      console.error('Failed to load notifications:', err);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  }, [user]);
+
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
+      setUnreadNotificationsCount((c) => Math.max(0, c - 1));
+      await userApi.markNotificationAsRead(id);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadNotificationsCount(0);
+      await userApi.markAllNotificationsAsRead();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    try {
+      const target = notifications.find((n) => n.id === id);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      if (target && !target.isRead) {
+        setUnreadNotificationsCount((c) => Math.max(0, c - 1));
+      }
+      await userApi.deleteNotification(id);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleClearAllNotifications = async () => {
+    try {
+      setNotifications([]);
+      setUnreadNotificationsCount(0);
+      await userApi.clearAllNotifications();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Manual refresh for all telemetry (Balance + Rooms)
+  // Manual refresh for all telemetry (Balance + Rooms + Notifications)
   const handleRefreshAll = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([refreshBalance(), refreshRooms()]);
+      await Promise.all([refreshBalance(), refreshRooms(), loadNotifications()]);
     } finally {
       setIsRefreshing(false);
     }
-  }, [refreshBalance, refreshRooms]);
+  }, [refreshBalance, refreshRooms, loadNotifications]);
 
   // Connect to Sockets & Initial Load (Auto-refresh once on open)
   useEffect(() => {
     if (user) {
       refreshBalance();
       refreshRooms();
+      loadNotifications();
 
       const socket = connectSocket();
 
@@ -111,11 +178,22 @@ export const App: React.FC = () => {
         refreshBalance();
       });
 
+      socket.on('new_notification', (newNotif: NotificationItem) => {
+        setNotifications((prev) => [newNotif, ...prev]);
+        setUnreadNotificationsCount((c) => c + 1);
+      });
+
+      socket.on('notification_unread_count', (data: { unreadCount: number }) => {
+        if (typeof data?.unreadCount === 'number') {
+          setUnreadNotificationsCount(data.unreadCount);
+        }
+      });
+
       return () => {
         socket.disconnect();
       };
     }
-  }, [user, refreshBalance, refreshRooms]);
+  }, [user, refreshBalance, refreshRooms, loadNotifications]);
 
   if (checkingAuth) {
     return (
@@ -149,9 +227,26 @@ export const App: React.FC = () => {
         onLogout={() => {
           userApi.logout();
           setUser(null);
+          setNotifications([]);
+          setUnreadNotificationsCount(0);
+          setNotificationsOpen(false);
         }}
         onRefresh={handleRefreshAll}
         isRefreshing={isRefreshing || loadingRooms}
+        onOpenNotifications={() => setNotificationsOpen(true)}
+        unreadNotificationsCount={unreadNotificationsCount}
+      />
+
+      <NotificationDrawer
+        isOpen={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        notifications={notifications}
+        unreadCount={unreadNotificationsCount}
+        onMarkAsRead={handleMarkAsRead}
+        onMarkAllAsRead={handleMarkAllAsRead}
+        onDelete={handleDeleteNotification}
+        onClearAll={handleClearAllNotifications}
+        loading={loadingNotifications}
       />
 
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
