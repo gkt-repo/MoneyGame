@@ -127,23 +127,28 @@ export class SportsMatchEngine implements IGameEngine {
 
       if (!config.predictions) config.predictions = {};
 
-      const player = room.players.find(p => p.userId === userId);
-      if (player && player.guessNumber !== null && player.guessNumber !== undefined) {
-        const chosenTeamName =
-          player.guessNumber === 1
-            ? config.team1?.name || 'Team 1'
-            : player.guessNumber === 2
-            ? config.team2?.name || 'Team 2'
-            : 'Draw';
+      let hasNewPrediction = false;
+      for (const player of room.players) {
+        if (player.guessNumber !== null && player.guessNumber !== undefined && !config.predictions[player.userId]) {
+          const chosenTeamName =
+            player.guessNumber === 1
+              ? config.team1?.name || 'Team 1'
+              : player.guessNumber === 2
+              ? config.team2?.name || 'Team 2'
+              : 'Draw';
 
-        config.predictions[userId] = {
-          userId,
-          username: player.user?.username || 'Player',
-          teamIndex: player.guessNumber,
-          teamName: chosenTeamName,
-          selectedAt: new Date().toISOString(),
-        };
+          config.predictions[player.userId] = {
+            userId: player.userId,
+            username: player.user?.username || 'Player',
+            teamIndex: player.guessNumber,
+            teamName: chosenTeamName,
+            selectedAt: new Date().toISOString(),
+          };
+          hasNewPrediction = true;
+        }
+      }
 
+      if (hasNewPrediction) {
         // Persist updated prediction in customConfig without destroying match details
         await prisma.room.update({
           where: { id: room.id },

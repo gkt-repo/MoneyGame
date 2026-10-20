@@ -381,6 +381,7 @@ async function run() {
   assert(parsed.team2.shortName === 'NZ', `team2 shortName corrupted: ${parsed.team2?.shortName}`);
   assert(parsed.team2.logo === 'https://espn.com/nz.png', `team2 logo corrupted: ${parsed.team2?.logo}`);
   assert(parsed.startTime === testFutureStart, `startTime corrupted: ${parsed.startTime}`);
+  assert(parsed.predictions[userA.id]?.teamName === 'India', 'Host prediction recorded');
   assert(parsed.predictions[userB.id]?.teamName === 'New Zealand', 'Player B prediction recorded');
   assert(rawDb.status === 'WAITING', `Room status must still be WAITING (not full, not started), got: ${rawDb.status}`);
 
