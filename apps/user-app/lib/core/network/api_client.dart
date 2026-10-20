@@ -118,6 +118,7 @@ class RoomModel {
   final String? winnerUsername;
   final List<RoomPlayerModel> players;
   final Map<String, dynamic>? gameState;
+  final dynamic customConfig;
 
   RoomModel({
     required this.id,
@@ -132,12 +133,23 @@ class RoomModel {
     this.winnerUsername,
     required this.players,
     this.gameState,
+    this.customConfig,
   });
 
   factory RoomModel.fromJson(Map<String, dynamic> json) {
     var rawPlayers = json['players'] as List? ?? [];
     List<RoomPlayerModel> parsedPlayers =
         rawPlayers.map((p) => RoomPlayerModel.fromJson(p)).toList();
+
+    dynamic rawConfig = json['customConfig'];
+    Map<String, dynamic>? parsedConfig;
+    if (rawConfig is Map) {
+      parsedConfig = Map<String, dynamic>.from(rawConfig);
+    } else if (rawConfig is String) {
+      try {
+        parsedConfig = Map<String, dynamic>.from(jsonDecode(rawConfig));
+      } catch (_) {}
+    }
 
     return RoomModel(
       id: json['id'] ?? '',
@@ -152,6 +164,7 @@ class RoomModel {
       winnerUsername: json['winner']?['username'],
       players: parsedPlayers,
       gameState: json['gameState'] != null ? Map<String, dynamic>.from(json['gameState']) : null,
+      customConfig: parsedConfig ?? rawConfig,
     );
   }
 }
@@ -458,6 +471,7 @@ class ApiClient {
     required int maxPlayers,
     int? guessNumber,
     String gameType = 'TEEN_PATTI',
+    Map<String, dynamic>? customConfig,
   }) async {
     try {
       final res = await _dio.post('/rooms/create', data: {
@@ -466,10 +480,22 @@ class ApiClient {
         'maxPlayers': maxPlayers,
         if (guessNumber != null) ...{'guessNumber': guessNumber},
         'gameType': gameType,
+        if (customConfig != null) ...{'customConfig': customConfig},
       });
       return RoomModel.fromJson(res.data['room']);
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to create room';
+    }
+  }
+
+  static Future<List<dynamic>> getSportsMatches({String? sport}) async {
+    try {
+      final res = await _dio.get('/sports/matches', queryParameters: {
+        if (sport != null && sport != 'ALL') 'sport': sport,
+      });
+      return (res.data['matches'] as List? ?? []);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to fetch sports matches';
     }
   }
 

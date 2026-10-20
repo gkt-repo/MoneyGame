@@ -106,7 +106,7 @@ export class SportsService {
           logo: 'https://a.espncdn.com/i/teamlogos/cricket/500/2.png',
           score: '',
         },
-        summary: "Today's Marquee Cricket Match (T20 Super Duel)",
+        summary: "Marquee Cricket Match (T20 Super Duel)",
       },
       {
         id: 'featured-ind-pak',
@@ -131,54 +131,6 @@ export class SportsService {
           score: '',
         },
         summary: 'Blockbuster World Championship Encounter',
-      },
-      {
-        id: 'featured-csk-mi',
-        sport: 'Cricket',
-        league: 'Indian Premier League (IPL)',
-        name: 'Chennai Super Kings vs Mumbai Indians',
-        shortName: 'CSK vs MI',
-        startTime: cskMiTime,
-        status: 'SCHEDULED',
-        team1: {
-          id: 't-csk',
-          name: 'Chennai Super Kings',
-          shortName: 'CSK',
-          logo: 'https://a.espncdn.com/i/teamlogos/cricket/500/3199.png',
-          score: '',
-        },
-        team2: {
-          id: 't-mi',
-          name: 'Mumbai Indians',
-          shortName: 'MI',
-          logo: 'https://a.espncdn.com/i/teamlogos/cricket/500/3200.png',
-          score: '',
-        },
-        summary: 'IPL El Clasico Rivalry',
-      },
-      {
-        id: 'featured-kkr-rcb',
-        sport: 'Cricket',
-        league: 'Indian Premier League (IPL)',
-        name: 'Kolkata Knight Riders vs Royal Challengers Bangalore',
-        shortName: 'KKR vs RCB',
-        startTime: kkrRcbTime,
-        status: 'SCHEDULED',
-        team1: {
-          id: 't-kkr',
-          name: 'Kolkata Knight Riders',
-          shortName: 'KKR',
-          logo: 'https://a.espncdn.com/i/teamlogos/cricket/500/3198.png',
-          score: '',
-        },
-        team2: {
-          id: 't-rcb',
-          name: 'Royal Challengers Bangalore',
-          shortName: 'RCB',
-          logo: 'https://a.espncdn.com/i/teamlogos/cricket/500/3197.png',
-          score: '',
-        },
-        summary: 'High-voltage IPL Clash',
       },
 
       // ─── FOOTBALL ────────────────────────────────────────────
@@ -384,73 +336,101 @@ export class SportsService {
   }
 
   /**
-   * Fetch Live & Upcoming Cricket Matches from ESPN Scoreboard API
+   * Fetch Live & Upcoming Cricket Matches from ESPN Scoreboard API across upcoming days
    */
   async fetchEspnCricket(): Promise<SportsMatch[]> {
     try {
-      const data = await this.fetchJson('https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=cricket');
+      const now = new Date();
+      const dateQueries: string[] = [];
+      // Fetch today and next 7 days of matches
+      for (let i = 0; i <= 7; i++) {
+        const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        dateQueries.push(`${y}${m}${day}`);
+      }
+
+      const urls = [
+        'https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=cricket',
+        ...dateQueries.map(dt => `https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=cricket&dates=${dt}`),
+      ];
+
+      const responses = await Promise.all(
+        urls.map(u => this.fetchJson(u).catch(() => null))
+      );
+
       const matches: SportsMatch[] = [];
+      const seenEventIds = new Set<string>();
 
-      for (const sport of data.sports || []) {
-        for (const league of sport.leagues || []) {
-          for (const ev of league.events || []) {
-            const competitors = ev.competitors || [];
-            if (competitors.length < 2) continue;
+      for (const data of responses) {
+        if (!data) continue;
+        for (const sport of data.sports || []) {
+          for (const league of sport.leagues || []) {
+            for (const ev of league.events || []) {
+              if (seenEventIds.has(ev.id)) continue;
+              seenEventIds.add(ev.id);
 
-            const t1 = competitors[0];
-            const t2 = competitors[1];
+              const competitors = ev.competitors || [];
+              if (competitors.length < 2) continue;
 
-            const rawStatus = (ev.status || ev.fullStatus?.type?.state || '').toLowerCase();
-            const status =
-              rawStatus === 'canc' || rawStatus === 'postponed' || rawStatus === 'abandoned'
-                ? 'CANCELLED'
-                : rawStatus === 'pre'
-                ? 'SCHEDULED'
-                : rawStatus === 'in'
-                ? 'LIVE'
-                : 'FINISHED';
+              const t1 = competitors[0];
+              const t2 = competitors[1];
 
-            const team1Name = t1.displayName || t1.name;
-            const team2Name = t2.displayName || t2.name;
+              const rawStatus = (ev.status || ev.fullStatus?.type?.state || '').toLowerCase();
+              const status =
+                rawStatus === 'canc' || rawStatus === 'postponed' || rawStatus === 'abandoned'
+                  ? 'CANCELLED'
+                  : rawStatus === 'pre'
+                  ? 'SCHEDULED'
+                  : rawStatus === 'in'
+                  ? 'LIVE'
+                  : 'FINISHED';
 
-            let winnerTeamIndex: number | undefined;
-            let winnerName: string | undefined;
-            if (t1.winner === true) {
-              winnerTeamIndex = 1;
-              winnerName = team1Name;
-            } else if (t2.winner === true) {
-              winnerTeamIndex = 2;
-              winnerName = team2Name;
+              const team1Name = t1.displayName || t1.name;
+              const team2Name = t2.displayName || t2.name;
+              const team1Short = t1.abbreviation || t1.shortName || team1Name;
+              const team2Short = t2.abbreviation || t2.shortName || team2Name;
+
+              let winnerTeamIndex: number | undefined;
+              let winnerName: string | undefined;
+              if (t1.winner === true) {
+                winnerTeamIndex = 1;
+                winnerName = team1Name;
+              } else if (t2.winner === true) {
+                winnerTeamIndex = 2;
+                winnerName = team2Name;
+              }
+
+              matches.push({
+                id: `espn-cricket-${ev.id}`,
+                sport: 'Cricket',
+                league: league.name || 'Cricket',
+                name: `${team1Name} vs ${team2Name}`,
+                shortName: `${team1Short} vs ${team2Short}`,
+                startTime: ev.date || new Date().toISOString(),
+                status,
+                team1: {
+                  id: String(t1.id),
+                  name: team1Name,
+                  shortName: team1Short,
+                  logo: t1.logo || 'https://a.espncdn.com/i/teamlogos/cricket/500/default.png',
+                  score: t1.score || '',
+                  isWinner: t1.winner === true,
+                },
+                team2: {
+                  id: String(t2.id),
+                  name: team2Name,
+                  shortName: team2Short,
+                  logo: t2.logo || 'https://a.espncdn.com/i/teamlogos/cricket/500/default.png',
+                  score: t2.score || '',
+                  isWinner: t2.winner === true,
+                },
+                winnerTeamIndex,
+                winnerName,
+                summary: ev.summary || (status === 'LIVE' ? 'Match Live' : undefined),
+              });
             }
-
-            matches.push({
-              id: `espn-cricket-${ev.id}`,
-              sport: 'Cricket',
-              league: league.name || 'Cricket',
-              name: ev.name || `${team1Name} vs ${team2Name}`,
-              shortName: ev.shortName,
-              startTime: ev.date || new Date().toISOString(),
-              status,
-              team1: {
-                id: String(t1.id),
-                name: team1Name,
-                shortName: t1.abbreviation || t1.shortName || t1.name,
-                logo: t1.logo || 'https://a.espncdn.com/i/teamlogos/cricket/500/default.png',
-                score: t1.score || '',
-                isWinner: t1.winner === true,
-              },
-              team2: {
-                id: String(t2.id),
-                name: team2Name,
-                shortName: t2.abbreviation || t2.shortName || t2.name,
-                logo: t2.logo || 'https://a.espncdn.com/i/teamlogos/cricket/500/default.png',
-                score: t2.score || '',
-                isWinner: t2.winner === true,
-              },
-              winnerTeamIndex,
-              winnerName,
-              summary: ev.summary || (status === 'LIVE' ? 'Match Live' : undefined),
-            });
           }
         }
       }
@@ -693,8 +673,6 @@ export class SportsService {
       return cached.filter(m => m.sport.toLowerCase() === sport.toLowerCase());
     }
 
-    // Combine featured marquee matches with live API feeds
-    const featured = this.getFeaturedMatches();
     const [espnCricket, espnSoccer, espnBasketball, cricApi] = await Promise.all([
       this.fetchEspnCricket(),
       this.fetchEspnSoccer(),
@@ -702,8 +680,11 @@ export class SportsService {
       this.fetchCricketDataOrg(),
     ]);
 
-    // De-duplicate by ID and name
-    const combined = [...featured, ...cricApi, ...espnCricket, ...espnSoccer, ...espnBasketball];
+    // Combine live API feeds first; featured matches serve as fallback
+    const liveFeeds = [...cricApi, ...espnCricket, ...espnSoccer, ...espnBasketball];
+    const featured = this.getFeaturedMatches();
+    const combined = [...liveFeeds, ...featured];
+
     const seen = new Set<string>();
     const uniqueMatches: SportsMatch[] = [];
 
@@ -714,6 +695,26 @@ export class SportsService {
         uniqueMatches.push(m);
       }
     }
+
+    // Sort order:
+    // 1. LIVE matches first
+    // 2. Upcoming SCHEDULED matches ordered chronologically (soonest first)
+    // 3. Finished / Cancelled fixtures last
+    uniqueMatches.sort((a, b) => {
+      const aLive = a.status === 'LIVE';
+      const bLive = b.status === 'LIVE';
+      if (aLive && !bLive) return -1;
+      if (!aLive && bLive) return 1;
+
+      const aSched = a.status === 'SCHEDULED';
+      const bSched = b.status === 'SCHEDULED';
+      if (aSched && !bSched) return -1;
+      if (!aSched && bSched) return 1;
+
+      const tA = new Date(a.startTime).getTime();
+      const tB = new Date(b.startTime).getTime();
+      return tA - tB;
+    });
 
     this.matchesCache = {
       data: uniqueMatches,

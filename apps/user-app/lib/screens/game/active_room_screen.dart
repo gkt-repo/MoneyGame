@@ -5,6 +5,7 @@ import '../../core/constants/colors.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/socket_service.dart';
 import 'teen_patti/teen_patti_table_screen.dart';
+import 'sports_match/sports_match_table_screen.dart';
 
 class ActiveRoomScreen extends StatefulWidget {
   final String roomId;
@@ -162,6 +163,14 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
   Widget build(BuildContext context) {
     if (!_loading && _error == null && _room?.gameType == 'TEEN_PATTI') {
       return TeenPattiTableScreen(
+        roomId: widget.roomId,
+        user: widget.user,
+        onBalanceRefresh: () => _loadRoom(silent: true),
+      );
+    }
+
+    if (!_loading && _error == null && _room?.gameType == 'SPORTS_MATCH') {
+      return SportsMatchTableScreen(
         roomId: widget.roomId,
         user: widget.user,
         onBalanceRefresh: () => _loadRoom(silent: true),

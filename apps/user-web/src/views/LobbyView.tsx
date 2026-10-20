@@ -160,15 +160,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       const matchName = (m.name || '').toLowerCase();
       const shortName = (m.shortName || '').toLowerCase();
       const t1 = (m.team1?.name || '').toLowerCase();
+      const t1Short = (m.team1?.shortName || '').toLowerCase();
       const t2 = (m.team2?.name || '').toLowerCase();
+      const t2Short = (m.team2?.shortName || '').toLowerCase();
       const league = (m.league || '').toLowerCase();
-      return (
-        matchName.includes(q) ||
-        shortName.includes(q) ||
-        t1.includes(q) ||
-        t2.includes(q) ||
-        league.includes(q)
-      );
+
+      // Combined corpus with both team orders (e.g. "India vs NZ" as well as "NZ vs India")
+      const combinedCorpus = `${matchName} ${shortName} ${league} ${t1} ${t1Short} ${t2} ${t2Short} ${t1} vs ${t2} ${t2} vs ${t1} ${t1} v ${t2} ${t2} v ${t1}`;
+      if (combinedCorpus.includes(q)) return true;
+
+      // Smart token matching (filter out connector words like "vs", "v", "against", "and")
+      const tokens = q.split(/\s+/).filter((w) => !['vs', 'v', 'against', 'and'].includes(w));
+      if (tokens.length === 0) return true;
+      return tokens.every((tok) => combinedCorpus.includes(tok));
     }
 
     return true;
@@ -501,7 +505,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {sportsMatches.slice(0, 4).map((m: any) => {
+              {sportsMatches
+                .filter((m: any) => m.status !== 'FINISHED' && m.status !== 'CANCELLED')
+                .slice(0, 4)
+                .map((m: any) => {
                 const isSelected = selectedMatch?.id === m.id;
                 return (
                   <div
