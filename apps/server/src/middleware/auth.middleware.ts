@@ -42,6 +42,7 @@ export async function authenticateUser(
         email: true,
         role: true,
         status: true,
+        updatedAt: true,
       },
     });
 
@@ -101,6 +102,7 @@ export async function authenticateAdmin(
         email: true,
         role: true,
         status: true,
+        updatedAt: true,
       },
     });
 

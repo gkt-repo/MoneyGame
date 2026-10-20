@@ -148,26 +148,39 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
   // Connect to live WebSockets for instant table interactions
   useEffect(() => {
     const socket = connectSocket();
+    const onConnect = () => {
+      socket.emit('join_room_channel', room.id);
+      userApi.getRoomDetails(room.id).then(freshRoom => {
+        if (freshRoom?.gameState) {
+          setLocalGameState(freshRoom.gameState);
+        }
+      }).catch(() => {});
+    };
+
+    socket.on('connect', onConnect);
     socket.emit('join_room_channel', room.id);
 
-    socket.on('teen_patti_state', (state: TeenPattiGameState) => {
-      if (state) {
+    socket.on('teen_patti_state', (state: any) => {
+      if (state && (!state.roomId || state.roomId === room.id)) {
         setLocalGameState(state);
       }
     });
 
-    socket.on('turn_timer_started', (data: { currentTurnUserId: string; turnExpiresAt: number }) => {
-      setLocalGameState(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          currentTurnUserId: data.currentTurnUserId,
-          turnExpiresAt: data.turnExpiresAt,
-        };
-      });
+    socket.on('turn_timer_started', (data: { roomId?: string; currentTurnUserId: string; turnExpiresAt: number }) => {
+      if (data && (!data.roomId || data.roomId === room.id)) {
+        setLocalGameState(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            currentTurnUserId: data.currentTurnUserId,
+            turnExpiresAt: data.turnExpiresAt,
+          };
+        });
+      }
     });
 
-    socket.on('player_acted', (data: { userId: string; action: string; betAmount: number; pot: number }) => {
+    socket.on('player_acted', (data: { roomId?: string; userId: string; action: string; betAmount: number; pot: number }) => {
+      if (!data || (data.roomId && data.roomId !== room.id)) return;
       playTableSound('chip', soundEnabled);
       setLocalGameState(prev => {
         if (!prev) return prev;
@@ -178,7 +191,8 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
       });
     });
 
-    socket.on('player_packed', (data: { userId: string; seatIndex: number }) => {
+    socket.on('player_packed', (data: { roomId?: string; userId: string; seatIndex: number }) => {
+      if (!data || (data.roomId && data.roomId !== room.id)) return;
       setLocalGameState(prev => {
         if (!prev) return prev;
         const p = prev.players[data.userId];
@@ -196,7 +210,8 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
       });
     });
 
-    socket.on('player_seen', (data: { userId: string; seatIndex: number }) => {
+    socket.on('player_seen', (data: { roomId?: string; userId: string; seatIndex: number }) => {
+      if (!data || (data.roomId && data.roomId !== room.id)) return;
       setLocalGameState(prev => {
         if (!prev) return prev;
         const p = prev.players[data.userId];
@@ -215,6 +230,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
     });
 
     socket.on('side_show_result', (data: any) => {
+      if (!data || (data.roomId && data.roomId !== room.id)) return;
       if (data && data.message) {
         setSideShowBanner(data.message);
         setTimeout(() => setSideShowBanner(null), 4500);
@@ -228,7 +244,8 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
       }
     });
 
-    socket.on('cards_revealed', (data: { cards: PlayingCard[]; hand: any }) => {
+    socket.on('cards_revealed', (data: { roomId?: string; cards: PlayingCard[]; hand: any }) => {
+      if (!data || (data.roomId && data.roomId !== room.id)) return;
       playTableSound('card', soundEnabled);
       setLocalGameState(prev => {
         if (!prev) return prev;
@@ -249,6 +266,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
     });
 
     socket.on('game_finished', (data: any) => {
+      if (!data || (data.roomId && data.roomId !== room.id)) return;
       playTableSound('win', soundEnabled);
       setFinishData(data);
       if (data.winnerId === user.id) {
@@ -277,6 +295,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
     return () => {
       socket.emit('leave_room_channel', room.id);
+      socket.off('connect', onConnect);
       socket.off('teen_patti_state');
       socket.off('turn_timer_started');
       socket.off('player_acted');

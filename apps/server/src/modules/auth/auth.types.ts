@@ -6,6 +6,8 @@ export interface TokenPayload {
   role: Role;
   username: string;
   aud?: string;
+  iat?: number;
+  exp?: number;
 }
 
 export interface AuthTokens {

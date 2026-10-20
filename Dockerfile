@@ -36,6 +36,7 @@ RUN npm --prefix apps/user-web run build
 
 # Copy and build Admin Web Portal
 COPY apps/admin-web ./apps/admin-web
+ENV VITE_BASE_PATH=/admin/
 RUN npm --prefix apps/admin-web run build
 
 # ─── Stage 2: Production Runner ───────────────────────────────────────────────────

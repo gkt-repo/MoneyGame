@@ -1,5 +1,6 @@
 import { prisma } from '../../db';
-import { walletService } from '../wallet/wallet.service';
+import { serializable } from '../../transaction';
+import { walletService, getEffectiveCommissionPercent } from '../wallet/wallet.service';
 import { paymentService } from '../payment/payment.service';
 import { toPaise } from '../../money';
 
@@ -12,16 +13,18 @@ export class AdminService {
     const deposits = await prisma.deposit.findMany();
     const withdrawals = await prisma.withdrawal.findMany();
     const rooms = await prisma.room.findMany();
+    const assignedPayments = await prisma.unmatchedPayment.findMany({ where: { status: 'ASSIGNED' } });
+    const assignedVolume = assignedPayments.reduce((acc, u) => acc + u.amount, 0);
 
     const completedDeposits = deposits.filter((d) => d.status === 'APPROVED');
     const pendingDeposits = deposits.filter((d) => d.status === 'PENDING');
-    const totalDepositVolume = completedDeposits.reduce((acc, d) => acc + d.baseAmount, 0);
+    const totalDepositVolume = completedDeposits.reduce((acc, d) => acc + d.baseAmount, 0) + assignedVolume;
 
     const pendingWithdrawals = withdrawals.filter((w) => w.status === 'PENDING');
     const completedWithdrawals = withdrawals.filter((w) => w.status === 'COMPLETED');
     const totalPayoutVolume = completedWithdrawals.reduce((acc, w) => acc + w.amount, 0);
 
-    const activeRooms = rooms.filter((r) => ['WAITING', 'COUNTDOWN', 'ROLLING'].includes(r.status));
+    const activeRooms = rooms.filter((r) => ['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'].includes(r.status));
     const completedRooms = rooms.filter((r) => r.status === 'COMPLETED');
 
     const adminUpi = await prisma.systemSetting.findUnique({
@@ -30,12 +33,40 @@ export class AdminService {
     const adminName = await prisma.systemSetting.findUnique({
       where: { key: 'admin_upi_name' },
     });
-    const commissionSetting = await prisma.systemSetting.findUnique({
-      where: { key: 'platform_commission' },
-    });
-    const commissionPercent = parseFloat(commissionSetting?.value || '0');
-    const totalRoomVolume = completedRooms.reduce((acc, r) => acc + r.entryFee * r.maxPlayers, 0);
-    const platformProfit = (totalRoomVolume * commissionPercent) / 100;
+    const commissionPercent = await getEffectiveCommissionPercent();
+    let totalRoomVolume = 0;
+    let platformProfit = 0;
+
+    for (const r of completedRooms) {
+      let configObj: Record<string, any> = {};
+      try {
+        if (r.customConfig) configObj = JSON.parse(r.customConfig);
+      } catch (_) {}
+
+      let roomPool = 0;
+      let roomCommission = 0;
+
+      if (typeof configObj.settledPool === 'number') {
+        roomPool = configObj.settledPool;
+        roomCommission = typeof configObj.platformCommission === 'number'
+          ? configObj.platformCommission
+          : (toPaise(roomPool) - toPaise(r.winnerPrize || 0)) / 100;
+      } else if (r.winnerPrize != null && r.winnerPrize > 0) {
+        if (configObj.playerStakes) {
+          const inGameStakes = Object.values(configObj.playerStakes as Record<string, number>).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+          roomPool = r.entryFee * r.maxPlayers + inGameStakes;
+        } else {
+          roomPool = r.entryFee * r.maxPlayers;
+        }
+        roomCommission = (toPaise(roomPool) - toPaise(r.winnerPrize)) / 100;
+      } else {
+        roomPool = r.entryFee * r.maxPlayers;
+        roomCommission = (roomPool * commissionPercent) / 100;
+      }
+
+      totalRoomVolume += roomPool;
+      platformProfit += Math.max(0, roomCommission);
+    }
 
     const openFeedbacksCount = await prisma.feedback.count({
       where: { status: 'OPEN' },
@@ -80,7 +111,7 @@ export class AdminService {
       completedRoomsCount: completedRooms.length,
       adminUpiId: adminUpi?.value || 'admin@okhdfcbank',
       adminUpiName: adminName?.value || 'MoneyGame Admin',
-      commissionPercent: commissionSetting?.value || '0',
+      commissionPercent: String(commissionPercent),
       supportEmail: supportEmail?.value || 'support@moneygame.com',
       supportWhatsapp: supportWhatsapp?.value || '+91 98765 43210',
       supportTelegram: supportTelegram?.value || '@MoneyGameSupport',
@@ -326,9 +357,9 @@ export class AdminService {
     const roomsWon = await prisma.room.count({ where: { winnerId: userId } });
     const winRate = roomsPlayed > 0 ? parseFloat(((roomsWon / roomsPlayed) * 100).toFixed(1)) : 0;
 
-    const currentBalance = user.wallet?.balance || 0;
-    // Net profit for user: (Completed payouts + current balance) - Approved deposits
-    const netProfitLoss = parseFloat((completedWithdrawalsSum + currentBalance - approvedDepositsSum).toFixed(2));
+    const totalBalance = (user.wallet?.balance || 0) + (user.wallet?.lockedBalance || 0);
+    // Net profit for user: (Completed payouts + total balance including locked funds) - Approved deposits
+    const netProfitLoss = parseFloat((completedWithdrawalsSum + totalBalance - approvedDepositsSum).toFixed(2));
 
     return {
       id: user.id,
@@ -429,29 +460,64 @@ export class AdminService {
       throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
     }
 
-    const existingUser = await prisma.user.findUnique({ where: { id: userId } });
-    if (!existingUser) throw new Error('User not found');
+    return serializable(async (tx) => {
+      const actor = await tx.user.findUnique({ where: { id: adminId } });
+      if (!actor || !['ADMIN', 'SUPER_ADMIN'].includes(actor.role)) {
+        throw new Error('Unauthorized');
+      }
 
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: { status: newStatus },
-      select: { id: true, username: true, status: true, role: true },
+      const existingUser = await tx.user.findUnique({ where: { id: userId } });
+      if (!existingUser) throw new Error('User not found');
+
+      // 1. Regular ADMIN cannot modify ADMIN or SUPER_ADMIN
+      if (actor.role === 'ADMIN' && ['ADMIN', 'SUPER_ADMIN'].includes(existingUser.role)) {
+        throw new Error('Administrators cannot modify status of other administrators or superadmins');
+      }
+
+      // 2. Prevent self-ban / self-suspension
+      if (adminId === userId && newStatus !== 'ACTIVE') {
+        throw new Error('Administrators cannot ban or deactivate their own account');
+      }
+
+      // 3. Prevent banning or deactivating the last active SUPER_ADMIN
+      if (existingUser.role === 'SUPER_ADMIN' && newStatus !== 'ACTIVE') {
+        const remainingSuperAdmins = await tx.user.count({
+          where: { role: 'SUPER_ADMIN', status: 'ACTIVE', id: { not: userId } },
+        });
+        if (remainingSuperAdmins === 0) {
+          throw new Error('Cannot ban or deactivate the last active SUPER_ADMIN account');
+        }
+      }
+
+      const updatedUser = await tx.user.update({
+        where: { id: userId },
+        data: { status: newStatus },
+        select: { id: true, username: true, status: true, role: true },
+      });
+
+      // Revoke refresh tokens on ban/suspension
+      if (newStatus !== 'ACTIVE') {
+        await tx.refreshToken.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorId: adminId,
+          targetId: userId,
+          action: 'UPDATE_USER_STATUS',
+          details: JSON.stringify({
+            prevStatus: existingUser.status,
+            newStatus,
+            reason: reason || 'Updated by admin',
+          }),
+        },
+      });
+
+      return updatedUser;
     });
-
-    await prisma.auditLog.create({
-      data: {
-        actorId: adminId,
-        targetId: userId,
-        action: 'UPDATE_USER_STATUS',
-        details: JSON.stringify({
-          prevStatus: existingUser.status,
-          newStatus,
-          reason: reason || 'Updated by admin',
-        }),
-      },
-    });
-
-    return updatedUser;
   }
 
   /**
@@ -490,29 +556,59 @@ export class AdminService {
    * Delete a user by ID, username, or phone
    */
   async deleteUser(userIdOrIdentifier: string) {
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { id: userIdOrIdentifier },
-          { username: userIdOrIdentifier },
-          { phone: userIdOrIdentifier },
-        ],
-      },
+    return serializable(async (tx) => {
+      const user = await tx.user.findFirst({
+        where: {
+          OR: [
+            { id: userIdOrIdentifier },
+            { username: userIdOrIdentifier },
+            { phone: userIdOrIdentifier },
+          ],
+        },
+        include: {
+          wallet: true,
+        },
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (user.role === 'SUPER_ADMIN') {
+        throw new Error('Cannot delete a SUPER_ADMIN account');
+      }
+
+      // Protect accounts with active balance
+      if (user.wallet && (user.wallet.balance > 0 || user.wallet.lockedBalance > 0)) {
+        throw new Error('Cannot delete account with an active or locked wallet balance. Please settle or refund funds first.');
+      }
+
+      const [txCount, depCount, withCount, activeRooms] = await Promise.all([
+        tx.transaction.count({ where: { userId: user.id } }),
+        tx.deposit.count({ where: { userId: user.id } }),
+        tx.withdrawal.count({ where: { userId: user.id } }),
+        tx.roomPlayer.count({
+          where: {
+            userId: user.id,
+            room: { status: { in: ['WAITING', 'COUNTDOWN', 'PLAYING', 'ROLLING'] } },
+          },
+        }),
+      ]);
+
+      if (activeRooms > 0) {
+        throw new Error('Cannot delete user currently participating in active game rooms.');
+      }
+
+      if (txCount > 0 || depCount > 0 || withCount > 0) {
+        throw new Error('Cannot delete user with financial records. Please suspend or ban the account to preserve financial audit trail.');
+      }
+
+      await tx.user.delete({
+        where: { id: user.id },
+      });
+
+      return { success: true, message: `User ${user.username} deleted successfully` };
     });
-
-    if (!user) {
-      throw new Error('User not found');
-    }
-
-    if (user.role === 'SUPER_ADMIN') {
-      throw new Error('Cannot delete a SUPER_ADMIN account');
-    }
-
-    await prisma.user.delete({
-      where: { id: user.id },
-    });
-
-    return { success: true, message: `User ${user.username} deleted successfully` };
   }
 
   /**
@@ -594,26 +690,84 @@ export class AdminService {
   /**
    * Fetch all pending and recent deposits
    */
-  async getDepositsList() {
+  async getDepositsList(statusFilter?: string, limit: number = 50, skip: number = 0) {
+    if (statusFilter && statusFilter !== 'ALL') {
+      return prisma.deposit.findMany({
+        where: { status: statusFilter },
+        include: {
+          user: { select: { id: true, username: true, phone: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: Math.min(limit, 200),
+        skip,
+      });
+    }
+
+    if (skip === 0) {
+      const pending = await prisma.deposit.findMany({
+        where: { status: 'PENDING' },
+        include: { user: { select: { id: true, username: true, phone: true } } },
+        orderBy: { createdAt: 'asc' },
+      });
+      const remainingSlots = Math.max(0, limit - pending.length);
+      const nonPending = remainingSlots > 0 ? await prisma.deposit.findMany({
+        where: { status: { not: 'PENDING' } },
+        include: { user: { select: { id: true, username: true, phone: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: remainingSlots,
+      }) : [];
+      return [...pending, ...nonPending];
+    }
+
     return prisma.deposit.findMany({
       include: {
         user: { select: { id: true, username: true, phone: true } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: Math.min(limit, 200),
+      skip,
     });
   }
 
   /**
    * Fetch all withdrawals
    */
-  async getWithdrawalsList() {
+  async getWithdrawalsList(statusFilter?: string, limit: number = 50, skip: number = 0) {
+    if (statusFilter && statusFilter !== 'ALL') {
+      return prisma.withdrawal.findMany({
+        where: { status: statusFilter },
+        include: {
+          user: { select: { id: true, username: true, phone: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: Math.min(limit, 200),
+        skip,
+      });
+    }
+
+    if (skip === 0) {
+      const pending = await prisma.withdrawal.findMany({
+        where: { status: 'PENDING' },
+        include: { user: { select: { id: true, username: true, phone: true } } },
+        orderBy: { createdAt: 'asc' },
+      });
+      const remainingSlots = Math.max(0, limit - pending.length);
+      const nonPending = remainingSlots > 0 ? await prisma.withdrawal.findMany({
+        where: { status: { not: 'PENDING' } },
+        include: { user: { select: { id: true, username: true, phone: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: remainingSlots,
+      }) : [];
+      return [...pending, ...nonPending];
+    }
+
     return prisma.withdrawal.findMany({
       include: {
         user: { select: { id: true, username: true, phone: true } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: Math.min(limit, 200),
+      skip,
     });
   }
 
@@ -676,30 +830,58 @@ export class AdminService {
     const totalUserLockedPaise = wallets.reduce((sum, w) => sum + toPaise(w.lockedBalance), 0);
     const totalUserLiabilityPaise = totalUserAvailablePaise + totalUserLockedPaise;
 
-    const deposits = await prisma.deposit.aggregate({
-      where: { status: 'APPROVED' },
-      _sum: { baseAmount: true },
-    });
-    const totalApprovedDepositsPaise = toPaise(deposits._sum.baseAmount || 0);
+    const [deposits, assignedUnmatched, withdrawals, manualAdjustments] = await Promise.all([
+      prisma.deposit.aggregate({
+        where: { status: 'APPROVED' },
+        _sum: { baseAmount: true },
+      }),
+      prisma.unmatchedPayment.aggregate({
+        where: { status: 'ASSIGNED' },
+        _sum: { amount: true },
+      }),
+      prisma.withdrawal.aggregate({
+        where: { status: 'COMPLETED' },
+        _sum: { amount: true },
+      }),
+      prisma.transaction.aggregate({
+        where: { type: 'MANUAL_ADJUST' },
+        _sum: { amount: true },
+      }),
+    ]);
 
-    const withdrawals = await prisma.withdrawal.aggregate({
-      where: { status: 'COMPLETED' },
-      _sum: { amount: true },
-    });
+    const totalApprovedDepositsPaise = toPaise(deposits._sum.baseAmount || 0) + toPaise(assignedUnmatched._sum.amount || 0);
     const totalCompletedWithdrawalsPaise = toPaise(withdrawals._sum.amount || 0);
+    const totalManualAdjustPaise = toPaise(manualAdjustments._sum.amount || 0);
 
     const completedRooms = await prisma.room.findMany({
       where: { status: 'COMPLETED' },
-      select: { entryFee: true, maxPlayers: true, winnerPrize: true },
+      select: { entryFee: true, maxPlayers: true, winnerPrize: true, customConfig: true },
     });
     const totalPlatformCommissionPaise = completedRooms.reduce((sum, r) => {
+      let configObj: Record<string, any> = {};
+      try {
+        if (r.customConfig) configObj = JSON.parse(r.customConfig);
+      } catch (_) {}
+
+      if (typeof configObj.platformCommission === 'number') {
+        return sum + toPaise(configObj.platformCommission);
+      }
+      if (typeof configObj.settledPool === 'number' && r.winnerPrize != null) {
+        return sum + Math.max(0, toPaise(configObj.settledPool) - toPaise(r.winnerPrize));
+      }
+      if (configObj.playerStakes && r.winnerPrize != null) {
+        const inGameStakes = Object.values(configObj.playerStakes as Record<string, number>).reduce((a, b) => a + (typeof b === 'number' ? toPaise(b) : 0), 0);
+        const pool = toPaise(r.entryFee) * r.maxPlayers + inGameStakes;
+        const prize = toPaise(r.winnerPrize);
+        return sum + Math.max(0, pool - prize);
+      }
       const pool = toPaise(r.entryFee) * r.maxPlayers;
       const prize = toPaise(r.winnerPrize || 0);
       return sum + Math.max(0, pool - prize);
     }, 0);
 
     const netSystemFundsPaise = totalApprovedDepositsPaise - totalCompletedWithdrawalsPaise;
-    const expectedLiabilityPaise = netSystemFundsPaise - totalPlatformCommissionPaise;
+    const expectedLiabilityPaise = netSystemFundsPaise - totalPlatformCommissionPaise + totalManualAdjustPaise;
     const variancePaise = totalUserLiabilityPaise - expectedLiabilityPaise;
 
     return {

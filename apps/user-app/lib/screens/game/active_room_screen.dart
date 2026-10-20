@@ -31,6 +31,12 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
 
   Map<String, dynamic>? _gameFinishedData;
   Timer? _fallbackPollTimer;
+  final List<MapEntry<String, dynamic Function(dynamic)>> _socketListeners = [];
+
+  void _listenSocket(String event, dynamic Function(dynamic) handler) {
+    _socketListeners.add(MapEntry(event, handler));
+    SocketService.on(event, handler);
+  }
 
   @override
   void initState() {
@@ -42,7 +48,10 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
   void dispose() {
     _fallbackPollTimer?.cancel();
     SocketService.leaveRoom(widget.roomId);
-    for (final event in ['room_updated', 'game_countdown', 'roll_started', 'roll_tick', 'game_finished']) { SocketService.off(event); }
+    for (final entry in _socketListeners) {
+      SocketService.off(entry.key, entry.value);
+    }
+    _socketListeners.clear();
     super.dispose();
   }
 
@@ -52,25 +61,32 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
 
     // Join WebSocket channel for real-time multiplayer updates
     SocketService.joinRoom(widget.roomId);
+    _listenSocket('connect', (_) {
+      SocketService.joinRoom(widget.roomId);
+      _loadRoom();
+    });
 
-    SocketService.on('room_updated', (data) {
+    _listenSocket('room_updated', (data) {
       if (mounted && data != null) {
+        if (data['id'] != null && data['id'] != widget.roomId) return;
         setState(() {
           _room = RoomModel.fromJson(data);
         });
       }
     });
 
-    SocketService.on('game_countdown', (data) {
+    _listenSocket('game_countdown', (data) {
       if (mounted && data != null && data['countdown'] != null) {
+        if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
         setState(() {
           _countdown = (data['countdown'] as num).toInt();
         });
       }
     });
 
-    SocketService.on('roll_started', (_) {
+    _listenSocket('roll_started', (data) {
       if (mounted) {
+        if (data is Map && data['roomId'] != null && data['roomId'] != widget.roomId) return;
         setState(() {
           _isRolling = true;
           _countdown = null;
@@ -78,16 +94,18 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
       }
     });
 
-    SocketService.on('roll_tick', (data) {
+    _listenSocket('roll_tick', (data) {
       if (mounted && data != null && data['number'] != null) {
+        if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
         setState(() {
           _rollTickNumber = (data['number'] as num).toInt();
         });
       }
     });
 
-    SocketService.on('game_finished', (data) {
+    _listenSocket('game_finished', (data) {
       if (mounted && data != null) {
+        if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
         setState(() {
           _isRolling = false;
           _gameFinishedData = Map<String, dynamic>.from(data);

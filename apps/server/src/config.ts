@@ -20,6 +20,9 @@ export const config = {
   webhookSecret: secret('WEBHOOK_SECRET'),
   platformCommissionPercent: parseFloat(process.env.PLATFORM_COMMISSION_PERCENT || '0'),
   depositExpiryMinutes: 10,
+  trustProxy: process.env.TRUST_PROXY
+    ? (process.env.TRUST_PROXY === 'true' ? true : (process.env.TRUST_PROXY === 'false' ? false : (isNaN(Number(process.env.TRUST_PROXY)) ? process.env.TRUST_PROXY : Number(process.env.TRUST_PROXY))))
+    : false,
 
   // CORS Allowed Origins (comma-separated list, or '*' for open development)
   allowedOrigins: process.env.ALLOWED_ORIGINS

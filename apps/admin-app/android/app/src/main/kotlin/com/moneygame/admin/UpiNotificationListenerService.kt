@@ -37,8 +37,8 @@ class UpiNotificationListenerService : NotificationListenerService() {
         const val KEY_LAST_NOTIF_TEXT = "last_notification_text"
         const val KEY_IS_CONNECTED = "is_listener_connected"
 
-        const val DEFAULT_BASE_URL = "http://132.226.186.196:4000"
-        const val DEFAULT_WEBHOOK_SECRET = "32416d9fa19c54e43113ba17ae2d6194bae387aa577743d33309e008b489b9f8"
+        const val DEFAULT_BASE_URL = ""
+        const val DEFAULT_WEBHOOK_SECRET = ""
 
         const val NOTIFICATION_CHANNEL_ID = "moneygame_listener_alerts"
 
@@ -122,7 +122,7 @@ class UpiNotificationListenerService : NotificationListenerService() {
                 Log.i(TAG, "Detected incoming payment: ₹$amount | UTR: $utr | App: $pkg")
                 saveLastNotification(amount, utr, pkg, fullText)
                 postLocalAlert(amount, utr, title)
-                dispatchPaymentWebhook(amount, utr, title, pkg, fullText)
+                dispatchPaymentWebhook(amount, utr, title, pkg, fullText, dedupKey)
             }
         }
     }
@@ -138,19 +138,19 @@ class UpiNotificationListenerService : NotificationListenerService() {
 
         if (isDebit) return false
 
-        // Known UPI apps & SMS apps
+        // Known UPI apps & banking apps
         val isKnownApp = pkg.contains("phonepe") ||
                 pkg.contains("nbu.paisa") || // Google Pay
                 pkg.contains("paytm") ||
                 pkg.contains("bhim") ||
                 pkg.contains("dreamplug") || // Cred
-                pkg.contains("messaging") || // SMS
-                pkg.contains("mms") ||
                 pkg.contains("bank") ||
                 pkg.contains("sbi") ||
                 pkg.contains("hdfc") ||
                 pkg.contains("icici") ||
                 pkg.contains("axis")
+
+        val isSmsApp = pkg.contains("messaging") || pkg.contains("mms")
 
         val hasCreditKeywords = lower.contains("credited") ||
                 lower.contains("received") ||
@@ -159,7 +159,18 @@ class UpiNotificationListenerService : NotificationListenerService() {
                 lower.contains("added to your") ||
                 lower.contains("payment of")
 
-        return isKnownApp || hasCreditKeywords
+        if (isKnownApp) {
+            return hasCreditKeywords
+        }
+
+        if (isSmsApp) {
+            val hasBankSender = lower.contains("bank") || lower.contains("upi") ||
+                    lower.contains("sbi") || lower.contains("hdfc") || lower.contains("icici") ||
+                    lower.contains("axis") || lower.contains("paisa") || lower.contains("paytm")
+            return hasBankSender && hasCreditKeywords
+        }
+
+        return false
     }
 
     private fun extractAmount(text: String): Double? {
@@ -215,43 +226,70 @@ class UpiNotificationListenerService : NotificationListenerService() {
             .apply()
     }
 
-    private fun dispatchPaymentWebhook(amount: Double, utr: String?, title: String, pkg: String, rawText: String) {
+    private fun dispatchPaymentWebhook(amount: Double, utr: String?, title: String, pkg: String, rawText: String, dedupKey: String) {
         networkExecutor.execute {
-            try {
-                val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                val baseUrl = prefs.getString(KEY_BASE_URL, DEFAULT_BASE_URL)?.trimEnd('/') ?: DEFAULT_BASE_URL
-                val secret = prefs.getString(KEY_WEBHOOK_SECRET, DEFAULT_WEBHOOK_SECRET) ?: DEFAULT_WEBHOOK_SECRET
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val baseUrl = prefs.getString(KEY_BASE_URL, DEFAULT_BASE_URL)?.trimEnd('/') ?: DEFAULT_BASE_URL
+            val secret = prefs.getString(KEY_WEBHOOK_SECRET, DEFAULT_WEBHOOK_SECRET) ?: DEFAULT_WEBHOOK_SECRET
+            if (baseUrl.isBlank() || secret.isBlank()) {
+                Log.w(TAG, "Listener baseUrl or secret not configured. Skipping payment dispatch.")
+                recentPayments.remove(dedupKey)
+                return@execute
+            }
+            var safeUrl = baseUrl
+            if (safeUrl.startsWith("http://") && !safeUrl.contains("10.0.2.2") && !safeUrl.contains("localhost") && !safeUrl.contains("127.0.0.1")) {
+                safeUrl = safeUrl.replaceFirst("http://", "https://")
+            }
 
-                val endpoint = "$baseUrl/api/webhooks/upi-notify"
-                val url = URL(endpoint)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
-                conn.doOutput = true
-                conn.setRequestProperty("Content-Type", "application/json; utf-8")
-                conn.setRequestProperty("Accept", "application/json")
-                conn.setRequestProperty("x-webhook-secret", secret)
+            val endpoint = "$safeUrl/api/webhooks/upi-notify"
+            val payload = JSONObject().apply {
+                put("amount", amount)
+                if (!utr.isNullOrEmpty()) put("utr", utr)
+                put("senderName", title)
+                put("senderUpi", "")
+                put("detectedApp", pkg)
+                put("rawNotification", rawText.take(200))
+            }
 
-                val payload = JSONObject().apply {
-                    put("amount", amount)
-                    if (!utr.isNullOrEmpty()) put("utr", utr)
-                    put("senderName", title)
-                    put("senderUpi", "")
-                    put("detectedApp", pkg)
-                    put("rawNotification", rawText.take(200))
+            var attempts = 0
+            var delivered = false
+            while (attempts < 3 && !delivered) {
+                attempts++
+                try {
+                    val url = URL(endpoint)
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 10000
+                    conn.doOutput = true
+                    conn.setRequestProperty("Content-Type", "application/json; utf-8")
+                    conn.setRequestProperty("Accept", "application/json")
+                    conn.setRequestProperty("x-webhook-secret", secret)
+
+                    OutputStreamWriter(conn.outputStream).use { writer ->
+                        writer.write(payload.toString())
+                        writer.flush()
+                    }
+
+                    val responseCode = conn.responseCode
+                    if (responseCode in 200..299) {
+                        delivered = true
+                        Log.i(TAG, "Dispatched payment webhook to $endpoint. Status: $responseCode")
+                    } else {
+                        Log.w(TAG, "Payment webhook returned HTTP $responseCode, attempt $attempts/3")
+                    }
+                    conn.disconnect()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed attempt $attempts/3 to dispatch payment webhook: ${e.message}")
                 }
-
-                OutputStreamWriter(conn.outputStream).use { writer ->
-                    writer.write(payload.toString())
-                    writer.flush()
+                if (!delivered && attempts < 3) {
+                    try { Thread.sleep(attempts * 2000L) } catch (_: Exception) {}
                 }
+            }
 
-                val responseCode = conn.responseCode
-                Log.i(TAG, "Dispatched payment webhook to $endpoint. Status: $responseCode")
-                conn.disconnect()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to dispatch payment webhook: ${e.message}", e)
+            if (!delivered) {
+                recentPayments.remove(dedupKey)
+                Log.w(TAG, "Payment delivery failed after 3 retries. Cleared deduplication cache for retry.")
             }
         }
     }
@@ -276,12 +314,19 @@ class UpiNotificationListenerService : NotificationListenerService() {
             val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val baseUrl = prefs.getString(KEY_BASE_URL, DEFAULT_BASE_URL)?.trimEnd('/') ?: DEFAULT_BASE_URL
             val secret = prefs.getString(KEY_WEBHOOK_SECRET, DEFAULT_WEBHOOK_SECRET) ?: DEFAULT_WEBHOOK_SECRET
+            if (baseUrl.isBlank() || secret.isBlank()) {
+                return
+            }
+            var safeUrl = baseUrl
+            if (safeUrl.startsWith("http://") && !safeUrl.contains("10.0.2.2") && !safeUrl.contains("localhost") && !safeUrl.contains("127.0.0.1")) {
+                safeUrl = safeUrl.replaceFirst("http://", "https://")
+            }
 
             val batteryManager = getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
             val batteryLevel = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
             val phoneModel = "${Build.MANUFACTURER} ${Build.MODEL}"
 
-            val endpoint = "$baseUrl/api/webhooks/listener-heartbeat"
+            val endpoint = "$safeUrl/api/webhooks/listener-heartbeat"
             val url = URL(endpoint)
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"

@@ -13,7 +13,7 @@ import { createDeck, shuffleDeck } from './deck';
 import { evaluateTeenPattiHand } from './hand-evaluator';
 import { prisma } from '../../../../db';
 import { config } from '../../../../config';
-import { walletService } from '../../../wallet/wallet.service';
+import { walletService, getEffectiveCommissionPercent } from '../../../wallet/wallet.service';
 
 interface InternalPlayerState extends TeenPattiPlayerState {
   cards: PlayingCard[];
@@ -31,7 +31,12 @@ interface InternalGameState {
   status: 'DEALING' | 'PLAYING' | 'SETTLING' | 'COMPLETED';
   players: Record<string, InternalPlayerState>;
   playerTurnOrder: string[]; // List of userIds in seat order
-  turnTimer?: NodeJS.Timeout;
+  turnTimer?: NodeJS.Timeout | null;
+  pendingSettlement?: {
+    winnerId: string;
+    reason?: string;
+    showdownResults?: Array<{ player: InternalPlayerState; handResult: TeenPattiHandResult }>;
+  } | null;
 }
 
 const TURN_TIMEOUT_MS = 25000;
@@ -53,6 +58,26 @@ export class TeenPattiEngine implements IGameEngine {
   };
 
   private games = new Map<string, InternalGameState>();
+  private actionQueues = new Map<string, Promise<any>>();
+  private isShuttingDown = false;
+
+  private async runWithRoomLock<T>(roomId: string, fn: () => Promise<T>): Promise<T> {
+    const current = this.actionQueues.get(roomId) || Promise.resolve();
+    let release: () => void;
+    const next = new Promise<void>(resolve => { release = resolve; });
+    const chained = current.then(() => next, () => next);
+    this.actionQueues.set(roomId, chained);
+
+    try {
+      await current;
+      return await fn();
+    } finally {
+      release!();
+      if (this.actionQueues.get(roomId) === chained) {
+        this.actionQueues.delete(roomId);
+      }
+    }
+  }
 
   validateCreateOptions(options: {
     entryFee: number;
@@ -158,6 +183,7 @@ export class TeenPattiEngine implements IGameEngine {
   }
 
   private startTurnTimer(roomId: string, io: Server | null): void {
+    if (this.isShuttingDown) return;
     const game = this.games.get(roomId);
     if (!game || game.status !== 'PLAYING') return;
 
@@ -171,6 +197,7 @@ export class TeenPattiEngine implements IGameEngine {
 
     if (io) {
       io.to(`room:${roomId}`).emit('turn_timer_started', {
+        roomId,
         currentTurnUserId: game.currentTurnUserId,
         turnExpiresAt: game.turnExpiresAt,
       });
@@ -192,6 +219,18 @@ export class TeenPattiEngine implements IGameEngine {
     _payload: any,
     io: Server | null
   ): Promise<ActionResult> {
+    return this.runWithRoomLock(roomId, async () => {
+      return this.executeAction(roomId, userId, action, _payload, io);
+    });
+  }
+
+  private async executeAction(
+    roomId: string,
+    userId: string,
+    action: string,
+    _payload: any,
+    io: Server | null
+  ): Promise<ActionResult> {
     const game = this.games.get(roomId);
     if (!game) {
       const dbRoom = await prisma.room.findUnique({
@@ -204,7 +243,25 @@ export class TeenPattiEngine implements IGameEngine {
       return { success: false, message: 'Game not found or inactive' };
     }
 
-    if (game.status === 'COMPLETED' || game.status === 'SETTLING') {
+    if (game.status === 'COMPLETED') {
+      return { success: false, message: 'This hand has already concluded' };
+    }
+
+    if (game.status === 'SETTLING') {
+      if (game.pendingSettlement) {
+        try {
+          await this.settleWinner(
+            roomId,
+            game.pendingSettlement.winnerId,
+            io,
+            game.pendingSettlement.reason,
+            game.pendingSettlement.showdownResults
+          );
+          return { success: true, message: 'Hand settled successfully' };
+        } catch (err: any) {
+          return { success: false, message: 'Settlement is currently retrying: ' + err.message };
+        }
+      }
       return { success: false, message: 'This hand has already concluded' };
     }
 
@@ -227,8 +284,9 @@ export class TeenPattiEngine implements IGameEngine {
       const hand = evaluateTeenPattiHand(player.cards);
 
       if (io) {
-        // Send actual cards only to this user
+        // Send actual cards only to this user with roomId
         io.to(`user:${userId}`).emit('cards_revealed', {
+          roomId,
           cards: player.cards,
           hand,
         });
@@ -264,8 +322,12 @@ export class TeenPattiEngine implements IGameEngine {
         // Only 1 player remains! Winner by default fold
         game.currentTurnUserId = null;
         if (game.turnTimer) clearTimeout(game.turnTimer);
-        await this.settleWinner(roomId, activePlayers[0].userId, io, 'All opponents folded');
-        return { success: true, message: 'Folded' };
+        try {
+          await this.settleWinner(roomId, activePlayers[0].userId, io, 'All opponents folded');
+          return { success: true, message: 'Folded' };
+        } catch (err: any) {
+          return { success: false, message: 'Settlement failed: ' + err.message };
+        }
       }
 
       this.advanceToNextTurn(roomId, io);
@@ -279,7 +341,13 @@ export class TeenPattiEngine implements IGameEngine {
       }
 
       const multiplier = Number(_payload?.multiplier) === 2 ? 2 : 1;
-      const betAmount = _payload?.amount ? Number(_payload.amount) : game.currentChaalAmount * multiplier;
+      const expectedBet = game.currentChaalAmount * multiplier;
+      if (_payload?.amount !== undefined && _payload?.amount !== null) {
+        if (Number(_payload.amount) !== expectedBet) {
+          return { success: false, message: `Invalid bet amount. Expected: ₹${expectedBet}` };
+        }
+      }
+      const betAmount = expectedBet;
 
       let updatedWallet: any;
       try {
@@ -316,7 +384,13 @@ export class TeenPattiEngine implements IGameEngine {
     if (act === 'CHAAL') {
       const baseCost = player.isSeen ? game.currentChaalAmount * 2 : game.currentChaalAmount;
       const multiplier = Number(_payload?.multiplier) === 2 ? 2 : 1;
-      const betAmount = _payload?.amount ? Number(_payload.amount) : baseCost * multiplier;
+      const expectedBet = baseCost * multiplier;
+      if (_payload?.amount !== undefined && _payload?.amount !== null) {
+        if (Number(_payload.amount) !== expectedBet) {
+          return { success: false, message: `Invalid bet amount. Expected: ₹${expectedBet}` };
+        }
+      }
+      const betAmount = expectedBet;
 
       let updatedWallet: any;
       try {
@@ -325,7 +399,7 @@ export class TeenPattiEngine implements IGameEngine {
         return { success: false, message: err.message || 'Insufficient wallet balance for Chaal' };
       }
 
-      if (multiplier === 2 || (_payload?.amount && betAmount > baseCost)) {
+      if (multiplier === 2) {
         game.currentChaalAmount = player.isSeen ? betAmount / 2 : betAmount;
       }
 
@@ -405,6 +479,7 @@ export class TeenPattiEngine implements IGameEngine {
           betAmount: sideShowCost,
           pot: game.pot,
         });
+        // Public broadcast to room announces result without revealing surviving hand details
         io.to(`room:${roomId}`).emit('side_show_result', {
           requesterId: userId,
           requesterUsername: player.username,
@@ -414,7 +489,18 @@ export class TeenPattiEngine implements IGameEngine {
           winnerUsername: winner.username,
           loserId: loser.userId,
           loserUsername: loser.username,
-          message: `${loser.username} lost the Side Show (${loser.userId === userId ? 'Your ' + myHand.description : prevHand.description} vs ${loser.userId === userId ? prevHand.description : myHand.description}) and folded!`,
+          message: `${loser.username} lost the Side Show and folded!`,
+        });
+        // Detailed comparison sent privately only to participants
+        io.to(`user:${userId}`).emit('side_show_comparison', {
+          yourHand: myHand,
+          opponentHand: prevHand,
+          winnerId: winner.userId,
+        });
+        io.to(`user:${prevUserId}`).emit('side_show_comparison', {
+          yourHand: prevHand,
+          opponentHand: myHand,
+          winnerId: winner.userId,
         });
         io.to(`room:${roomId}`).emit('player_packed', {
           userId: loser.userId,
@@ -427,8 +513,12 @@ export class TeenPattiEngine implements IGameEngine {
       if (remainingActive.length === 1) {
         game.currentTurnUserId = null;
         if (game.turnTimer) clearTimeout(game.turnTimer);
-        await this.settleWinner(roomId, remainingActive[0].userId, io, 'Opponent folded after Side Show');
-        return { success: true, message: 'Side Show completed. Table winner decided!' };
+        try {
+          await this.settleWinner(roomId, remainingActive[0].userId, io, 'Opponent folded after Side Show');
+          return { success: true, message: 'Side Show completed. Table winner decided!' };
+        } catch (err: any) {
+          return { success: false, message: 'Settlement failed: ' + err.message };
+        }
       }
 
       this.advanceToNextTurn(roomId, io);
@@ -476,8 +566,12 @@ export class TeenPattiEngine implements IGameEngine {
       evaluations.sort((a, b) => b.handResult.score - a.handResult.score);
       const winner = evaluations[0];
 
-      await this.settleWinner(roomId, winner.player.userId, io, `Won with ${winner.handResult.description}`, evaluations);
-      return { success: true, message: 'Show completed' };
+      try {
+        await this.settleWinner(roomId, winner.player.userId, io, `Won with ${winner.handResult.description}`, evaluations);
+        return { success: true, message: 'Show completed' };
+      } catch (err: any) {
+        return { success: false, message: 'Settlement failed: ' + err.message };
+      }
     }
 
     return { success: false, message: `Unsupported action: ${action}` };
@@ -487,16 +581,34 @@ export class TeenPattiEngine implements IGameEngine {
     const game = this.games.get(roomId);
     if (!game || game.status !== 'PLAYING') return;
 
-    if (game.turnTimer) clearTimeout(game.turnTimer);
+    if (game.turnTimer) {
+      clearTimeout(game.turnTimer);
+      game.turnTimer = null;
+    }
 
-    const activeOrder = game.playerTurnOrder.filter(uid => !game.players[uid].isPacked);
-    if (activeOrder.length <= 1) return;
+    const activePlayers = Object.values(game.players).filter(p => !p.isPacked);
+    if (activePlayers.length <= 1) return;
 
-    const currentIdx = activeOrder.indexOf(game.currentTurnUserId || '');
-    const nextIdx = (currentIdx + 1) % activeOrder.length;
-    game.currentTurnUserId = activeOrder[nextIdx];
+    const currentOrderIdx = game.playerTurnOrder.indexOf(game.currentTurnUserId || '');
+    let nextPlayerUid: string | null = null;
+    let wrapped = false;
 
-    if (nextIdx === 0) {
+    for (let i = 1; i <= game.playerTurnOrder.length; i++) {
+      const candidateIdx = (currentOrderIdx + i) % game.playerTurnOrder.length;
+      if (candidateIdx <= currentOrderIdx && i > 0) {
+        wrapped = true;
+      }
+      const candidateUid = game.playerTurnOrder[candidateIdx];
+      if (!game.players[candidateUid].isPacked) {
+        nextPlayerUid = candidateUid;
+        break;
+      }
+    }
+
+    if (!nextPlayerUid) return;
+
+    game.currentTurnUserId = nextPlayerUid;
+    if (wrapped) {
       game.roundNumber += 1;
     }
 
@@ -514,8 +626,12 @@ export class TeenPattiEngine implements IGameEngine {
     const game = this.games.get(roomId);
     if (!game) return;
 
-    if (game.turnTimer) clearTimeout(game.turnTimer);
+    if (game.turnTimer) {
+      clearTimeout(game.turnTimer);
+      game.turnTimer = null;
+    }
     game.status = 'SETTLING';
+    game.pendingSettlement = { winnerId, reason, showdownResults };
 
     const winner = game.players[winnerId];
     const totalPool = game.pot;
@@ -526,13 +642,14 @@ export class TeenPattiEngine implements IGameEngine {
     }
 
     try {
-      // Settle in DB via wallet ledger
+      // Settle in DB via wallet ledger using dynamic system commission
+      const effectiveCommission = await getEffectiveCommissionPercent();
       const settlement = await walletService.settleRoomWinner(
         roomId,
         winnerId,
         0, // Card games do not use guess number
         totalPool,
-        config.platformCommissionPercent,
+        effectiveCommission,
         playerBets
       );
 
@@ -545,6 +662,7 @@ export class TeenPattiEngine implements IGameEngine {
       });
 
       game.status = 'COMPLETED';
+      game.pendingSettlement = null;
 
       if (io) {
         io.to(`room:${roomId}`).emit('game_finished', {
@@ -573,13 +691,26 @@ export class TeenPattiEngine implements IGameEngine {
           io.to(`user:${p.userId}`).emit('balance_updated', wallet);
         }
       }
-    } catch (err: any) {
-      console.error('[TeenPattiEngine] Settlement failed:', roomId, err.message);
-    } finally {
+
       // Retain finished game state in memory for 2 minutes so late/reconnecting clients receive completed state & cards
       setTimeout(() => {
         this.cleanupRoom(roomId);
       }, 120000);
+    } catch (err: any) {
+      console.error('[TeenPattiEngine] Settlement failed:', roomId, err.message);
+      if (!this.isShuttingDown) {
+        setTimeout(() => {
+          const g = this.games.get(roomId);
+          if (g && g.status === 'SETTLING' && g.pendingSettlement) {
+            void this.runWithRoomLock(roomId, async () => {
+              if (g.status === 'SETTLING' && g.pendingSettlement) {
+                await this.settleWinner(roomId, winnerId, io, reason, showdownResults);
+              }
+            }).catch(() => {});
+          }
+        }, 3000);
+      }
+      throw err;
     }
   }
 
@@ -588,18 +719,21 @@ export class TeenPattiEngine implements IGameEngine {
     if (!game || !io) return;
 
     // Send public state to room channel
-    io.to(`room:${roomId}`).emit('teen_patti_state', this.sanitizeStateForClient(game));
+    const publicState: any = { ...this.sanitizeStateForClient(game), roomId };
+    io.to(`room:${roomId}`).emit('teen_patti_state', publicState);
 
     // Send private states to each player with their own cards if seen
     for (const uid of game.playerTurnOrder) {
-      io.to(`user:${uid}`).emit('teen_patti_state', this.sanitizeStateForClient(game, uid));
+      const privateState: any = { ...this.sanitizeStateForClient(game, uid), roomId };
+      io.to(`user:${uid}`).emit('teen_patti_state', privateState);
     }
   }
 
   getClientState(roomId: string, userId?: string): TeenPattiGameState | null {
     const game = this.games.get(roomId);
     if (!game) return null;
-    return this.sanitizeStateForClient(game, userId);
+    const state: any = { ...this.sanitizeStateForClient(game, userId), roomId };
+    return state;
   }
 
   private sanitizeStateForClient(game: InternalGameState, forUserId?: string): TeenPattiGameState {
@@ -623,6 +757,8 @@ export class TeenPattiEngine implements IGameEngine {
     }
 
     return {
+      roomId: game.roomId,
+      roomCode: game.roomCode,
       pot: game.pot,
       bootAmount: game.bootAmount,
       currentChaalAmount: game.currentChaalAmount,
@@ -630,15 +766,27 @@ export class TeenPattiEngine implements IGameEngine {
       turnExpiresAt: game.turnExpiresAt,
       roundNumber: game.roundNumber,
       players: sanitizedPlayers,
-    };
+    } as any;
   }
 
   cleanupRoom(roomId: string): void {
     const game = this.games.get(roomId);
     if (game?.turnTimer) {
       clearTimeout(game.turnTimer);
+      game.turnTimer = null;
     }
     this.games.delete(roomId);
+    this.actionQueues.delete(roomId);
+  }
+
+  stopAllTimers(): void {
+    this.isShuttingDown = true;
+    for (const game of this.games.values()) {
+      if (game.turnTimer) {
+        clearTimeout(game.turnTimer);
+        game.turnTimer = null;
+      }
+    }
   }
 }
 

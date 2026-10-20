@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { moveWallet } from '../../wallet-ledger';
 import { Server } from 'socket.io';
 import { serializable } from '../../transaction';
-import { money } from '../../money';
+import { money, toPaise } from '../../money';
 import { prisma } from '../../db';
 import { walletService } from '../wallet/wallet.service';
 import { gameRegistry } from './game.registry';
@@ -27,7 +27,13 @@ export class GameManager {
     customConfig?: Record<string, any>
   ) {
     const entryFee = money(amount, 1);
+    if (!gameRegistry.has(gameType)) {
+      throw new Error(`Unsupported game type: ${gameType}`);
+    }
     const engine = gameRegistry.get(gameType);
+    if (engine.descriptor.enabled === false) {
+      throw new Error(`${engine.descriptor.name} is currently disabled`);
+    }
 
     engine.validateCreateOptions({
       entryFee,
@@ -36,6 +42,14 @@ export class GameManager {
       customConfig,
     });
 
+    let sanitizedConfig: Record<string, any> | null = null;
+    if (customConfig && typeof customConfig === 'object') {
+      const { playerStakes, settledPool, platformCommission, ...rest } = customConfig;
+      if (Object.keys(rest).length > 0) {
+        sanitizedConfig = rest;
+      }
+    }
+
     const room = await serializable(async tx => {
       const created = await tx.room.create({
         data: {
@@ -43,7 +57,7 @@ export class GameManager {
           gameType,
           entryFee,
           maxPlayers,
-          customConfig: customConfig ? JSON.stringify(customConfig) : null,
+          customConfig: sanitizedConfig ? JSON.stringify(sanitizedConfig) : null,
         },
       });
 
@@ -89,7 +103,14 @@ export class GameManager {
 
     if (!initialRoom) throw new Error('Room not found');
 
+    if (!gameRegistry.has(initialRoom.gameType)) {
+      throw new Error(`Unsupported game type: ${initialRoom.gameType}`);
+    }
     const engine = gameRegistry.get(initialRoom.gameType);
+    if (engine.descriptor.enabled === false) {
+      throw new Error(`${engine.descriptor.name} is currently disabled`);
+    }
+
     engine.validateJoin(initialRoom as unknown as RoomWithPlayers, userId, {
       guessNumber: guessNumber ?? undefined,
       seatIndex,
@@ -160,11 +181,9 @@ export class GameManager {
   stopTimers() {
     for (const desc of gameRegistry.listGames()) {
       const engine = gameRegistry.get(desc.id);
-      // cleanups are handled on engines
-    }
-    const legacy = gameRegistry.get('GUESS_NUMBER');
-    if (legacy && 'stopTimers' in legacy) {
-      (legacy as any).stopTimers();
+      if ('stopAllTimers' in engine && typeof (engine as any).stopAllTimers === 'function') {
+        (engine as any).stopAllTimers();
+      }
     }
   }
 
@@ -182,8 +201,20 @@ export class GameManager {
 
       await tx.room.update({ where: { id: roomId }, data: { status: 'CANCELLED' } });
 
+      let configObj: Record<string, any> = {};
+      try {
+        if (room.customConfig) configObj = JSON.parse(room.customConfig);
+      } catch (_) {}
+      const playerStakes = configObj.playerStakes || {};
+
       for (const player of room.players) {
-        await moveWallet(tx, player.userId, room.entryFee, -room.entryFee);
+        const inGameStake = room.status !== 'WAITING' && typeof playerStakes[player.userId] === 'number'
+          ? playerStakes[player.userId]
+          : 0;
+        const totalRefund = (toPaise(room.entryFee) + toPaise(inGameStake)) / 100;
+
+        await moveWallet(tx, player.userId, totalRefund, -totalRefund);
+
         const entryTx = await tx.transaction.findFirst({
           where: { userId: player.userId, referenceId: roomId, type: 'ROOM_ENTRY' },
         });
@@ -191,11 +222,11 @@ export class GameManager {
           await tx.transaction.create({
             data: {
               userId: player.userId,
-              amount: room.entryFee,
+              amount: totalRefund,
               type: 'REFUND',
               referenceId: roomId,
               idempotencyKey: `room-refund:${roomId}:${player.userId}`,
-              description: 'Cancelled game entry refunded',
+              description: `Cancelled game entry and stakes refunded for Room #${room.roomCode}`,
             },
           });
         }
@@ -222,7 +253,13 @@ export class GameManager {
       where: { status: { in: ['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'] } },
       select: { id: true },
     });
-    for (const room of rooms) await this.refundRoom(room.id);
+    for (const room of rooms) {
+      try {
+        await this.refundRoom(room.id);
+      } catch (err: any) {
+        console.error(`[Recovery] Failed to recover room ${room.id}:`, err?.message || err);
+      }
+    }
   }
 
   /**
@@ -247,10 +284,15 @@ export class GameManager {
     if (!room) return null;
 
     const engine = gameRegistry.get(room.gameType);
-    const gameState = engine.getClientState(roomId, forUserId);
+    const gameState = engine ? engine.getClientState(roomId, forUserId) : null;
+    let parsedConfig: Record<string, any> | null = null;
+    try {
+      if (room.customConfig) parsedConfig = JSON.parse(room.customConfig);
+    } catch (_) {}
 
     return {
       ...room,
+      customConfig: parsedConfig,
       gameState,
     };
   }
@@ -259,7 +301,7 @@ export class GameManager {
    * Fetch all open/active rooms for the lobby
    */
   async getActiveRooms() {
-    return prisma.room.findMany({
+    const rooms = await prisma.room.findMany({
       where: {
         status: { in: ['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'] },
       },
@@ -273,6 +315,17 @@ export class GameManager {
       },
       orderBy: { createdAt: 'desc' },
       take: 30,
+    });
+
+    return rooms.map(room => {
+      let parsedConfig: Record<string, any> | null = null;
+      try {
+        if (room.customConfig) parsedConfig = JSON.parse(room.customConfig);
+      } catch (_) {}
+      return {
+        ...room,
+        customConfig: parsedConfig,
+      };
     });
   }
 

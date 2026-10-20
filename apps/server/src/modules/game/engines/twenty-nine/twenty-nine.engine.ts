@@ -55,6 +55,8 @@ export class TwentyNineEngine implements IGameEngine {
   }
 
   cleanupRoom(_roomId: string): void {}
+
+  stopAllTimers(): void {}
 }
 
 export const twentyNineEngine = new TwentyNineEngine();

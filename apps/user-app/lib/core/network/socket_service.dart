@@ -84,8 +84,12 @@ class SocketService {
     _socket?.on(event, handler);
   }
 
-  static void off(String event) {
-    _socket?.off(event);
+  static void off(String event, [dynamic Function(dynamic)? handler]) {
+    if (handler != null) {
+      _socket?.off(event, handler);
+    } else {
+      _socket?.off(event);
+    }
   }
 
   static void disconnect() {

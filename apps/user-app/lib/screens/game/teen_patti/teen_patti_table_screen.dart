@@ -49,6 +49,12 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
   GameFinishedModel? _finishData;
   Timer? _fallbackPollTimer;
   bool _soundEnabled = true;
+  final List<MapEntry<String, dynamic Function(dynamic)>> _socketListeners = [];
+
+  void _listenSocket(String event, dynamic Function(dynamic) handler) {
+    _socketListeners.add(MapEntry(event, handler));
+    SocketService.on(event, handler);
+  }
 
   @override
   void initState() {
@@ -88,20 +94,10 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
     SocketService.leaveRoom(widget.roomId);
-    for (final ev in [
-      'room_updated',
-      'teen_patti_state',
-      'turn_timer_started',
-      'player_acted',
-      'cards_revealed',
-      'player_packed',
-      'side_show_result',
-      'game_finished',
-      'balance_updated',
-      'wallet_updated',
-    ]) {
-      SocketService.off(ev);
+    for (final entry in _socketListeners) {
+      SocketService.off(entry.key, entry.value);
     }
+    _socketListeners.clear();
     super.dispose();
   }
 
@@ -117,8 +113,9 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
       _dealController.forward(from: 0.0);
     }
 
-    SocketService.on('room_updated', (data) {
+    _listenSocket('room_updated', (data) {
       if (mounted && data != null) {
+        if (data['id'] != null && data['id'] != widget.roomId) return;
         setState(() {
           _room = RoomModel.fromJson(data);
           if (_room?.gameState != null) {
@@ -128,8 +125,9 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
       }
     });
 
-    SocketService.on('teen_patti_state', (data) {
+    _listenSocket('teen_patti_state', (data) {
       if (mounted && data != null) {
+        if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
         final parsed = TeenPattiGameStateModel.fromJson(Map<String, dynamic>.from(data));
         setState(() {
           _gameState = parsed;
@@ -138,8 +136,9 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
       }
     });
 
-    SocketService.on('turn_timer_started', (data) {
+    _listenSocket('turn_timer_started', (data) {
       if (mounted && data != null) {
+        if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
         final currentTurnUserId = data['currentTurnUserId']?.toString();
         final expiresAt = (data['turnExpiresAt'] as num?)?.toInt();
         if (_gameState != null) {
@@ -157,8 +156,9 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
       }
     });
 
-    SocketService.on('player_acted', (data) {
+    _listenSocket('player_acted', (data) {
       if (mounted && data != null) {
+        if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
         final actUserId = data['userId']?.toString() ?? '';
         final pot = (data['pot'] as num?)?.toDouble();
         if (pot != null && _gameState != null) {
@@ -171,8 +171,9 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
       }
     });
 
-    SocketService.on('cards_revealed', (data) {
+    _listenSocket('cards_revealed', (data) {
       if (mounted && data != null && data['cards'] != null) {
+        if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
         final rawCards = data['cards'] as List;
         final cards = rawCards.map((c) => PlayingCardModel.fromJson(Map<String, dynamic>.from(c))).toList();
 
@@ -195,8 +196,9 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
       }
     });
 
-    SocketService.on('player_packed', (data) {
+    _listenSocket('player_packed', (data) {
       if (mounted && data != null) {
+        if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
         final packedUserId = data['userId']?.toString();
         if (_gameState != null && packedUserId != null) {
           final p = _gameState!.players[packedUserId];
@@ -214,8 +216,9 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
       }
     });
 
-    SocketService.on('side_show_result', (data) {
+    _listenSocket('side_show_result', (data) {
       if (mounted && data != null) {
+        if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
         final msg = data['message']?.toString() ?? 'Side Show completed';
         final winnerId = data['winnerId']?.toString();
         final loserId = data['loserId']?.toString();
@@ -252,8 +255,9 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
       }
     });
 
-    SocketService.on('game_finished', (data) {
+    _listenSocket('game_finished', (data) {
       if (mounted && data != null) {
+        if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
         final finish = GameFinishedModel.fromJson(Map<String, dynamic>.from(data));
         setState(() {
           _finishData = finish;
@@ -271,7 +275,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
       }
     });
 
-    SocketService.on('balance_updated', (data) {
+    _listenSocket('balance_updated', (data) {
       if (mounted && data != null && data['balance'] != null) {
         setState(() {
           _myBalance = (data['balance'] as num).toDouble();
@@ -279,7 +283,7 @@ class _TeenPattiTableScreenState extends State<TeenPattiTableScreen>
       }
     });
 
-    SocketService.on('wallet_updated', (data) {
+    _listenSocket('wallet_updated', (data) {
       if (mounted && data != null && data['balance'] != null) {
         setState(() {
           _myBalance = (data['balance'] as num).toDouble();

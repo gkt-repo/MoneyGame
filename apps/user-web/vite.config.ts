@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const apiUrl = env.VITE_API_URL || process.env.VITE_API_URL || (command === 'build' ? 'https://game-132-226-186-196.sslip.io' : '');
+  const apiUrl = env.VITE_API_URL || process.env.VITE_API_URL || '';
 
   return {
     define: {

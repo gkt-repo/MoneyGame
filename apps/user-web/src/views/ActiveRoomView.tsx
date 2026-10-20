@@ -51,6 +51,11 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
     fetchRoom();
 
     const socket = connectSocket();
+    const onConnect = () => {
+      socket.emit('join_room_channel', roomId);
+      if (!finished.current) fetchRoom();
+    };
+    socket.on('connect', onConnect);
     socket.emit('join_room_channel', roomId);
 
     socket.on('room_updated', (data: RoomItem) => {
@@ -82,6 +87,7 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
     const interval = setInterval(() => { if (!finished.current) fetchRoom(); }, 3000);
     return () => {
       socket.emit('leave_room_channel', roomId);
+      socket.off('connect', onConnect);
       socket.disconnect();
       clearInterval(interval);
     };

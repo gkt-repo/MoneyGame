@@ -108,12 +108,25 @@ export class WalletService {
       throw new Error('You have already joined this room.');
     }
 
+    const room = await tx.room.findUnique({ where: { id: roomId } });
+    if (!room) throw new Error('Room not found');
+
     // Assign next available seat if seatIndex not specified
     if (seatIndex === undefined || seatIndex === null) {
       const takenSeats = await tx.roomPlayer.findMany({ where: { roomId }, select: { seatIndex: true } });
       const takenSet = new Set(takenSeats.map(s => s.seatIndex));
       seatIndex = 0;
       while (takenSet.has(seatIndex)) seatIndex++;
+    } else {
+      if (!Number.isInteger(seatIndex) || seatIndex < 0 || seatIndex >= room.maxPlayers) {
+        throw new Error(`Invalid seat index: ${seatIndex}. Must be between 0 and ${room.maxPlayers - 1}`);
+      }
+      const existingSeat = await tx.roomPlayer.findFirst({
+        where: { roomId, seatIndex },
+      });
+      if (existingSeat) {
+        throw new Error(`Seat ${seatIndex} is already occupied`);
+      }
     }
 
     // Deduct available balance and add to lockedBalance
@@ -147,10 +160,14 @@ export class WalletService {
 
   /**
    * Deducts in-game bet (Chaal, Blind, Show) from available balance and moves to lockedBalance in real-time.
-   * Atomically verifies balance to strictly prevent negative balance, but skips intermediate passbook records
+   * Atomically verifies balance to strictly prevent negative balance, persists the room stake, and skips intermediate passbook records
    * so only the final round settlement is shown in transaction history.
    */
   async lockGameBet(userId: string, roomId: string, amount: number, actionName: string) {
+    if (!Number.isFinite(amount) || amount <= 0 || !Number.isInteger(toPaise(amount))) {
+      throw new Error(`Invalid bet amount for ${actionName}: ₹${amount}`);
+    }
+
     return serializable(async (tx) => {
       const wallet = await tx.wallet.findUnique({ where: { userId } });
       if (!wallet || toPaise(wallet.balance) < toPaise(amount)) {
@@ -160,6 +177,22 @@ export class WalletService {
       }
 
       const updatedWallet = await moveWallet(tx, userId, -amount, amount);
+
+      // Persist accumulated in-game bet for this user and room
+      const room = await tx.room.findUnique({ where: { id: roomId } });
+      if (room) {
+        let configObj: Record<string, any> = {};
+        try {
+          if (room.customConfig) configObj = JSON.parse(room.customConfig);
+        } catch (_) {}
+        configObj.playerStakes = configObj.playerStakes || {};
+        configObj.playerStakes[userId] = (configObj.playerStakes[userId] || 0) + amount;
+        await tx.room.update({
+          where: { id: roomId },
+          data: { customConfig: JSON.stringify(configObj) },
+        });
+      }
+
       return updatedWallet;
     });
   }
@@ -205,6 +238,18 @@ export class WalletService {
         throw new Error('Invalid commission');
       }
 
+      // Strict conservation check: totalPool must equal the exact sum of released stakes
+      let expectedPoolPaise = 0;
+      for (const p of room.players) {
+        const lockedToRelease = playerBets && typeof playerBets[p.userId] === 'number'
+          ? playerBets[p.userId]
+          : room.entryFee;
+        expectedPoolPaise += toPaise(lockedToRelease);
+      }
+      if (toPaise(totalPool) !== expectedPoolPaise) {
+        throw new Error(`Mismatched settlement pool. Expected: ₹${expectedPoolPaise / 100}, Provided: ₹${totalPool}`);
+      }
+
       const entryFee = room.entryFee;
       const commissionAmount = Math.round(toPaise(totalPool) * commissionPercent / 100) / 100;
       const winnerPrize = (toPaise(totalPool) - toPaise(commissionAmount)) / 100;
@@ -222,7 +267,14 @@ export class WalletService {
 
       const resolvedWinningNumber = room.gameType === 'GUESS_NUMBER' ? winningNumber : null;
 
-      // 3. Mark room completed
+      // 3. Mark room completed and durably record settled pool and commission
+      let configObj: Record<string, any> = {};
+      try {
+        if (room.customConfig) configObj = JSON.parse(room.customConfig);
+      } catch (_) {}
+      configObj.settledPool = totalPool;
+      configObj.platformCommission = commissionAmount;
+
       await tx.room.update({
         where: { id: roomId },
         data: {
@@ -230,6 +282,7 @@ export class WalletService {
           winningNumber: resolvedWinningNumber,
           winnerId,
           winnerPrize,
+          customConfig: JSON.stringify(configObj),
         },
       });
 
@@ -547,4 +600,15 @@ export class WalletService {
 }
 
 export const walletService = new WalletService();
+
+export async function getEffectiveCommissionPercent(): Promise<number> {
+  try {
+    const setting = await prisma.systemSetting.findUnique({ where: { key: 'platform_commission' } });
+    if (setting?.value && !isNaN(parseFloat(setting.value))) {
+      return parseFloat(setting.value);
+    }
+  } catch {}
+  const { config } = await import('../../config');
+  return config.platformCommissionPercent || 0;
+}
 

@@ -19,46 +19,14 @@ export const router = Router();
 
 const isTest = process.env.NODE_ENV === 'test';
 
-// ─── Rate Limiters ───────────────────────────────────────────────────────────
-
-// Strict Limiter for Authentication & OTP routes (prevents brute-force)
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 30, // 30 attempts per 15 minutes per IP
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  message: { error: 'Too many authentication attempts. Please try again after 15 minutes.' },
-  skip: () => isTest,
-});
-
-// Deposit Creation Rate Limiter
-export const depositLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
-  limit: 25,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  message: { error: 'Too many deposit requests. Please wait a few minutes before trying again.' },
-  skip: () => isTest,
-});
-
-// UTR Claim Rate Limiter (prevents UTR brute-forcing)
-export const claimLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
-  limit: 15,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  message: { error: 'Too many UTR claim attempts. Please wait a few minutes before trying again.' },
-  skip: () => isTest,
-});
-
-// Webhook Rate Limiter
-export const webhookLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  limit: 60,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  skip: () => isTest,
-});
+import {
+  authLimiter,
+  sessionLimiter,
+  depositLimiter,
+  claimLimiter,
+  webhookLimiter,
+} from '../middleware/rate-limiter';
+export { depositLimiter, claimLimiter, webhookLimiter };
 
 // ─── Health Check Endpoint (Deep DB Probe) ───────────────────────────────────
 router.get('/health', async (_req: Request, res: Response): Promise<void> => {
@@ -81,11 +49,11 @@ router.get('/health', async (_req: Request, res: Response): Promise<void> => {
 });
 
 // ─── Authentication Endpoints ────────────────────────────────────────────────
-// Mount public auth routers with brute-force rate limiting
-router.use('/auth', authLimiter, authRouter);
-router.use('/v1/auth', authLimiter, authRouter);
-router.use('/admin/auth', authLimiter, adminAuthRouter);
-router.use('/v1/admin/auth', authLimiter, adminAuthRouter);
+// Mount public auth routers (individual endpoints apply strict authLimiter / sessionLimiter)
+router.use('/auth', authRouter);
+router.use('/v1/auth', authRouter);
+router.use('/admin/auth', adminAuthRouter);
+router.use('/v1/admin/auth', adminAuthRouter);
 
 // ─── User Profile & Wallet (Protected) ───────────────────────────────────────
 
@@ -303,14 +271,28 @@ router.post('/rooms/:roomId/action', authenticateUser, async (req: Authenticated
 router.get('/rooms/:roomId', async (req: Request, res: Response): Promise<void> => {
   try {
     const roomId = Array.isArray(req.params.roomId) ? req.params.roomId[0] : req.params.roomId;
-    // Extract userId from auth token if present
+    // Extract userId from verified auth token if present
     let userId: string | undefined;
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith('Bearer ')) {
       try {
-        const decoded = jwt.decode(authHeader.substring(7)) as any;
-        userId = decoded?.userId;
-      } catch (_) {}
+        const token = authHeader.substring(7);
+        const decoded = jwt.verify(token, config.jwtSecret, {
+          algorithms: ['HS256'],
+          audience: [config.userAudience, config.adminAudience],
+        }) as any;
+        if (decoded?.userId) {
+          const user = await prisma.user.findUnique({
+            where: { id: decoded.userId },
+            select: { id: true, status: true },
+          });
+          if (user && user.status === 'ACTIVE') {
+            userId = user.id;
+          }
+        }
+      } catch (_) {
+        // Invalid, expired, or forged token: treated as unauthenticated spectator
+      }
     }
 
     const room = await gameManager.getRoomDetails(roomId, userId);
@@ -334,7 +316,7 @@ router.post('/rooms/:roomId/cancel', authenticateUser, async (req: Authenticated
 
 // ─── Automated Webhook Receiver (Android Notification / Email Forwarder) ───────
 
-function isWebhookAuthorized(authHeader?: string | string[]): boolean {
+async function isWebhookAuthorized(authHeader?: string | string[]): Promise<boolean> {
   const expectedSecret = config.webhookSecret;
   const supplied = typeof authHeader === 'string' ? authHeader.replace(/^Bearer /, '') : '';
   if (expectedSecret && supplied && Buffer.byteLength(supplied) === Buffer.byteLength(expectedSecret)) {
@@ -344,12 +326,25 @@ function isWebhookAuthorized(authHeader?: string | string[]): boolean {
   }
   if (supplied) {
     try {
-      const decoded = jwt.verify(supplied, config.jwtSecret) as any;
-      if (decoded && (decoded.role === 'ADMIN' || decoded.role === 'SUPER_ADMIN')) {
-        return true;
+      const decoded = jwt.verify(supplied, config.jwtSecret, {
+        algorithms: ['HS256'],
+        audience: [config.adminAudience],
+      }) as any;
+      if (decoded?.userId) {
+        const adminUser = await prisma.user.findUnique({
+          where: { id: decoded.userId },
+          select: { id: true, role: true, status: true },
+        });
+        if (
+          adminUser &&
+          adminUser.status === 'ACTIVE' &&
+          (adminUser.role === 'ADMIN' || adminUser.role === 'SUPER_ADMIN')
+        ) {
+          return true;
+        }
       }
     } catch {
-      // not an admin jwt
+      // not an authorized admin jwt
     }
   }
   return false;
@@ -358,7 +353,7 @@ function isWebhookAuthorized(authHeader?: string | string[]): boolean {
 router.post('/webhooks/upi-notify', webhookLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const authHeader = req.headers['x-webhook-secret'] || req.headers['authorization'];
-    if (!isWebhookAuthorized(authHeader)) {
+    if (!(await isWebhookAuthorized(authHeader))) {
       res.status(401).json({ error: 'Unauthorized webhook request' });
       return;
     }
@@ -385,7 +380,7 @@ router.post('/webhooks/upi-notify', webhookLimiter, async (req: Request, res: Re
 router.post('/webhooks/listener-heartbeat', webhookLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const authHeader = req.headers['x-webhook-secret'] || req.headers['authorization'];
-    if (!isWebhookAuthorized(authHeader)) {
+    if (!(await isWebhookAuthorized(authHeader))) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
@@ -419,7 +414,7 @@ router.post('/webhooks/listener-heartbeat', webhookLimiter, async (req: Request,
 
 // ─── Admin Listener Management Endpoints ──────────────────────────────────────
 
-router.get('/admin/listener-config', authenticateAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get('/admin/listener-config', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     const lastHeartbeat = await prisma.systemSetting.findUnique({ where: { key: 'last_listener_heartbeat' } });
     const metaSetting = await prisma.systemSetting.findUnique({ where: { key: 'listener_metadata' } });
@@ -432,10 +427,20 @@ router.get('/admin/listener-config', authenticateAdmin, async (_req: Request, re
       ? Date.now() - new Date(lastHeartbeatAt).getTime() < 3 * 60 * 1000
       : false;
 
+    const rawProto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http');
+    const host = req.get('host');
+    const isLocal = !host || host.includes('localhost') || host.startsWith('127.0.0.1') || host.startsWith('10.') || host.startsWith('192.168.');
+    const protocol = !isLocal ? 'https' : rawProto;
+    const dynamicUrl = host ? `${protocol}://${host}` : 'https://127.0.0.1:4000';
+    let serverUrl = process.env.PUBLIC_API_URL || dynamicUrl;
+    if (!isLocal && serverUrl.startsWith('http://')) {
+      serverUrl = serverUrl.replace(/^http:\/\//i, 'https://');
+    }
+
     res.json({
       success: true,
       webhookSecret: config.webhookSecret,
-      serverUrl: 'http://132.226.186.196:4000',
+      serverUrl,
       listenerStatus: isOnline ? 'ONLINE' : 'OFFLINE',
       lastHeartbeatAt,
       listenerMetadata,
@@ -504,9 +509,12 @@ router.post('/admin/upi-settings', authenticateAdmin, async (req: Request, res: 
   }
 });
 
-router.get('/admin/deposits', authenticateAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get('/admin/deposits', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
-    const deposits = await adminService.getDepositsList();
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
+    const skip = req.query.skip ? parseInt(String(req.query.skip), 10) : 0;
+    const deposits = await adminService.getDepositsList(status, limit, skip);
     res.json({ success: true, deposits });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -564,9 +572,12 @@ router.post('/admin/unmatched-payments/:id/assign', authenticateAdmin, async (re
   }
 });
 
-router.get('/admin/withdrawals', authenticateAdmin, async (_req: Request, res: Response): Promise<void> => {
+router.get('/admin/withdrawals', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
-    const withdrawals = await adminService.getWithdrawalsList();
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
+    const skip = req.query.skip ? parseInt(String(req.query.skip), 10) : 0;
+    const withdrawals = await adminService.getWithdrawalsList(status, limit, skip);
     res.json({ success: true, withdrawals });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

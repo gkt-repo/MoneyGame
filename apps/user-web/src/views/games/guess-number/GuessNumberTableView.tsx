@@ -42,9 +42,24 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
   // Connect to room channel for real-time multiplayer roll animations
   useEffect(() => {
     const socket = connectSocket();
+
+    const onConnect = () => {
+      socket.emit('join_room_channel', room.id);
+      userApi.getRoomDetails(room.id).then(freshRoom => {
+        if (freshRoom) {
+          setRoom(freshRoom);
+          if (['COMPLETED', 'CANCELLED'].includes(freshRoom.status)) {
+            setIsRolling(false);
+            setCountdown(null);
+          }
+        }
+      }).catch(() => {});
+    };
+
+    socket.on('connect', onConnect);
     socket.emit('join_room_channel', room.id);
 
-    socket.on('room_updated', (data: RoomItem) => {
+    const onRoomUpdated = (data: RoomItem) => {
       if (data && data.id === room.id) {
         setRoom(data);
         if (['COMPLETED', 'CANCELLED'].includes(data.status)) {
@@ -52,26 +67,29 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
           setCountdown(null);
         }
       }
-    });
+    };
 
-    socket.on('game_countdown', (data: { countdown: number }) => {
-      if (data && typeof data.countdown === 'number') {
+    const onCountdown = (data: { countdown: number; roomId?: string }) => {
+      if (data && (!data.roomId || data.roomId === room.id) && typeof data.countdown === 'number') {
         setCountdown(data.countdown);
       }
-    });
+    };
 
-    socket.on('roll_started', () => {
-      setIsRolling(true);
-      setCountdown(null);
-    });
+    const onRollStarted = (data?: { roomId?: string }) => {
+      if (!data || !data.roomId || data.roomId === room.id) {
+        setIsRolling(true);
+        setCountdown(null);
+      }
+    };
 
-    socket.on('roll_tick', (data: { number: number }) => {
-      if (data && typeof data.number === 'number') {
+    const onRollTick = (data: { number: number; roomId?: string }) => {
+      if (data && (!data.roomId || data.roomId === room.id) && typeof data.number === 'number') {
         setRollTickNumber(data.number);
       }
-    });
+    };
 
-    socket.on('game_finished', (data: any) => {
+    const onGameFinished = (data: any) => {
+      if (data?.room && data.room.id !== room.id) return;
       setIsRolling(false);
       setCountdown(null);
       if (data?.room) {
@@ -85,16 +103,22 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
         });
       }
       if (onRefreshBalance) onRefreshBalance();
-    });
+    };
+
+    socket.on('room_updated', onRoomUpdated);
+    socket.on('game_countdown', onCountdown);
+    socket.on('roll_started', onRollStarted);
+    socket.on('roll_tick', onRollTick);
+    socket.on('game_finished', onGameFinished);
 
     return () => {
       socket.emit('leave_room_channel', room.id);
-      socket.off('room_updated');
-      socket.off('game_countdown');
-      socket.off('roll_started');
-      socket.off('roll_tick');
-      socket.off('game_finished');
-      socket.disconnect();
+      socket.off('connect', onConnect);
+      socket.off('room_updated', onRoomUpdated);
+      socket.off('game_countdown', onCountdown);
+      socket.off('roll_started', onRollStarted);
+      socket.off('roll_tick', onRollTick);
+      socket.off('game_finished', onGameFinished);
     };
   }, [room.id, user.id, onRefreshBalance]);
 

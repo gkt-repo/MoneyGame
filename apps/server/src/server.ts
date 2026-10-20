@@ -16,21 +16,27 @@ import { paymentService } from './modules/payment/payment.service';
 const app = express();
 const server = http.createServer(app);
 
+if (config.trustProxy) {
+  app.set('trust proxy', config.trustProxy);
+}
+
 // Configure CORS origin validator supporting Firebase Hosting, GitHub Pages, localhost, and custom domains
 const corsOriginChecker = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
   if (!origin) return callback(null, true);
   if (config.allowedOrigins.includes('*')) return callback(null, true);
   if (config.allowedOrigins.includes(origin)) return callback(null, true);
 
-  // Allow Firebase Hosting, GitHub Pages, and localhost
-  if (
-    /^https:\/\/.*\.web\.app$/.test(origin) ||
-    /^https:\/\/.*\.firebaseapp\.com$/.test(origin) ||
-    /^https:\/\/.*\.github\.io$/.test(origin) ||
-    /^http:\/\/localhost(:\d+)?$/.test(origin) ||
-    /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)
-  ) {
-    return callback(null, true);
+  // Allow Firebase Hosting, GitHub Pages, and localhost only in non-production environments
+  if (config.nodeEnv !== 'production') {
+    if (
+      /^https:\/\/.*\.web\.app$/.test(origin) ||
+      /^https:\/\/.*\.firebaseapp\.com$/.test(origin) ||
+      /^https:\/\/.*\.github\.io$/.test(origin) ||
+      /^http:\/\/localhost(:\d+)?$/.test(origin) ||
+      /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)
+    ) {
+      return callback(null, true);
+    }
   }
 
   callback(new Error('Blocked by CORS policy'));

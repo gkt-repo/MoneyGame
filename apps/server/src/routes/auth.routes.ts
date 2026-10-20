@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
+import { config } from '../config';
 import { walletService } from '../modules/wallet/wallet.service';
 import { authService } from '../modules/auth/auth.service';
 import {
@@ -6,6 +8,7 @@ import {
   authenticateAdmin,
   AuthenticatedRequest,
 } from '../middleware/auth.middleware';
+import { authLimiter, sessionLimiter } from '../middleware/rate-limiter';
 
 export const authRouter = Router();
 
@@ -14,7 +17,7 @@ export const authRouter = Router();
 /**
  * Register new user (Phone + Password + Email backup)
  */
-authRouter.post('/register', async (req: Request, res: Response): Promise<void> => {
+authRouter.post('/register', authLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const { username, phone, email, password } = req.body;
     const deviceInfo = (req.headers['user-agent'] as string) || 'Web/Mobile Client';
@@ -39,7 +42,7 @@ authRouter.post('/register', async (req: Request, res: Response): Promise<void> 
 /**
  * User Login (Phone + Password)
  */
-authRouter.post('/login', async (req: Request, res: Response): Promise<void> => {
+authRouter.post('/login', authLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const { phone, identifier, username, password } = req.body;
     const loginId = identifier || phone || username;
@@ -61,7 +64,7 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<void> => 
 /**
  * Request Password Reset OTP (dispatched to registered backup email)
  */
-authRouter.post('/forgot-password', async (req: Request, res: Response): Promise<void> => {
+authRouter.post('/forgot-password', authLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const { identifier } = req.body;
     if (!identifier) {
@@ -79,10 +82,11 @@ authRouter.post('/forgot-password', async (req: Request, res: Response): Promise
 /**
  * Reset Password with OTP
  */
-authRouter.post('/reset-password', async (req: Request, res: Response): Promise<void> => {
+authRouter.post('/reset-password', authLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, otp, newPassword } = req.body;
-    const result = await authService.resetPassword(email, otp, newPassword);
+    const identifier = req.body.identifier || req.body.email;
+    const { otp, newPassword } = req.body;
+    const result = await authService.resetPassword(identifier, otp, newPassword);
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
@@ -92,7 +96,7 @@ authRouter.post('/reset-password', async (req: Request, res: Response): Promise<
 /**
  * Rotate / Refresh Token
  */
-authRouter.post('/refresh-token', async (req: Request, res: Response): Promise<void> => {
+authRouter.post('/refresh-token', sessionLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const { refreshToken } = req.body;
     const deviceInfo = (req.headers['user-agent'] as string) || 'Web/Mobile Client';
@@ -111,7 +115,15 @@ authRouter.post('/refresh-token', async (req: Request, res: Response): Promise<v
 authRouter.post('/logout', async (req: Request, res: Response): Promise<void> => {
   try {
     const { refreshToken } = req.body;
-    await authService.logout(refreshToken);
+    let userId: string | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const decoded = jwt.verify(authHeader.substring(7), config.jwtSecret, { algorithms: ['HS256'] }) as any;
+        userId = decoded.userId;
+      } catch {}
+    }
+    await authService.logout(refreshToken, userId);
     res.json({ success: true, message: 'Logged out successfully' });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -121,7 +133,7 @@ authRouter.post('/logout', async (req: Request, res: Response): Promise<void> =>
 /**
  * Get current user profile
  */
-authRouter.get('/me', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+authRouter.get('/me', sessionLimiter, authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const wallet = await walletService.getWallet(req.user!.id);
   res.json({ success: true, user: { ...req.user, wallet } });
 });
@@ -133,7 +145,7 @@ export const adminAuthRouter = Router();
 /**
  * Admin Login (Email/Username + Password)
  */
-adminAuthRouter.post('/login', async (req: Request, res: Response): Promise<void> => {
+adminAuthRouter.post('/login', authLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const { identifier, password } = req.body;
     const deviceInfo = (req.headers['user-agent'] as string) || 'Admin Console';
@@ -153,7 +165,7 @@ adminAuthRouter.post('/login', async (req: Request, res: Response): Promise<void
 /**
  * Admin Session Refresh
  */
-adminAuthRouter.post('/refresh-token', async (req: Request, res: Response): Promise<void> => {
+adminAuthRouter.post('/refresh-token', sessionLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const { refreshToken } = req.body;
     const deviceInfo = (req.headers['user-agent'] as string) || 'Admin Console';
@@ -169,6 +181,6 @@ adminAuthRouter.post('/refresh-token', async (req: Request, res: Response): Prom
 /**
  * Get current admin profile
  */
-adminAuthRouter.get('/me', authenticateAdmin, (req: AuthenticatedRequest, res: Response): void => {
+adminAuthRouter.get('/me', sessionLimiter, authenticateAdmin, (req: AuthenticatedRequest, res: Response): void => {
   res.json({ success: true, admin: req.user });
 });

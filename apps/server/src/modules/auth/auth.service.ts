@@ -377,85 +377,114 @@ export class AuthService {
   /**
    * Reset Password with OTP
    */
-  async resetPassword(email: string, otp: string, newPassword: string): Promise<{ success: boolean; message: string }> {
-    const cleanEmail = email?.trim().toLowerCase();
+  async resetPassword(identifier: string, otp: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    const cleanId = identifier?.trim();
     const cleanOtp = otp?.trim();
 
-    if (!cleanEmail || !cleanOtp || !newPassword) {
-      throw new Error('Email, OTP, and new password are required');
+    if (!cleanId || !cleanOtp || !newPassword) {
+      throw new Error('Email/phone, OTP, and new password are required');
     }
 
     if (newPassword.length < 6) {
       throw new Error('Password must be at least 6 characters long');
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: cleanEmail },
-    });
+    return serializable(async (tx) => {
+      const phoneCandidate = this.cleanPhone(cleanId);
+      const user = await tx.user.findFirst({
+        where: {
+          OR: [
+            { phone: phoneCandidate.length === 10 ? phoneCandidate : undefined },
+            { email: cleanId.toLowerCase() },
+            { username: cleanId },
+          ],
+        },
+      });
 
-    if (!user) {
-      throw new Error('Invalid email or verification code');
-    }
-
-    // Find valid OTP
-    const activeOtps = await prisma.passwordResetOtp.findMany({
-      where: {
-        userId: user.id,
-        consumedAt: null,
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-    });
-
-    let matchedOtpId: string | null = null;
-    for (const record of activeOtps) {
-      const match = await bcrypt.compare(cleanOtp, record.otpHash);
-      if (match) {
-        matchedOtpId = record.id;
-        break;
+      if (!user) {
+        throw new Error('Invalid email or verification code');
       }
-    }
 
-    if (!matchedOtpId) {
-      throw new Error('Invalid or expired verification code');
-    }
+      // Find valid unconsumed OTPs
+      const activeOtps = await tx.passwordResetOtp.findMany({
+        where: {
+          userId: user.id,
+          consumedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
 
-    // Mark OTP as consumed
-    await prisma.passwordResetOtp.update({
-      where: { id: matchedOtpId },
-      data: { consumedAt: new Date() },
+      let matchedOtpId: string | null = null;
+      for (const record of activeOtps) {
+        const match = await bcrypt.compare(cleanOtp, record.otpHash);
+        if (match) {
+          matchedOtpId = record.id;
+          break;
+        }
+      }
+
+      if (!matchedOtpId) {
+        throw new Error('Invalid or expired verification code');
+      }
+
+      // Atomically claim the matching OTP
+      const claimed = await tx.passwordResetOtp.updateMany({
+        where: { id: matchedOtpId, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+
+      if (claimed.count === 0) {
+        throw new Error('Verification code has already been used');
+      }
+
+      // Invalidate ALL outstanding reset OTPs for this user
+      await tx.passwordResetOtp.updateMany({
+        where: { userId: user.id, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+
+      // Update password hash
+      const newPasswordHash = await bcrypt.hash(newPassword, 10);
+      await tx.user.update({
+        where: { id: user.id },
+        data: { passwordHash: newPasswordHash },
+      });
+
+      // Revoke all existing sessions for security
+      await tx.refreshToken.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+
+      return {
+        success: true,
+        message: 'Password successfully updated. You can now log in with your new password.',
+      };
     });
-
-    // Update password hash
-    const newPasswordHash = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { passwordHash: newPasswordHash },
-    });
-
-    // Revoke all existing sessions for security
-    await prisma.refreshToken.updateMany({
-      where: { userId: user.id, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
-
-    return {
-      success: true,
-      message: 'Password successfully updated. You can now log in with your new password.',
-    };
   }
 
   /**
    * Logout (revoke single refresh token)
    */
-  async logout(refreshTokenStr: string): Promise<boolean> {
-    if (!refreshTokenStr) return true;
-    const tokenHash = this.hashToken(refreshTokenStr);
-    await prisma.refreshToken.updateMany({
-      where: { tokenHash, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+  async logout(refreshTokenStr?: string, userId?: string): Promise<boolean> {
+    if (refreshTokenStr) {
+      const tokenHash = this.hashToken(refreshTokenStr);
+      await prisma.refreshToken.updateMany({
+        where: { tokenHash, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+    if (userId) {
+      await prisma.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await prisma.user.update({
+        where: { id: userId },
+        data: { updatedAt: new Date() },
+      });
+    }
     return true;
   }
 

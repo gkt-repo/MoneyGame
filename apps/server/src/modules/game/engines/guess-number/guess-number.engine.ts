@@ -4,7 +4,7 @@ import { GameDescriptor, GameType } from '@moneygame/shared-types';
 import { IGameEngine, RoomWithPlayers, ActionResult } from '../../engine.interface';
 import { prisma } from '../../../../db';
 import { config } from '../../../../config';
-import { walletService } from '../../../wallet/wallet.service';
+import { walletService, getEffectiveCommissionPercent } from '../../../wallet/wallet.service';
 
 export class GuessNumberEngine implements IGameEngine {
   readonly gameType: GameType = 'GUESS_NUMBER';
@@ -121,7 +121,7 @@ export class GuessNumberEngine implements IGameEngine {
       winningPlayer.userId,
       winningNumber,
       totalPool,
-      config.platformCommissionPercent
+      await getEffectiveCommissionPercent()
     );
 
     const finalRoom = await prisma.room.findUnique({
@@ -171,6 +171,13 @@ export class GuessNumberEngine implements IGameEngine {
       clearInterval(timer);
       this.timers.delete(roomId);
     }
+  }
+
+  stopAllTimers(): void {
+    for (const timer of this.timers.values()) {
+      clearInterval(timer);
+    }
+    this.timers.clear();
   }
 }
 

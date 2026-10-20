@@ -32,7 +32,24 @@ export function configureSockets(io: Server) {
     const expiry = setTimeout(() => socket.disconnect(true), Math.max(1, socket.data.expiresAt - Date.now()));
     socket.on('disconnect', () => clearTimeout(expiry));
     socket.on('join_user_channel', () => socket.join(`user:${socket.data.userId}`));
-    socket.on('join_admin_channel', () => { if (socket.data.admin) socket.join('admin_channel'); });
+    socket.on('join_admin_channel', async () => {
+      if (!socket.data.admin) return;
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: socket.data.userId },
+          select: { id: true, role: true, status: true },
+        });
+        if (!user || user.status !== 'ACTIVE' || !['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+          socket.data.admin = false;
+          socket.leave?.('admin_channel');
+          socket.disconnect?.(true);
+          return;
+        }
+        socket.join('admin_channel');
+      } catch {
+        socket.disconnect?.(true);
+      }
+    });
     socket.on('join_deposit_channel', async (id: unknown) => {
       if (typeof id !== 'string') return;
       try {
@@ -40,14 +57,24 @@ export function configureSockets(io: Server) {
         if (socket.connected && deposit) await socket.join(`deposit:${id}`);
       } catch { socket.emit('subscription_error', { message: 'Unable to subscribe to deposit' }); }
     });
-    socket.on('leave_deposit_channel', (id: unknown) => { if (typeof id === 'string') socket.leave(`deposit:${id}`); });
+    socket.on('leave_deposit_channel', (id: unknown) => { if (typeof id === 'string') socket.leave?.(`deposit:${id}`); });
     socket.on('join_room_channel', (id: unknown) => { if (typeof id === 'string') socket.join(`room:${id}`); });
-    socket.on('leave_room_channel', (id: unknown) => { if (typeof id === 'string') socket.leave(`room:${id}`); });
+    socket.on('leave_room_channel', (id: unknown) => { if (typeof id === 'string') socket.leave?.(`room:${id}`); });
     socket.on('game_action', async (data: unknown) => {
       if (typeof data !== 'object' || !data) return;
       const { roomId, action, payload } = data as any;
       if (typeof roomId !== 'string' || typeof action !== 'string') return;
       try {
+        const user = await prisma.user.findUnique({
+          where: { id: socket.data.userId },
+          select: { id: true, status: true },
+        });
+        if (!user || user.status !== 'ACTIVE') {
+          socket.emit('game_action_response', { success: false, action, message: 'Account is not active' });
+          socket.disconnect?.(true);
+          return;
+        }
+
         const { gameManager } = await import('./modules/game/game.manager');
         const res = await gameManager.handlePlayerAction(roomId, socket.data.userId, action, payload);
         socket.emit('game_action_response', { success: res.success, action, message: res.message });

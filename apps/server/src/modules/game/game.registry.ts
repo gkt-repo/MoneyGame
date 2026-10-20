@@ -14,9 +14,6 @@ export class GameRegistry {
   get(gameType: string): IGameEngine {
     const engine = this.engines.get(gameType as GameType);
     if (!engine) {
-      // Default fallback to GUESS_NUMBER for legacy compatibility
-      const fallback = this.engines.get('GUESS_NUMBER');
-      if (fallback) return fallback;
       throw new Error(`Unsupported game type: ${gameType}`);
     }
     return engine;
