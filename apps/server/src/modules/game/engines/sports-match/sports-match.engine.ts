@@ -92,12 +92,13 @@ export class SportsMatchEngine implements IGameEngine {
 
     // Check if match start time has passed
     if (room.customConfig) {
+      let config: any = null;
       try {
-        const config: SportsRoomConfig = JSON.parse(room.customConfig);
-        if (config.startTime && new Date() >= new Date(config.startTime)) {
-          throw new Error('This match has already started! Room is locked and entries are closed.');
-        }
+        config = typeof room.customConfig === 'string' ? JSON.parse(room.customConfig) : room.customConfig;
       } catch (_) {}
+      if (config && config.startTime && new Date() >= new Date(config.startTime)) {
+        throw new Error('This match has already started! Room is locked and entries are closed.');
+      }
     }
   }
 
@@ -106,21 +107,22 @@ export class SportsMatchEngine implements IGameEngine {
    */
   async onPlayerJoined(room: RoomWithPlayers, userId: string, io: Server | null): Promise<void> {
     try {
-      let config: SportsRoomConfig & Record<string, any> = {
-        matchId: '',
-        sport: 'Cricket',
-        league: '',
-        matchTitle: '',
-        startTime: new Date().toISOString(),
-        team1: { name: 'Team 1' },
-        team2: { name: 'Team 2' },
-        predictions: {},
-      };
+      // Fetch fresh room record directly from DB to preserve true customConfig
+      const dbRoom = await prisma.room.findUnique({
+        where: { id: room.id },
+        select: { customConfig: true, maxPlayers: true, roomCode: true },
+      });
 
-      if (room.customConfig) {
-        try {
-          config = { ...config, ...JSON.parse(room.customConfig) };
-        } catch (_) {}
+      let config: Record<string, any> = {};
+      const rawCfg = dbRoom?.customConfig ?? room.customConfig;
+      if (rawCfg) {
+        if (typeof rawCfg === 'object') {
+          config = { ...(rawCfg as Record<string, any>) };
+        } else if (typeof rawCfg === 'string') {
+          try {
+            config = JSON.parse(rawCfg);
+          } catch (_) {}
+        }
       }
 
       if (!config.predictions) config.predictions = {};
@@ -142,7 +144,7 @@ export class SportsMatchEngine implements IGameEngine {
           selectedAt: new Date().toISOString(),
         };
 
-        // Persist updated prediction in customConfig
+        // Persist updated prediction in customConfig without destroying match details
         await prisma.room.update({
           where: { id: room.id },
           data: { customConfig: JSON.stringify(config) },
@@ -150,12 +152,13 @@ export class SportsMatchEngine implements IGameEngine {
       }
 
       // If room capacity reached, lock the room
-      if (room.players.length >= room.maxPlayers) {
+      const maxCap = dbRoom?.maxPlayers ?? room.maxPlayers;
+      if (room.players.length >= maxCap) {
         await prisma.room.update({
           where: { id: room.id },
           data: { status: 'PLAYING' },
         });
-        console.log(`[SportsMatchEngine] Room #${room.roomCode} is now full (${room.players.length}/${room.maxPlayers}). Room locked.`);
+        console.log(`[SportsMatchEngine] Room #${room.roomCode} is now full (${room.players.length}/${maxCap}). Room locked.`);
       }
 
       const { gameManager } = await import('../../game.manager');

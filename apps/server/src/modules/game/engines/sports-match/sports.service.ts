@@ -494,7 +494,7 @@ export class SportsService {
       for (const room of activeRooms) {
         let config: SportsRoomConfig | null = null;
         try {
-          if (room.customConfig) config = JSON.parse(room.customConfig);
+          if (room.customConfig) config = typeof room.customConfig === 'string' ? JSON.parse(room.customConfig) : (room.customConfig as any);
         } catch (_) {}
 
         if (!config || !config.startTime) continue;
@@ -610,7 +610,7 @@ export class SportsService {
         team2: { name: 'Team 2' },
       };
       try {
-        if (room.customConfig) customConfigObj = JSON.parse(room.customConfig);
+        if (room.customConfig) customConfigObj = typeof room.customConfig === 'string' ? JSON.parse(room.customConfig) : (room.customConfig as any);
       } catch (_) {}
 
       // Case 1: Room had 0 or 1 player -> Refund single player
