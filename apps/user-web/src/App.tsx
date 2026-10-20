@@ -68,7 +68,19 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Connect to Sockets & Periodic Refresh
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Manual refresh for all telemetry (Balance + Rooms)
+  const handleRefreshAll = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([refreshBalance(), refreshRooms()]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refreshBalance, refreshRooms]);
+
+  // Connect to Sockets & Initial Load (Auto-refresh once on open)
   useEffect(() => {
     if (user) {
       refreshBalance();
@@ -99,11 +111,8 @@ export const App: React.FC = () => {
         refreshBalance();
       });
 
-      const interval = setInterval(refreshRooms, 5000);
-
       return () => {
         socket.disconnect();
-        clearInterval(interval);
       };
     }
   }, [user, refreshBalance, refreshRooms]);
@@ -141,6 +150,8 @@ export const App: React.FC = () => {
           userApi.logout();
           setUser(null);
         }}
+        onRefresh={handleRefreshAll}
+        isRefreshing={isRefreshing || loadingRooms}
       />
 
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
@@ -150,7 +161,7 @@ export const App: React.FC = () => {
             user={user}
             onBack={() => {
               setActiveRoomId(null);
-              refreshRooms();
+              handleRefreshAll();
             }}
             onRefreshBalance={refreshBalance}
           />
@@ -161,8 +172,8 @@ export const App: React.FC = () => {
                 rooms={rooms}
                 user={user}
                 balance={balance}
-                loading={loadingRooms}
-                onRefresh={refreshRooms}
+                loading={loadingRooms || isRefreshing}
+                onRefresh={handleRefreshAll}
                 onSelectRoom={(id) => setActiveRoomId(id)}
               />
             )}
@@ -171,8 +182,8 @@ export const App: React.FC = () => {
                 rooms={rooms}
                 user={user}
                 balance={balance}
-                loading={loadingRooms}
-                onRefresh={refreshRooms}
+                loading={loadingRooms || isRefreshing}
+                onRefresh={handleRefreshAll}
                 onSelectRoom={(id) => setActiveRoomId(id)}
                 defaultFilter="SPORTS_MATCH"
               />

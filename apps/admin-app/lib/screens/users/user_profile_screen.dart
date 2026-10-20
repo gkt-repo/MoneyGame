@@ -767,7 +767,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> with SingleTicker
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
         final t = list[i];
-        final isCredit = t.amount >= 0;
+        final isCredit = t.amount > 0;
+        final isZero = t.amount == 0;
+        final sign = isZero ? '' : (isCredit ? '+' : '-');
 
         return Container(
           padding: const EdgeInsets.all(12),
@@ -780,11 +782,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> with SingleTicker
             children: [
               CircleAvatar(
                 radius: 16,
-                backgroundColor: isCredit ? AppColors.emerald50 : AppColors.red50,
+                backgroundColor: isZero ? AppColors.slate100 : (isCredit ? AppColors.emerald50 : AppColors.red50),
                 child: Icon(
-                  isCredit ? Icons.arrow_downward : Icons.arrow_upward,
+                  isZero ? Icons.remove : (isCredit ? Icons.arrow_downward : Icons.arrow_upward),
                   size: 16,
-                  color: isCredit ? AppColors.emerald600 : AppColors.red600,
+                  color: isZero ? AppColors.slate500 : (isCredit ? AppColors.emerald600 : AppColors.red600),
                 ),
               ),
               const SizedBox(width: 12),
@@ -803,12 +805,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> with SingleTicker
                 ),
               ),
               Text(
-                '${isCredit ? "+" : ""}₹${t.amount.toStringAsFixed(2)}',
+                '$sign₹${t.amount.abs().toStringAsFixed(2)}',
                 style: TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
-                  color: isCredit ? AppColors.emerald700 : AppColors.red700,
+                  color: isZero ? AppColors.slate700 : (isCredit ? AppColors.emerald700 : AppColors.red700),
                 ),
               ),
             ],

@@ -66,13 +66,14 @@ export const WalletView: React.FC<WalletViewProps> = ({
     setRefreshing(false);
   };
 
-  const getTransactionIcon = (type: string) => {
+  const getTransactionIcon = (type: string, amount?: number) => {
     switch (type) {
       case 'DEPOSIT':
         return <ArrowDownLeft className="w-4 h-4 text-emerald-600" />;
       case 'ROOM_WIN':
         return <Trophy className="w-4 h-4 text-amber-500" />;
       case 'ROOM_ENTRY':
+      case 'ROOM_BET':
         return <Gamepad2 className="w-4 h-4 text-slate-500" />;
       case 'WITHDRAWAL_LOCK':
       case 'WITHDRAWAL_COMPLETE':
@@ -83,12 +84,26 @@ export const WalletView: React.FC<WalletViewProps> = ({
         return <PlusCircle className="w-4 h-4 text-emerald-600" />;
       case 'MANUAL_DEBIT':
         return <MinusCircle className="w-4 h-4 text-red-500" />;
+      case 'MANUAL_ADJUST':
+        return amount !== undefined && amount >= 0 ? (
+          <PlusCircle className="w-4 h-4 text-emerald-600" />
+        ) : (
+          <MinusCircle className="w-4 h-4 text-red-500" />
+        );
       default:
-        return <Coins className="w-4 h-4 text-slate-500" />;
+        return amount !== undefined && amount >= 0 ? (
+          <PlusCircle className="w-4 h-4 text-emerald-600" />
+        ) : (
+          <Coins className="w-4 h-4 text-slate-500" />
+        );
     }
   };
 
-  const isCredit = (type: string) => {
+  const isCredit = (type: string, amount?: number) => {
+    if (amount !== undefined) {
+      if (amount > 0) return true;
+      if (amount < 0) return false;
+    }
     return ['DEPOSIT', 'ROOM_WIN', 'REFUND', 'MANUAL_CREDIT'].includes(type);
   };
 
@@ -255,18 +270,22 @@ export const WalletView: React.FC<WalletViewProps> = ({
         ) : (
           <div className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto pr-1">
             {transactions.map((tx) => {
-              const credit = isCredit(tx.type);
+              const credit = isCredit(tx.type, tx.amount);
+              const isZero = tx.amount === 0;
+              const sign = isZero ? '' : credit ? '+' : '-';
               return (
                 <div key={tx.id} className="py-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <div
                       className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
-                        credit
+                        isZero
+                          ? 'bg-slate-50 border-slate-200'
+                          : credit
                           ? 'bg-emerald-50 border-emerald-100'
-                          : 'bg-slate-50 border-slate-200'
+                          : 'bg-red-50 border-red-100'
                       }`}
                     >
-                      {getTransactionIcon(tx.type)}
+                      {getTransactionIcon(tx.type, tx.amount)}
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-slate-800 truncate">
@@ -280,10 +299,10 @@ export const WalletView: React.FC<WalletViewProps> = ({
 
                   <div
                     className={`text-sm font-bold mono-num shrink-0 ${
-                      credit ? 'text-emerald-600' : 'text-red-600'
+                      isZero ? 'text-slate-600' : credit ? 'text-emerald-600' : 'text-red-600'
                     }`}
                   >
-                    {credit ? '+' : '-'}₹{tx.amount.toFixed(2)}
+                    {sign}₹{Math.abs(tx.amount).toFixed(2)}
                   </div>
                 </div>
               );

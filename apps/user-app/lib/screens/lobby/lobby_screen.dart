@@ -545,6 +545,19 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           '$team1Name ($team1Count) vs $team2Name ($team2Count backers)',
                           style: const TextStyle(fontSize: 11, color: AppColors.slate600, fontWeight: FontWeight.w500),
                         ),
+                        if (room.customConfig?['startTime'] != null) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.access_time_rounded, size: 11, color: Color(0xFFD97706)),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Locks ${formatMatchDateTime(room.customConfig!['startTime']?.toString())}',
+                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFFD97706)),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -712,6 +725,13 @@ class _LobbyScreenState extends State<LobbyScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (room.customConfig?['startTime'] != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Locks: ${formatMatchDateTime(room.customConfig!['startTime']?.toString())}',
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFFD97706)),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1147,6 +1167,31 @@ class _LobbyScreenState extends State<LobbyScreen> {
   }
 }
 
+String formatMatchDateTime(String? startTimeStr) {
+  if (startTimeStr == null) return 'Upcoming';
+  final parsed = DateTime.tryParse(startTimeStr);
+  if (parsed == null) return 'Upcoming';
+  final dt = parsed.toLocal();
+  final now = DateTime.now();
+  final isToday = dt.year == now.year && dt.month == now.month && dt.day == now.day;
+  final tomorrow = DateTime(now.year, now.month, now.day + 1);
+  final isTomorrow = dt.year == tomorrow.year && dt.month == tomorrow.month && dt.day == tomorrow.day;
+
+  final hour = dt.hour.toString().padLeft(2, '0');
+  final minute = dt.minute.toString().padLeft(2, '0');
+  final timeStr = '$hour:$minute';
+
+  if (isToday) {
+    return 'Today, $timeStr';
+  } else if (isTomorrow) {
+    return 'Tomorrow, $timeStr';
+  } else {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final monthStr = months[dt.month - 1];
+    return '${dt.day} $monthStr, $timeStr';
+  }
+}
+
 // Bottom sheet for Creating Table
 class _CreateTableBottomSheet extends StatefulWidget {
   final UserProfileModel user;
@@ -1223,29 +1268,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
     }
   }
 
-  String _formatMatchDateTime(String? startTimeStr) {
-    if (startTimeStr == null) return 'Upcoming';
-    final dt = DateTime.tryParse(startTimeStr);
-    if (dt == null) return 'Upcoming';
-    final now = DateTime.now();
-    final isToday = dt.year == now.year && dt.month == now.month && dt.day == now.day;
-    final tomorrow = now.add(const Duration(days: 1));
-    final isTomorrow = dt.year == tomorrow.year && dt.month == tomorrow.month && dt.day == tomorrow.day;
-
-    final hour = dt.hour.toString().padLeft(2, '0');
-    final minute = dt.minute.toString().padLeft(2, '0');
-    final timeStr = '$hour:$minute';
-
-    if (isToday) {
-      return 'Today, $timeStr';
-    } else if (isTomorrow) {
-      return 'Tomorrow, $timeStr';
-    } else {
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      final monthStr = months[dt.month - 1];
-      return '${dt.day} $monthStr, $timeStr';
-    }
-  }
+  String _formatMatchDateTime(String? startTimeStr) => formatMatchDateTime(startTimeStr);
 
   List<Map<String, dynamic>> get _filteredMatches {
     final query = _searchController.text.trim().toLowerCase();

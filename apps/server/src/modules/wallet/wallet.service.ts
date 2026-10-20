@@ -565,7 +565,7 @@ export class WalletService {
         data: {
           userId,
           amount: roundedAmount,
-          type: 'MANUAL_ADJUST',
+          type: roundedAmount >= 0 ? 'MANUAL_CREDIT' : 'MANUAL_DEBIT',
           description: `Admin balance adjustment (${roundedAmount > 0 ? '+' : ''}₹${roundedAmount.toFixed(2)}): ${reason}`,
         },
       });

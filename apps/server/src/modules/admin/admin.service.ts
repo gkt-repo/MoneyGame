@@ -844,7 +844,7 @@ export class AdminService {
         _sum: { amount: true },
       }),
       prisma.transaction.aggregate({
-        where: { type: 'MANUAL_ADJUST' },
+        where: { type: { in: ['MANUAL_ADJUST', 'MANUAL_CREDIT', 'MANUAL_DEBIT'] } },
         _sum: { amount: true },
       }),
     ]);

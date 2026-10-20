@@ -75,12 +75,8 @@ export const App: React.FC = () => {
         refreshData();
       });
 
-      // Periodic 15s poll
-      const interval = setInterval(refreshData, 15000);
-
       return () => {
         socket.disconnect();
-        clearInterval(interval);
       };
     }
   }, [admin, refreshData]);
@@ -107,6 +103,8 @@ export const App: React.FC = () => {
         admin={admin}
         pendingCount={pendingWithdrawalsCount}
         openFeedbacksCount={stats?.openFeedbacksCount}
+        onRefresh={refreshData}
+        isRefreshing={loadingData}
         onLogout={() => {
           adminApi.logout();
           setAdmin(null);

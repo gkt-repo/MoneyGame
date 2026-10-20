@@ -16,6 +16,7 @@ import {
   Calendar,
   Sparkles,
   Search,
+  RotateCw,
 } from 'lucide-react';
 
 interface LobbyViewProps {
@@ -432,6 +433,15 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
           <button
+            onClick={onRefresh}
+            disabled={loading}
+            title="Refresh active tables"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 text-xs font-bold rounded-xl transition shadow-xs cursor-pointer disabled:opacity-50"
+          >
+            <RotateCw className={`w-3.5 h-3.5 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+          <button
             onClick={() => {
               setShowJoinCodeModal(true);
               setError(null);
@@ -638,7 +648,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
       {/* Tables Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {loading ? (
+        {loading && rooms.length === 0 ? (
           <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-400">
             <Loader2 className="w-6 h-6 animate-spin text-emerald-600 mb-2" />
             <span className="text-xs">Loading active tables...</span>

@@ -533,8 +533,16 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                                 </span>
                               </td>
                               <td className="py-2.5 px-3 font-semibold whitespace-nowrap">
-                                <span className={tx.amount >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                                  {tx.amount >= 0 ? '+' : ''}₹{tx.amount.toFixed(2)}
+                                <span
+                                  className={
+                                    tx.amount > 0
+                                      ? 'text-emerald-400'
+                                      : tx.amount < 0
+                                      ? 'text-rose-400'
+                                      : 'text-zinc-400'
+                                  }
+                                >
+                                  {tx.amount === 0 ? '' : tx.amount > 0 ? '+' : '-'}₹{Math.abs(tx.amount).toFixed(2)}
                                 </span>
                               </td>
                               <td className="py-2.5 px-3 text-zinc-300">{tx.description || '-'}</td>

@@ -223,7 +223,7 @@ class TransactionModel {
       referenceId: json['referenceId'],
       description: json['description'],
       createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
+          ? DateTime.parse(json['createdAt']).toLocal()
           : DateTime.now(),
     );
   }

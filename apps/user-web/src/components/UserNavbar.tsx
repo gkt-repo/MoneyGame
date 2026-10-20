@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserProfile } from '../services/api';
-import { Wallet, Gamepad2, LogOut, HelpCircle, Trophy } from 'lucide-react';
+import { Wallet, Gamepad2, LogOut, HelpCircle, Trophy, RotateCw } from 'lucide-react';
 
 export type UserTab = 'lobby' | 'sports' | 'wallet' | 'support';
 
@@ -10,6 +10,8 @@ interface UserNavbarProps {
   currentTab: UserTab;
   onTabChange: (tab: UserTab) => void;
   onLogout: () => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 export const UserNavbar: React.FC<UserNavbarProps> = ({
@@ -18,6 +20,8 @@ export const UserNavbar: React.FC<UserNavbarProps> = ({
   currentTab,
   onTabChange,
   onLogout,
+  onRefresh,
+  isRefreshing = false,
 }) => {
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
@@ -86,8 +90,20 @@ export const UserNavbar: React.FC<UserNavbarProps> = ({
             </button>
           </nav>
 
-          {/* Live Wallet Pill (Clickable Hub with quick + indicator, no redundant duplicate buttons) */}
-          <div className="flex items-center gap-2.5">
+          {/* Live Wallet Pill (Clickable Hub with quick + indicator, no redundant duplicate buttons) & Actions */}
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            {onRefresh && (
+              <button
+                onClick={onRefresh}
+                disabled={isRefreshing}
+                title="Refresh balance and tables"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 rounded-xl transition cursor-pointer disabled:opacity-50 shadow-2xs"
+              >
+                <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-600' : 'text-slate-500'}`} />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+            )}
+
             <button
               onClick={() => onTabChange('wallet')}
               title="Open My Wallet & Ledger"

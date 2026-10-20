@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { RoomItem, userApi, UserProfile } from '../services/api';
 import { connectSocket } from '../services/socket';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, RotateCw } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { TeenPattiTableView } from './games/teen-patti/TeenPattiTableView';
 import { GuessNumberTableView } from './games/guess-number/GuessNumberTableView';
@@ -85,12 +85,10 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
       }
     });
 
-    const interval = setInterval(() => { if (!finished.current) fetchRoom(); }, 3000);
     return () => {
       socket.emit('leave_room_channel', roomId);
       socket.off('connect', onConnect);
       socket.disconnect();
-      clearInterval(interval);
     };
   }, [roomId, user.id, onRefreshBalance]);
 
@@ -113,15 +111,26 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
       <div className="flex items-center justify-between">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition"
+          className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Tables</span>
         </button>
 
-        <span className="font-mono text-xs font-bold px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded">
-          TABLE: {room.roomCode}
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchRoom()}
+            title="Refresh Table"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition cursor-pointer shadow-2xs"
+          >
+            <RotateCw className="w-3 h-3 text-slate-500" />
+            <span>Refresh</span>
+          </button>
+
+          <span className="font-mono text-xs font-bold px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded">
+            TABLE: {room.roomCode}
+          </span>
+        </div>
       </div>
 
       {error && <p role="alert" className="text-red-600 text-sm">{error}</p>}

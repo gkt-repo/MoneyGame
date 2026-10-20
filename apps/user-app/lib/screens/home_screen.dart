@@ -440,20 +440,27 @@ class _HomeScreenState extends State<HomeScreen> {
                     separatorBuilder: (context, index) => const Divider(height: 16, color: AppColors.slate100),
                     itemBuilder: (context, index) {
                       final tx = _transactions[index];
-                      final isCredit = tx.type == 'DEPOSIT' ||
-                          tx.type == 'ROOM_WIN' ||
-                          tx.type == 'REFUND' ||
-                          tx.type == 'MANUAL_CREDIT';
-                      final color = isCredit ? AppColors.emerald700 : AppColors.red600;
-                      final sign = isCredit ? '+' : '-';
-                      final icon = _getTransactionIcon(tx.type);
+                      final isCredit = tx.amount > 0 ||
+                          (tx.amount == 0 &&
+                              (tx.type == 'DEPOSIT' ||
+                                  tx.type == 'ROOM_WIN' ||
+                                  tx.type == 'REFUND' ||
+                                  tx.type == 'MANUAL_CREDIT'));
+                      final isZero = tx.amount == 0;
+                      final color = isZero
+                          ? AppColors.slate600
+                          : (isCredit ? AppColors.emerald700 : AppColors.red600);
+                      final sign = isZero ? '' : (isCredit ? '+' : '-');
+                      final icon = _getTransactionIcon(tx.type, tx.amount);
 
                       return Row(
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: isCredit ? AppColors.emerald50 : AppColors.red50,
+                              color: isZero
+                                  ? AppColors.slate100
+                                  : (isCredit ? AppColors.emerald50 : AppColors.red50),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Icon(icon, size: 18, color: color),
@@ -487,7 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            '$sign₹${tx.amount.toStringAsFixed(2)}',
+                            '$sign₹${tx.amount.abs().toStringAsFixed(2)}',
                             style: TextStyle(
                               fontFamily: 'monospace',
                               fontSize: 13,
@@ -590,13 +597,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  IconData _getTransactionIcon(String type) {
+  IconData _getTransactionIcon(String type, [double? amount]) {
     switch (type) {
       case 'DEPOSIT':
         return Icons.arrow_downward;
       case 'ROOM_WIN':
         return Icons.emoji_events;
       case 'ROOM_ENTRY':
+      case 'ROOM_BET':
         return Icons.sports_esports;
       case 'WITHDRAWAL_LOCK':
       case 'WITHDRAWAL_COMPLETE':
@@ -607,8 +615,10 @@ class _HomeScreenState extends State<HomeScreen> {
         return Icons.add_circle;
       case 'MANUAL_DEBIT':
         return Icons.remove_circle;
+      case 'MANUAL_ADJUST':
+        return (amount != null && amount >= 0) ? Icons.add_circle : Icons.remove_circle;
       default:
-        return Icons.payments;
+        return (amount != null && amount >= 0) ? Icons.add_circle : Icons.payments;
     }
   }
 

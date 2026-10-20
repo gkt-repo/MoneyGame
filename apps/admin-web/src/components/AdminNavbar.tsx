@@ -10,6 +10,7 @@ import {
   LogOut,
   Users,
   MessageSquare,
+  RotateCw,
 } from 'lucide-react';
 
 export type AdminTab = 'overview' | 'users' | 'deposits' | 'withdrawals' | 'rooms' | 'feedback' | 'settings';
@@ -21,6 +22,8 @@ interface AdminNavbarProps {
   onLogout: () => void;
   pendingCount: number;
   openFeedbacksCount?: number;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 export const AdminNavbar: React.FC<AdminNavbarProps> = ({
@@ -30,6 +33,8 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
   onLogout,
   pendingCount,
   openFeedbacksCount,
+  onRefresh,
+  isRefreshing = false,
 }) => {
   const tabs = [
     { id: 'overview' as AdminTab, label: 'Overview', icon: LayoutDashboard },
@@ -97,8 +102,20 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
             })}
           </nav>
 
-          {/* Right Action: User & Logout */}
+          {/* Right Action: Refresh, User & Logout */}
           <div className="flex items-center gap-3">
+            {onRefresh && (
+              <button
+                onClick={onRefresh}
+                disabled={isRefreshing}
+                title="Refresh Platform Telemetry"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700/80 border border-zinc-700 rounded-lg transition disabled:opacity-50 cursor-pointer shadow-2xs"
+              >
+                <RotateCw className={`w-3.5 h-3.5 text-zinc-400 ${isRefreshing ? 'animate-spin text-emerald-400' : ''}`} />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+            )}
+
             <div className="hidden sm:flex flex-col items-end">
               <span className="text-xs font-medium text-zinc-200">{admin.username}</span>
               <span className="text-[11px] text-zinc-500">{admin.email || admin.role}</span>
