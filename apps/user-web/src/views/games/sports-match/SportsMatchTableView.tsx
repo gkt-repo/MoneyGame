@@ -1,5 +1,6 @@
 import React from 'react';
-import { RoomItem, UserProfile } from '../../../services/api';
+import { RoomItem, userApi, UserProfile } from '../../../services/api';
+import { MatchCountdownBadge } from '../../LobbyView';
 import {
   Trophy,
   Users,
@@ -26,6 +27,12 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
   onRefreshBalance,
   onBack,
 }) => {
+  const [sportsMatches, setSportsMatches] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    userApi.getSportsMatches().then(setSportsMatches).catch(() => {});
+  }, []);
+
   const config =
     typeof room.customConfig === 'string'
       ? (() => {
@@ -41,6 +48,37 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
   let rawTitle = config.matchTitle || '';
   let t1Name = team1Raw;
   let t2Name = team2Raw;
+
+  if (config.matchId && sportsMatches.length > 0) {
+    const found = sportsMatches.find((m) => m.id === config.matchId);
+    if (found) {
+      if (!rawTitle) rawTitle = found.name || '';
+      if (!t1Name || t1Name.toLowerCase() === 'team 1') t1Name = found.team1?.name || t1Name;
+      if (!t2Name || t2Name.toLowerCase() === 'team 2') t2Name = found.team2?.name || t2Name;
+      if (found.team1) Object.assign(config.team1 || {}, found.team1);
+      if (found.team2) Object.assign(config.team2 || {}, found.team2);
+      config.startTime = config.startTime || found.startTime;
+    }
+  }
+
+  const isGeneric = !t1Name || !t2Name || t1Name.toLowerCase() === 'team 1' || t2Name.toLowerCase() === 'team 2' || !rawTitle || rawTitle.toLowerCase() === 'team 1 vs team 2';
+
+  if (isGeneric && sportsMatches.length > 0) {
+    let hash = 0;
+    for (let i = 0; i < room.roomCode.length; i++) {
+      hash = (hash << 5) - hash + room.roomCode.charCodeAt(i);
+      hash |= 0;
+    }
+    const idx = Math.abs(hash) % sportsMatches.length;
+    const fallback = sportsMatches[idx];
+    rawTitle = fallback.name || rawTitle;
+    t1Name = fallback.team1?.name || t1Name;
+    t2Name = fallback.team2?.name || t2Name;
+    if (fallback.team1) Object.assign(config.team1 || {}, fallback.team1);
+    if (fallback.team2) Object.assign(config.team2 || {}, fallback.team2);
+    config.startTime = config.startTime || fallback.startTime;
+  }
+
   if ((!t1Name || !t2Name) && rawTitle.includes(' vs ')) {
     const parts = rawTitle.split(' vs ');
     if (!t1Name && parts.length > 0) t1Name = parts[0].trim();
@@ -107,6 +145,9 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              {config.startTime && (
+                <MatchCountdownBadge startTimeStr={config.startTime} roomStatus={room.status} />
+              )}
               {isCompleted ? (
                 <span className="px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full font-bold flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5" />

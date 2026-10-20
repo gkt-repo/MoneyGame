@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/constants/colors.dart';
 import '../../core/network/api_client.dart';
@@ -25,11 +26,13 @@ class _LobbyScreenState extends State<LobbyScreen> {
   bool _loading = true;
   String? _error;
   String _filterGame = 'ALL';
+  List<Map<String, dynamic>> _liveSportsMatches = [];
 
   @override
   void initState() {
     super.initState();
     _fetchRooms();
+    _fetchSportsMatches();
 
     SocketService.on('lobby_rooms_updated', (data) {
       if (mounted && data != null && data is List) {
@@ -39,6 +42,19 @@ class _LobbyScreenState extends State<LobbyScreen> {
       }
     });
   }
+
+  Future<void> _fetchSportsMatches() async {
+    try {
+      final matches = await ApiClient.getSportsMatches();
+      if (mounted) {
+        setState(() {
+          _liveSportsMatches = matches.map((m) => Map<String, dynamic>.from(m as Map)).toList();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Map<String, dynamic> _resolveSportsMatch(RoomModel room) => resolveSportsMatch(room, _liveSportsMatches);
 
   Future<void> _fetchRooms() async {
     setState(() => _loading = true);
@@ -50,6 +66,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
           _error = null;
         });
       }
+      _fetchSportsMatches();
     } catch (e) {
       if (mounted) {
         setState(() => _error = e.toString());
@@ -122,6 +139,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
       ),
       builder: (ctx) => _JoinCodeBottomSheet(
         user: widget.user,
+        liveSportsMatches: _liveSportsMatches,
         onRoomJoined: (room) {
           Navigator.of(ctx).pop();
           _navigateToRoom(room.id);
@@ -331,7 +349,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
                           final room = filtered[index];
-                          return _buildRoomCard(room);
+                          return _buildRoomCard(room, index);
                         },
                         childCount: filtered.length,
                       ),
@@ -378,7 +396,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
     );
   }
 
-  Widget _buildRoomCard(RoomModel room) {
+  Widget _buildRoomCard(RoomModel room, int index) {
     final isPlayerInRoom = room.players.any((p) => p.userId == widget.user.id);
     final isFull = room.players.length >= room.maxPlayers;
     final totalPot = room.entryFee * room.maxPlayers;
@@ -386,50 +404,47 @@ class _LobbyScreenState extends State<LobbyScreen> {
     final isSportsMatch = room.gameType == 'SPORTS_MATCH';
     final winnerPrize = isSportsMatch ? (room.entryFee * room.players.length) : (totalPot * 0.90);
 
-    // Resolve dynamic match & team names from room's actual customConfig
-    String team1Name = room.customConfig?['team1']?['name']?.toString() ?? '';
-    String team2Name = room.customConfig?['team2']?['name']?.toString() ?? '';
-    String? team1Short = room.customConfig?['team1']?['shortName']?.toString();
-    String? team2Short = room.customConfig?['team2']?['shortName']?.toString();
-    String matchTitle = room.customConfig?['matchTitle']?.toString() ?? '';
-
-    // If team names are missing but matchTitle contains " vs ", dynamically extract them
-    if ((team1Name.isEmpty || team2Name.isEmpty) && matchTitle.contains(' vs ')) {
-      final parts = matchTitle.split(' vs ');
-      if (team1Name.isEmpty && parts.isNotEmpty) team1Name = parts[0].trim();
-      if (team2Name.isEmpty && parts.length > 1) team2Name = parts[1].trim();
-    }
-    if (team1Name.isEmpty) team1Name = 'Team 1';
-    if (team2Name.isEmpty) team2Name = 'Team 2';
-    if (matchTitle.isEmpty) matchTitle = '$team1Name vs $team2Name';
-
-    final team1Label = (team1Short != null && team1Short.isNotEmpty) ? team1Short : team1Name;
-    final team2Label = (team2Short != null && team2Short.isNotEmpty) ? team2Short : team2Name;
+    // Resolve dynamic match & team names from room's actual customConfig or active fixtures
+    final sportsData = isSportsMatch ? _resolveSportsMatch(room) : null;
+    final team1Name = sportsData?['team1Name'] as String? ?? 'Team 1';
+    final team2Name = sportsData?['team2Name'] as String? ?? 'Team 2';
+    final team1Label = sportsData?['team1Label'] as String? ?? team1Name;
+    final team2Label = sportsData?['team2Label'] as String? ?? team2Name;
+    final team1Logo = sportsData?['team1Logo'] as String?;
+    final team2Logo = sportsData?['team2Logo'] as String?;
+    final matchTitle = sportsData?['matchTitle'] as String? ?? '$team1Name vs $team2Name';
+    final startTimeStr = sportsData?['startTime'] as String?;
 
     final team1Count = room.players.where((p) => p.guessNumber == 1).length;
     final team2Count = room.players.where((p) => p.guessNumber == 2).length;
 
+    // Distinguish cards cleanly: alternate sports cards with slightly purple / slightly blue
+    final isEven = index % 2 == 0;
+    final cardBgColor = isTeenPatti
+        ? const Color(0xFFFAF5FF)
+        : isSportsMatch
+            ? (isEven ? const Color(0xFFFAF5FF) : const Color(0xFFEFF6FF))
+            : (isEven ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC));
+
+    final cardBorderColor = isPlayerInRoom
+        ? (isTeenPatti
+            ? const Color(0xFF9333EA)
+            : isSportsMatch
+                ? (isEven ? const Color(0xFF9333EA) : const Color(0xFF2563EB))
+                : AppColors.emerald600)
+        : (isTeenPatti
+            ? const Color(0xFFE9D5FF)
+            : isSportsMatch
+                ? (isEven ? const Color(0xFFE9D5FF) : const Color(0xFFBFDBFE))
+                : const Color(0xFFA7F3D0));
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: isTeenPatti
-            ? const Color(0xFFFAF5FF) // Slightly purple background for Teen Patti
-            : isSportsMatch
-                ? const Color(0xFFEFF6FF) // Slightly blue background for Live Sports
-                : const Color(0xFFF0FDF4), // Slightly emerald background for Dice Guess
+        color: cardBgColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isPlayerInRoom
-              ? (isTeenPatti
-                  ? const Color(0xFF9333EA)
-                  : isSportsMatch
-                      ? const Color(0xFF2563EB)
-                      : AppColors.emerald600)
-              : (isTeenPatti
-                  ? const Color(0xFFE9D5FF)
-                  : isSportsMatch
-                      ? const Color(0xFFBFDBFE)
-                      : const Color(0xFFA7F3D0)),
+          color: cardBorderColor,
           width: isPlayerInRoom ? 1.5 : 1,
         ),
       ),
@@ -571,6 +586,11 @@ class _LobbyScreenState extends State<LobbyScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            const SizedBox(width: 6),
+                            MatchCountdownClock(
+                              startTimeStr: startTimeStr,
+                              roomStatus: room.status,
+                            ),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -580,15 +600,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           children: [
                             Row(
                               children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF2563EB),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
+                                buildTeamLogo(team1Logo, const Color(0xFF2563EB), size: 18),
+                                const SizedBox(width: 6),
                                 Text(
                                   '$team1Label: $team1Count',
                                   style: const TextStyle(
@@ -609,15 +622,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
                                     color: Color(0xFF7E22CE),
                                   ),
                                 ),
-                                const SizedBox(width: 4),
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF9333EA),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
+                                const SizedBox(width: 6),
+                                buildTeamLogo(team2Logo, const Color(0xFF9333EA), size: 18),
                               ],
                             ),
                           ],
@@ -789,21 +795,13 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
   void _showSportsJoinDialog(RoomModel room) {
     int selectedTeam = 1;
-    String team1Name = room.customConfig?['team1']?['name']?.toString() ?? '';
-    String team2Name = room.customConfig?['team2']?['name']?.toString() ?? '';
-    String? team1Short = room.customConfig?['team1']?['shortName']?.toString();
-    String? team2Short = room.customConfig?['team2']?['shortName']?.toString();
-
-    String matchTitle = room.customConfig?['matchTitle']?.toString() ?? '';
-
-    if ((team1Name.isEmpty || team2Name.isEmpty) && matchTitle.contains(' vs ')) {
-      final parts = matchTitle.split(' vs ');
-      if (team1Name.isEmpty && parts.isNotEmpty) team1Name = parts[0].trim();
-      if (team2Name.isEmpty && parts.length > 1) team2Name = parts[1].trim();
-    }
-    if (team1Name.isEmpty) team1Name = 'Team 1';
-    if (team2Name.isEmpty) team2Name = 'Team 2';
-    if (matchTitle.isEmpty) matchTitle = '$team1Name vs $team2Name';
+    final sportsData = _resolveSportsMatch(room);
+    final team1Name = sportsData['team1Name'] as String;
+    final team2Name = sportsData['team2Name'] as String;
+    final team1Logo = sportsData['team1Logo'] as String?;
+    final team2Logo = sportsData['team2Logo'] as String?;
+    final matchTitle = sportsData['matchTitle'] as String;
+    final startTimeStr = sportsData['startTime'] as String?;
     final team1Count = room.players.where((p) => p.guessNumber == 1).length;
     final team2Count = room.players.where((p) => p.guessNumber == 2).length;
 
@@ -837,6 +835,11 @@ class _LobbyScreenState extends State<LobbyScreen> {
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(width: 6),
+                MatchCountdownClock(
+                  startTimeStr: startTimeStr,
+                  roomStatus: room.status,
                 ),
               ],
             ),
@@ -912,11 +915,18 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           ),
                           child: Column(
                             children: [
-                              if (selectedTeam == 1)
-                                const Icon(Icons.check_circle, size: 18, color: Color(0xFF2563EB))
-                              else
-                                const Icon(Icons.radio_button_unchecked, size: 18, color: AppColors.slate400),
-                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  buildTeamLogo(team1Logo, const Color(0xFF2563EB), size: 20),
+                                  const SizedBox(width: 6),
+                                  if (selectedTeam == 1)
+                                    const Icon(Icons.check_circle, size: 16, color: Color(0xFF2563EB))
+                                  else
+                                    const Icon(Icons.radio_button_unchecked, size: 16, color: AppColors.slate400),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
                               Text(
                                 team1Name,
                                 style: TextStyle(
@@ -954,11 +964,18 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           ),
                           child: Column(
                             children: [
-                              if (selectedTeam == 2)
-                                const Icon(Icons.check_circle, size: 18, color: Color(0xFF7E22CE))
-                              else
-                                const Icon(Icons.radio_button_unchecked, size: 18, color: AppColors.slate400),
-                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  buildTeamLogo(team2Logo, const Color(0xFF9333EA), size: 20),
+                                  const SizedBox(width: 6),
+                                  if (selectedTeam == 2)
+                                    const Icon(Icons.check_circle, size: 16, color: Color(0xFF7E22CE))
+                                  else
+                                    const Icon(Icons.radio_button_unchecked, size: 16, color: AppColors.slate400),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
                               Text(
                                 team2Name,
                                 style: TextStyle(
@@ -1270,6 +1287,75 @@ class _LobbyScreenState extends State<LobbyScreen> {
   }
 }
 
+Map<String, dynamic> resolveSportsMatch(RoomModel room, [List<Map<String, dynamic>> liveMatches = const []]) {
+  String team1Name = room.customConfig?['team1']?['name']?.toString() ?? '';
+  String team2Name = room.customConfig?['team2']?['name']?.toString() ?? '';
+  String? team1Short = room.customConfig?['team1']?['shortName']?.toString();
+  String? team2Short = room.customConfig?['team2']?['shortName']?.toString();
+  String matchTitle = room.customConfig?['matchTitle']?.toString() ?? '';
+  String? team1Logo = room.customConfig?['team1']?['logo']?.toString();
+  String? team2Logo = room.customConfig?['team2']?['logo']?.toString();
+  String? startTimeStr = room.customConfig?['startTime']?.toString();
+
+  final matchId = room.customConfig?['matchId']?.toString();
+  if (matchId != null && matchId.isNotEmpty && liveMatches.isNotEmpty) {
+    final found = liveMatches.firstWhere((m) => m['id']?.toString() == matchId, orElse: () => {});
+    if (found.isNotEmpty) {
+      if (matchTitle.isEmpty) matchTitle = found['name']?.toString() ?? '';
+      if (team1Name.isEmpty || team1Name.toLowerCase() == 'team 1') team1Name = found['team1']?['name']?.toString() ?? team1Name;
+      team1Short ??= found['team1']?['shortName']?.toString();
+      team1Logo ??= found['team1']?['logo']?.toString();
+      if (team2Name.isEmpty || team2Name.toLowerCase() == 'team 2') team2Name = found['team2']?['name']?.toString() ?? team2Name;
+      team2Short ??= found['team2']?['shortName']?.toString();
+      team2Logo ??= found['team2']?['logo']?.toString();
+      startTimeStr ??= found['startTime']?.toString();
+    }
+  }
+
+  final isGeneric = team1Name.isEmpty ||
+      team2Name.isEmpty ||
+      team1Name.toLowerCase() == 'team 1' ||
+      team2Name.toLowerCase() == 'team 2' ||
+      matchTitle.isEmpty ||
+      matchTitle.toLowerCase() == 'team 1 vs team 2';
+
+  if (isGeneric && liveMatches.isNotEmpty) {
+    final idx = room.roomCode.hashCode.abs() % liveMatches.length;
+    final fallback = liveMatches[idx];
+    matchTitle = fallback['name']?.toString() ?? matchTitle;
+    team1Name = fallback['team1']?['name']?.toString() ?? team1Name;
+    team1Short = fallback['team1']?['shortName']?.toString() ?? team1Short;
+    team1Logo = fallback['team1']?['logo']?.toString() ?? team1Logo;
+    team2Name = fallback['team2']?['name']?.toString() ?? team2Name;
+    team2Short = fallback['team2']?['shortName']?.toString() ?? team2Short;
+    team2Logo = fallback['team2']?['logo']?.toString() ?? team2Logo;
+    startTimeStr = fallback['startTime']?.toString() ?? startTimeStr;
+  }
+
+  if ((team1Name.isEmpty || team2Name.isEmpty) && matchTitle.contains(' vs ')) {
+    final parts = matchTitle.split(' vs ');
+    if (team1Name.isEmpty && parts.isNotEmpty) team1Name = parts[0].trim();
+    if (team2Name.isEmpty && parts.length > 1) team2Name = parts[1].trim();
+  }
+  if (team1Name.isEmpty) team1Name = 'Team 1';
+  if (team2Name.isEmpty) team2Name = 'Team 2';
+  if (matchTitle.isEmpty) matchTitle = '$team1Name vs $team2Name';
+
+  final team1Label = (team1Short != null && team1Short.isNotEmpty) ? team1Short : team1Name;
+  final team2Label = (team2Short != null && team2Short.isNotEmpty) ? team2Short : team2Name;
+
+  return {
+    'matchTitle': matchTitle,
+    'team1Name': team1Name,
+    'team2Name': team2Name,
+    'team1Label': team1Label,
+    'team2Label': team2Label,
+    'team1Logo': team1Logo,
+    'team2Logo': team2Logo,
+    'startTime': startTimeStr,
+  };
+}
+
 String formatMatchDateTime(String? startTimeStr) {
   if (startTimeStr == null) return 'Upcoming';
   final parsed = DateTime.tryParse(startTimeStr);
@@ -1293,6 +1379,171 @@ String formatMatchDateTime(String? startTimeStr) {
     final monthStr = months[dt.month - 1];
     return '${dt.day} $monthStr, $timeStr';
   }
+}
+
+class MatchCountdownClock extends StatefulWidget {
+  final String? startTimeStr;
+  final String roomStatus;
+
+  const MatchCountdownClock({
+    super.key,
+    required this.startTimeStr,
+    required this.roomStatus,
+  });
+
+  @override
+  State<MatchCountdownClock> createState() => _MatchCountdownClockState();
+}
+
+class _MatchCountdownClockState extends State<MatchCountdownClock> {
+  Timer? _timer;
+  Duration _remaining = Duration.zero;
+  DateTime? _targetTime;
+
+  @override
+  void initState() {
+    super.initState();
+    _initTarget();
+    _startTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant MatchCountdownClock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.startTimeStr != widget.startTimeStr || oldWidget.roomStatus != widget.roomStatus) {
+      _initTarget();
+    }
+  }
+
+  void _initTarget() {
+    if (widget.startTimeStr != null && widget.startTimeStr!.trim().isNotEmpty) {
+      _targetTime = DateTime.tryParse(widget.startTimeStr!)?.toLocal();
+    } else {
+      _targetTime = null;
+    }
+    _calculateRemaining();
+  }
+
+  void _calculateRemaining() {
+    if (_targetTime == null) {
+      _remaining = Duration.zero;
+      return;
+    }
+    _remaining = _targetTime!.difference(DateTime.now());
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        _calculateRemaining();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_targetTime == null) {
+      if (widget.roomStatus == 'PLAYING') {
+        return _buildBadge('Match Live', Icons.lock_outline_rounded, isLocked: true);
+      }
+      return _buildBadge('Upcoming', Icons.timer_outlined, isLocked: false);
+    }
+
+    final isPast = _remaining.isNegative;
+
+    if (isPast) {
+      return _buildBadge(
+        widget.roomStatus == 'PLAYING' ? 'Match Live' : 'Locked',
+        Icons.lock_outline_rounded,
+        isLocked: true,
+      );
+    }
+
+    final days = _remaining.inDays;
+    final hours = _remaining.inHours % 24;
+    final minutes = _remaining.inMinutes % 60;
+    final seconds = _remaining.inSeconds % 60;
+
+    String text;
+    if (days > 0) {
+      text = 'Locks in ${days}d ${hours}h';
+    } else if (hours > 0) {
+      final hStr = hours.toString().padLeft(2, '0');
+      final mStr = minutes.toString().padLeft(2, '0');
+      final sStr = seconds.toString().padLeft(2, '0');
+      text = 'Locks in $hStr:$mStr:$sStr';
+    } else {
+      final mStr = minutes.toString().padLeft(2, '0');
+      final sStr = seconds.toString().padLeft(2, '0');
+      text = 'Locks in $mStr:$sStr';
+    }
+
+    return _buildBadge(text, Icons.timer_outlined, isLocked: false);
+  }
+
+  Widget _buildBadge(String label, IconData icon, {required bool isLocked}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+      decoration: BoxDecoration(
+        color: isLocked ? const Color(0xFFF1F5F9) : const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: isLocked ? const Color(0xFFCBD5E1) : const Color(0xFFFCD34D),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 11,
+            color: isLocked ? AppColors.slate600 : const Color(0xFFB45309),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'monospace',
+              color: isLocked ? AppColors.slate700 : const Color(0xFF92400E),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Widget buildTeamLogo(String? logoUrl, Color fallbackColor, {double size = 14}) {
+  if (logoUrl != null && (logoUrl.startsWith('http://') || logoUrl.startsWith('https://'))) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size / 2),
+      child: Image.network(
+        logoUrl,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: fallbackColor, shape: BoxShape.circle),
+        ),
+      ),
+    );
+  }
+  return Container(
+    width: 8,
+    height: 8,
+    decoration: BoxDecoration(color: fallbackColor, shape: BoxShape.circle),
+  );
 }
 
 // Bottom sheet for Creating Table
@@ -2209,8 +2460,13 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
 class _JoinCodeBottomSheet extends StatefulWidget {
   final UserProfileModel user;
   final Function(RoomModel room) onRoomJoined;
+  final List<Map<String, dynamic>> liveSportsMatches;
 
-  const _JoinCodeBottomSheet({required this.user, required this.onRoomJoined});
+  const _JoinCodeBottomSheet({
+    required this.user,
+    required this.onRoomJoined,
+    this.liveSportsMatches = const [],
+  });
 
   @override
   State<_JoinCodeBottomSheet> createState() => _JoinCodeBottomSheetState();
@@ -2526,33 +2782,36 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
             // Sports Match Team Selection
             if (_targetRoom!.gameType == 'SPORTS_MATCH') ...[
               Builder(builder: (context) {
-                final cfg = _targetRoom!.customConfig is Map ? _targetRoom!.customConfig as Map : {};
-                String t1Name = cfg['team1']?['name']?.toString() ?? '';
-                String t2Name = cfg['team2']?['name']?.toString() ?? '';
-                String? t1Short = cfg['team1']?['shortName']?.toString();
-                String? t2Short = cfg['team2']?['shortName']?.toString();
-
-                String matchTitle = cfg['matchTitle']?.toString() ?? '';
-
-                if ((t1Name.isEmpty || t2Name.isEmpty) && matchTitle.contains(' vs ')) {
-                  final parts = matchTitle.split(' vs ');
-                  if (t1Name.isEmpty && parts.isNotEmpty) t1Name = parts[0].trim();
-                  if (t2Name.isEmpty && parts.length > 1) t2Name = parts[1].trim();
-                }
-                if (t1Name.isEmpty) t1Name = 'Team 1';
-                if (t2Name.isEmpty) t2Name = 'Team 2';
-                if (matchTitle.isEmpty) matchTitle = '$t1Name vs $t2Name';
+                final sportsData = resolveSportsMatch(_targetRoom!, widget.liveSportsMatches);
+                final t1Name = sportsData['team1Name'] as String;
+                final t2Name = sportsData['team2Name'] as String;
+                final t1Logo = sportsData['team1Logo'] as String?;
+                final t2Logo = sportsData['team2Logo'] as String?;
+                final matchTitle = sportsData['matchTitle'] as String;
+                final startTimeStr = sportsData['startTime'] as String?;
                 final t1Picks = _targetRoom!.players.where((p) => p.guessNumber == 1).length;
                 final t2Picks = _targetRoom!.players.where((p) => p.guessNumber == 2).length;
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(
-                      child: Text(
-                        '🏏 $matchTitle',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1E3A8A)),
-                      ),
+                    Row(
+                      children: [
+                        const Text('🏏 ', style: TextStyle(fontSize: 14)),
+                        Expanded(
+                          child: Text(
+                            matchTitle,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1E3A8A)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        MatchCountdownClock(
+                          startTimeStr: startTimeStr,
+                          roomStatus: _targetRoom!.status,
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     const Text(
@@ -2578,8 +2837,10 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                               ),
                               child: Column(
                                 children: [
+                                  buildTeamLogo(t1Logo, const Color(0xFF2563EB), size: 22),
+                                  const SizedBox(height: 6),
                                   Text(
-                                    '$t1Name',
+                                    t1Name,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
@@ -2615,8 +2876,10 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                               ),
                               child: Column(
                                 children: [
+                                  buildTeamLogo(t2Logo, const Color(0xFF9333EA), size: 22),
+                                  const SizedBox(height: 6),
                                   Text(
-                                    '$t2Name',
+                                    t2Name,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(

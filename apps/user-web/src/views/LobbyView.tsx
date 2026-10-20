@@ -18,6 +18,7 @@ import {
   Sparkles,
   Search,
   RotateCw,
+  Clock,
 } from 'lucide-react';
 
 interface LobbyViewProps {
@@ -73,6 +74,161 @@ export const formatMatchDateTime = (startTimeStr?: string) => {
     time: timeLabel,
     full: `${dateLabel}, ${timeLabel}`,
   };
+};
+
+export const resolveSportsMatch = (room: RoomItem, matches: any[] = []) => {
+  const cfg = parseCustomConfig(room.customConfig);
+  let t1Name = cfg.team1?.name || '';
+  let t2Name = cfg.team2?.name || '';
+  let t1Short = cfg.team1?.shortName || '';
+  let t2Short = cfg.team2?.shortName || '';
+  let t1Logo = cfg.team1?.logo;
+  let t2Logo = cfg.team2?.logo;
+  let matchTitle = cfg.matchTitle || '';
+  let startTime = cfg.startTime;
+
+  if (cfg.matchId && matches.length > 0) {
+    const found = matches.find((m) => m.id === cfg.matchId);
+    if (found) {
+      if (!matchTitle) matchTitle = found.name || '';
+      if (!t1Name || t1Name.toLowerCase() === 'team 1') t1Name = found.team1?.name || t1Name;
+      if (!t1Short) t1Short = found.team1?.shortName || '';
+      if (!t1Logo) t1Logo = found.team1?.logo;
+      if (!t2Name || t2Name.toLowerCase() === 'team 2') t2Name = found.team2?.name || t2Name;
+      if (!t2Short) t2Short = found.team2?.shortName || '';
+      if (!t2Logo) t2Logo = found.team2?.logo;
+      if (!startTime) startTime = found.startTime;
+    }
+  }
+
+  const isGeneric =
+    !t1Name ||
+    !t2Name ||
+    t1Name.toLowerCase() === 'team 1' ||
+    t2Name.toLowerCase() === 'team 2' ||
+    !matchTitle ||
+    matchTitle.toLowerCase() === 'team 1 vs team 2';
+
+  if (isGeneric && matches.length > 0) {
+    let hash = 0;
+    for (let i = 0; i < room.roomCode.length; i++) {
+      hash = (hash << 5) - hash + room.roomCode.charCodeAt(i);
+      hash |= 0;
+    }
+    const idx = Math.abs(hash) % matches.length;
+    const fallback = matches[idx];
+    matchTitle = fallback.name || matchTitle;
+    t1Name = fallback.team1?.name || t1Name;
+    t1Short = fallback.team1?.shortName || t1Short;
+    t1Logo = fallback.team1?.logo || t1Logo;
+    t2Name = fallback.team2?.name || t2Name;
+    t2Short = fallback.team2?.shortName || t2Short;
+    t2Logo = fallback.team2?.logo || t2Logo;
+    startTime = fallback.startTime || startTime;
+  }
+
+  if ((!t1Name || !t2Name) && matchTitle.includes(' vs ')) {
+    const parts = matchTitle.split(' vs ');
+    if (!t1Name && parts.length > 0) t1Name = parts[0].trim();
+    if (!t2Name && parts.length > 1) t2Name = parts[1].trim();
+  }
+  if (!t1Name) t1Name = 'Team 1';
+  if (!t2Name) t2Name = 'Team 2';
+  if (!matchTitle) matchTitle = `${t1Name} vs ${t2Name}`;
+
+  return {
+    matchTitle,
+    team1: { name: t1Name, shortName: t1Short || t1Name, logo: t1Logo },
+    team2: { name: t2Name, shortName: t2Short || t2Name, logo: t2Logo },
+    startTime,
+  };
+};
+
+export const MatchCountdownBadge: React.FC<{
+  startTimeStr?: string;
+  roomStatus: string;
+}> = ({ startTimeStr, roomStatus }) => {
+  const [now, setNow] = useState<number>(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const target = startTimeStr ? new Date(startTimeStr).getTime() : null;
+
+  if (!target || isNaN(target)) {
+    if (roomStatus === 'PLAYING') {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-100 text-slate-700 border border-slate-300 shrink-0">
+          <Lock className="w-2.5 h-2.5 text-slate-500" />
+          <span>Match Live</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-50 text-amber-800 border border-amber-300 shrink-0">
+        <Clock className="w-2.5 h-2.5 text-amber-600" />
+        <span>Upcoming</span>
+      </span>
+    );
+  }
+
+  const diff = target - now;
+
+  if (diff <= 0) {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-100 text-slate-700 border border-slate-300 shrink-0">
+        <Lock className="w-2.5 h-2.5 text-slate-500" />
+        <span>{roomStatus === 'PLAYING' ? 'Match Live' : 'Locked'}</span>
+      </span>
+    );
+  }
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+  const minutes = Math.floor((diff / (1000 * 60)) % 60);
+  const seconds = Math.floor((diff / 1000) % 60);
+
+  let label = '';
+  if (days > 0) {
+    label = `Locks in ${days}d ${hours}h`;
+  } else if (hours > 0) {
+    const hStr = String(hours).padStart(2, '0');
+    const mStr = String(minutes).padStart(2, '0');
+    const sStr = String(seconds).padStart(2, '0');
+    label = `Locks in ${hStr}:${mStr}:${sStr}`;
+  } else {
+    const mStr = String(minutes).padStart(2, '0');
+    const sStr = String(seconds).padStart(2, '0');
+    label = `Locks in ${mStr}:${sStr}`;
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-50 text-amber-800 border border-amber-300 shrink-0">
+      <Clock className="w-2.5 h-2.5 text-amber-600" />
+      <span>{label}</span>
+    </span>
+  );
+};
+
+export const renderTeamLogo = (logoUrl?: string, fallbackBg: string = 'bg-blue-600', size: number = 14) => {
+  if (logoUrl && (logoUrl.startsWith('http://') || logoUrl.startsWith('https://'))) {
+    return (
+      <img
+        src={logoUrl}
+        alt="logo"
+        className="rounded-full object-contain shrink-0"
+        style={{ width: `${size}px`, height: `${size}px` }}
+        onError={(e) => {
+          (e.currentTarget as HTMLElement).style.display = 'none';
+        }}
+      />
+    );
+  }
+  return <span className={`w-2 h-2 rounded-full ${fallbackBg} shrink-0`} />;
 };
 
 export const LobbyView: React.FC<LobbyViewProps> = ({
@@ -781,7 +937,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             </button>
           </div>
         ) : (
-          filteredRooms.map((room) => {
+          filteredRooms.map((room, index) => {
             const isPlayerInRoom = room.players.some((p) => p.userId === user.id);
             const isFull = room.players.length >= room.maxPlayers;
             const isSports = room.gameType === 'SPORTS_MATCH';
@@ -793,40 +949,34 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             const cfg = parseCustomConfig(room.customConfig);
             const isUnlimited = cfg.isUnlimited || room.maxPlayers >= 100;
 
-            const team1Raw = cfg.team1?.name || '';
-            const team2Raw = cfg.team2?.name || '';
-            let matchTitle = cfg.matchTitle || '';
-
-            let t1Name = team1Raw;
-            let t2Name = team2Raw;
-            if ((!t1Name || !t2Name) && matchTitle.includes(' vs ')) {
-              const parts = matchTitle.split(' vs ');
-              if (!t1Name && parts.length > 0) t1Name = parts[0].trim();
-              if (!t2Name && parts.length > 1) t2Name = parts[1].trim();
-            }
-            if (!t1Name) t1Name = 'Team 1';
-            if (!t2Name) t2Name = 'Team 2';
-            if (!matchTitle) matchTitle = `${t1Name} vs ${t2Name}`;
-
-            const team1 = { name: t1Name, shortName: cfg.team1?.shortName || t1Name };
-            const team2 = { name: t2Name, shortName: cfg.team2?.shortName || t2Name };
+            const sportsResolved = isSports ? resolveSportsMatch(room, sportsMatches) : null;
+            const matchTitle = sportsResolved ? sportsResolved.matchTitle : '';
+            const team1 = sportsResolved ? sportsResolved.team1 : { name: 'Team 1', shortName: 'Team 1', logo: undefined };
+            const team2 = sportsResolved ? sportsResolved.team2 : { name: 'Team 2', shortName: 'Team 2', logo: undefined };
+            const startTimeStr = sportsResolved ? sportsResolved.startTime : cfg.startTime;
 
             const team1Count = room.players.filter((p) => p.guessNumber === 1).length;
             const team2Count = room.players.filter((p) => p.guessNumber === 2).length;
+
+            const isEven = index % 2 === 0;
 
             return (
               <div
                 key={room.id}
                 className={`rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4 transition border ${
                   isSports
-                    ? 'bg-blue-50/50 border-blue-200'
+                    ? isEven
+                      ? 'bg-purple-50/50 border-purple-200'
+                      : 'bg-blue-50/50 border-blue-200'
                     : isTeenPatti
                     ? 'bg-purple-50/50 border-purple-200'
                     : 'bg-emerald-50/40 border-emerald-200'
                 } ${
                   isPlayerInRoom
                     ? isSports
-                      ? 'border-indigo-600 ring-1 ring-indigo-600/30'
+                      ? isEven
+                        ? 'border-purple-600 ring-1 ring-purple-600/30'
+                        : 'border-indigo-600 ring-1 ring-indigo-600/30'
                       : isTeenPatti
                       ? 'border-purple-600 ring-1 ring-purple-600/30'
                       : 'border-emerald-600 ring-1 ring-emerald-600/30'
@@ -877,20 +1027,23 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
                     return (
                       <div className="mb-2 p-3 bg-white border border-blue-200 rounded-xl space-y-2">
-                        <p className="text-xs font-black text-blue-950 truncate flex items-center gap-1.5">
-                          <span>🏏</span>
-                          <span className="truncate">{matchTitle}</span>
-                        </p>
+                        <div className="flex items-center justify-between gap-1.5">
+                          <p className="text-xs font-black text-blue-950 truncate flex items-center gap-1.5">
+                            <span>🏏</span>
+                            <span className="truncate">{matchTitle}</span>
+                          </p>
+                          <MatchCountdownBadge startTimeStr={startTimeStr} roomStatus={room.status} />
+                        </div>
 
                         {/* Team Labels Row */}
                         <div className="flex items-center justify-between text-[11px] font-bold">
                           <span className="text-blue-700 flex items-center gap-1.5 truncate">
-                            <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+                            {renderTeamLogo(team1.logo, 'bg-blue-600', 16)}
                             <span className="truncate">{team1.shortName || team1.name}: {team1Count}</span>
                           </span>
                           <span className="text-purple-700 flex items-center gap-1.5 truncate justify-end">
                             <span className="truncate">{team2.shortName || team2.name}: {team2Count}</span>
-                            <span className="w-2 h-2 rounded-full bg-purple-600 shrink-0" />
+                            {renderTeamLogo(team2.logo, 'bg-purple-600', 16)}
                           </span>
                         </div>
 
@@ -949,11 +1102,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         {room.players.length} / {isUnlimited ? 'Unlimited' : room.maxPlayers} players
                       </span>
                     </div>
-                    {isSports && cfg.startTime && (
-                      <span className="text-[11px] text-slate-400">
-                        Locks {formatMatchDateTime(cfg.startTime).full}
-                      </span>
-                    )}
                   </div>
 
                   <button
@@ -1053,18 +1201,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
       {/* ─── MODAL 2: SPORTS POOL JOIN MODAL ─── */}
       {selectedSportsRoom && (() => {
-        const sportsCfg = parseCustomConfig(selectedSportsRoom.customConfig);
-        let t1Name = sportsCfg.team1?.name || '';
-        let t2Name = sportsCfg.team2?.name || '';
-        let matchTitle = sportsCfg.matchTitle || '';
-        if ((!t1Name || !t2Name) && matchTitle.includes(' vs ')) {
-          const parts = matchTitle.split(' vs ');
-          if (!t1Name && parts.length > 0) t1Name = parts[0].trim();
-          if (!t2Name && parts.length > 1) t2Name = parts[1].trim();
-        }
-        if (!t1Name) t1Name = 'Team 1';
-        if (!t2Name) t2Name = 'Team 2';
-        if (!matchTitle) matchTitle = `${t1Name} vs ${t2Name}`;
+        const resolved = resolveSportsMatch(selectedSportsRoom, sportsMatches);
+        const { matchTitle, team1, team2, startTime } = resolved;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
@@ -1079,12 +1217,15 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedSportsRoom(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <MatchCountdownBadge startTimeStr={startTime} roomStatus={selectedSportsRoom.status} />
+                  <button
+                    onClick={() => setSelectedSportsRoom(null)}
+                    className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Match Pick Cards */}
@@ -1103,8 +1244,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
+                    {renderTeamLogo(team1.logo, 'bg-blue-600', 28)}
                     <span className="text-xs font-extrabold line-clamp-1">
-                      {t1Name}
+                      {team1.name}
                     </span>
                     <span className="text-[11px] text-indigo-600 font-bold">
                       {selectedSportsRoom.players.filter((p) => p.guessNumber === 1).length} picks so far
@@ -1121,8 +1263,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
+                    {renderTeamLogo(team2.logo, 'bg-purple-600', 28)}
                     <span className="text-xs font-extrabold line-clamp-1">
-                      {t2Name}
+                      {team2.name}
                     </span>
                     <span className="text-[11px] text-purple-600 font-bold">
                       {selectedSportsRoom.players.filter((p) => p.guessNumber === 2).length} picks so far
@@ -1838,25 +1981,16 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 <form onSubmit={handleConfirmCodeJoin} className="space-y-4">
                   {/* Next Info Asked: Sports Match Team Pick */}
                   {codeTargetRoom.gameType === 'SPORTS_MATCH' && (() => {
-                    const sportsCfg = parseCustomConfig(codeTargetRoom.customConfig);
-                    let t1Name = sportsCfg.team1?.name || '';
-                    let t2Name = sportsCfg.team2?.name || '';
-                    let matchTitle = sportsCfg.matchTitle || '';
-                    if ((!t1Name || !t2Name) && matchTitle.includes(' vs ')) {
-                      const parts = matchTitle.split(' vs ');
-                      if (!t1Name && parts.length > 0) t1Name = parts[0].trim();
-                      if (!t2Name && parts.length > 1) t2Name = parts[1].trim();
-                    }
-                    if (!t1Name) t1Name = 'Team 1';
-                    if (!t2Name) t2Name = 'Team 2';
-                    if (!matchTitle) matchTitle = `${t1Name} vs ${t2Name}`;
+                    const resolved = resolveSportsMatch(codeTargetRoom, sportsMatches);
+                    const { matchTitle, team1, team2, startTime } = resolved;
                     const t1Count = codeTargetRoom.players.filter((p) => p.guessNumber === 1).length;
                     const t2Count = codeTargetRoom.players.filter((p) => p.guessNumber === 2).length;
 
                     return (
                       <div className="space-y-2">
-                        <div className="text-center font-bold text-xs text-blue-900 bg-blue-50 py-1.5 px-2.5 rounded-lg border border-blue-200">
-                          🏏 {matchTitle}
+                        <div className="flex items-center justify-between font-bold text-xs text-blue-900 bg-blue-50 py-1.5 px-2.5 rounded-lg border border-blue-200">
+                          <span className="truncate">🏏 {matchTitle}</span>
+                          <MatchCountdownBadge startTimeStr={startTime} roomStatus={codeTargetRoom.status} />
                         </div>
                         <label className="block text-xs font-bold text-slate-800">
                           Which team will win this match?
@@ -1871,7 +2005,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                             }`}
                           >
-                            <span className="text-xs font-extrabold line-clamp-1">{t1Name}</span>
+                            {renderTeamLogo(team1.logo, 'bg-blue-600', 24)}
+                            <span className="text-xs font-extrabold line-clamp-1">{team1.name}</span>
                             <span className="text-[10px] text-indigo-600 font-bold">
                               {t1Count} picks so far
                             </span>
@@ -1885,7 +2020,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                             }`}
                           >
-                            <span className="text-xs font-extrabold line-clamp-1">{t2Name}</span>
+                            {renderTeamLogo(team2.logo, 'bg-purple-600', 24)}
+                            <span className="text-xs font-extrabold line-clamp-1">{team2.name}</span>
                             <span className="text-[10px] text-purple-600 font-bold">
                               {t2Count} picks so far
                             </span>

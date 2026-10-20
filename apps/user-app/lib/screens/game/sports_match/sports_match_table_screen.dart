@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/socket_service.dart';
+import '../../lobby/lobby_screen.dart';
 
 class SportsMatchTableScreen extends StatefulWidget {
   final String roomId;
@@ -27,6 +28,8 @@ class _SportsMatchTableScreenState extends State<SportsMatchTableScreen> {
   Timer? _pollTimer;
   final List<MapEntry<String, dynamic Function(dynamic)>> _socketListeners = [];
 
+  List<Map<String, dynamic>> _liveMatches = [];
+
   void _listenSocket(String event, dynamic Function(dynamic) handler) {
     _socketListeners.add(MapEntry(event, handler));
     SocketService.on(event, handler);
@@ -36,8 +39,20 @@ class _SportsMatchTableScreenState extends State<SportsMatchTableScreen> {
   void initState() {
     super.initState();
     _loadRoom();
+    _fetchMatches();
     _setupSockets();
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _loadRoom(silent: true));
+  }
+
+  Future<void> _fetchMatches() async {
+    try {
+      final matches = await ApiClient.getSportsMatches();
+      if (mounted) {
+        setState(() {
+          _liveMatches = matches.map((m) => Map<String, dynamic>.from(m as Map)).toList();
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -138,9 +153,44 @@ class _SportsMatchTableScreenState extends State<SportsMatchTableScreen> {
     final config = room.customConfig is Map<String, dynamic> ? room.customConfig as Map<String, dynamic> : {};
     final rawTeam1 = config['team1'] as Map<String, dynamic>? ?? {};
     final rawTeam2 = config['team2'] as Map<String, dynamic>? ?? {};
-    final rawTitle = config['matchTitle'] as String? ?? '';
+    String rawTitle = config['matchTitle'] as String? ?? '';
     String t1Name = rawTeam1['name']?.toString() ?? '';
     String t2Name = rawTeam2['name']?.toString() ?? '';
+
+    final matchId = config['matchId']?.toString();
+    if (matchId != null && matchId.isNotEmpty && _liveMatches.isNotEmpty) {
+      final found = _liveMatches.firstWhere((m) => m['id']?.toString() == matchId, orElse: () => {});
+      if (found.isNotEmpty) {
+        if (rawTitle.isEmpty) rawTitle = found['name']?.toString() ?? '';
+        if (t1Name.isEmpty || t1Name.toLowerCase() == 'team 1') t1Name = found['team1']?['name']?.toString() ?? t1Name;
+        rawTeam1['shortName'] ??= found['team1']?['shortName'];
+        rawTeam1['logo'] ??= found['team1']?['logo'];
+        if (t2Name.isEmpty || t2Name.toLowerCase() == 'team 2') t2Name = found['team2']?['name']?.toString() ?? t2Name;
+        rawTeam2['shortName'] ??= found['team2']?['shortName'];
+        rawTeam2['logo'] ??= found['team2']?['logo'];
+        config['startTime'] ??= found['startTime'];
+      }
+    }
+
+    final isGeneric = t1Name.isEmpty ||
+        t2Name.isEmpty ||
+        t1Name.toLowerCase() == 'team 1' ||
+        t2Name.toLowerCase() == 'team 2' ||
+        rawTitle.isEmpty ||
+        rawTitle.toLowerCase() == 'team 1 vs team 2';
+
+    if (isGeneric && _liveMatches.isNotEmpty) {
+      final idx = room.roomCode.hashCode.abs() % _liveMatches.length;
+      final fallback = _liveMatches[idx];
+      rawTitle = fallback['name']?.toString() ?? rawTitle;
+      t1Name = fallback['team1']?['name']?.toString() ?? t1Name;
+      rawTeam1['shortName'] = fallback['team1']?['shortName'] ?? rawTeam1['shortName'];
+      rawTeam1['logo'] = fallback['team1']?['logo'] ?? rawTeam1['logo'];
+      t2Name = fallback['team2']?['name']?.toString() ?? t2Name;
+      rawTeam2['shortName'] = fallback['team2']?['shortName'] ?? rawTeam2['shortName'];
+      rawTeam2['logo'] = fallback['team2']?['logo'] ?? rawTeam2['logo'];
+      config['startTime'] ??= fallback['startTime'];
+    }
 
     if ((t1Name.isEmpty || t2Name.isEmpty) && rawTitle.contains(' vs ')) {
       final parts = rawTitle.split(' vs ');
@@ -273,6 +323,13 @@ class _SportsMatchTableScreenState extends State<SportsMatchTableScreen> {
               child: Column(
                 children: [
                   Text(matchTitle, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.white), textAlign: TextAlign.center),
+                  if (config['startTime'] != null) ...[
+                    const SizedBox(height: 8),
+                    MatchCountdownClock(
+                      startTimeStr: config['startTime']?.toString(),
+                      roomStatus: room.status,
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Row(
                     children: [
@@ -289,10 +346,25 @@ class _SportsMatchTableScreenState extends State<SportsMatchTableScreen> {
                                 border: Border.all(color: const Color(0xFF6366F1), width: 1.5),
                               ),
                               child: Center(
-                                child: Text(
-                                  team1['shortName'] ?? team1['name']?.substring(0, 2) ?? 'T1',
-                                  style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                                ),
+                                child: (team1['logo'] != null &&
+                                        (team1['logo'].toString().startsWith('http://') ||
+                                            team1['logo'].toString().startsWith('https://')))
+                                    ? ClipOval(
+                                        child: Image.network(
+                                          team1['logo'].toString(),
+                                          width: 44,
+                                          height: 44,
+                                          fit: BoxFit.contain,
+                                          errorBuilder: (context, error, stackTrace) => Text(
+                                            team1['shortName'] ?? team1['name']?.substring(0, 2) ?? 'T1',
+                                            style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                          ),
+                                        ),
+                                      )
+                                    : Text(
+                                        team1['shortName'] ?? team1['name']?.substring(0, 2) ?? 'T1',
+                                        style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                      ),
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -329,10 +401,25 @@ class _SportsMatchTableScreenState extends State<SportsMatchTableScreen> {
                                 border: Border.all(color: const Color(0xFFA855F7), width: 1.5),
                               ),
                               child: Center(
-                                child: Text(
-                                  team2['shortName'] ?? team2['name']?.substring(0, 2) ?? 'T2',
-                                  style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                                ),
+                                child: (team2['logo'] != null &&
+                                        (team2['logo'].toString().startsWith('http://') ||
+                                            team2['logo'].toString().startsWith('https://')))
+                                    ? ClipOval(
+                                        child: Image.network(
+                                          team2['logo'].toString(),
+                                          width: 44,
+                                          height: 44,
+                                          fit: BoxFit.contain,
+                                          errorBuilder: (context, error, stackTrace) => Text(
+                                            team2['shortName'] ?? team2['name']?.substring(0, 2) ?? 'T2',
+                                            style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                          ),
+                                        ),
+                                      )
+                                    : Text(
+                                        team2['shortName'] ?? team2['name']?.substring(0, 2) ?? 'T2',
+                                        style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                      ),
                               ),
                             ),
                             const SizedBox(height: 8),
