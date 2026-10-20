@@ -1223,11 +1223,35 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
     }
   }
 
+  String _formatMatchDateTime(String? startTimeStr) {
+    if (startTimeStr == null) return 'Upcoming';
+    final dt = DateTime.tryParse(startTimeStr);
+    if (dt == null) return 'Upcoming';
+    final now = DateTime.now();
+    final isToday = dt.year == now.year && dt.month == now.month && dt.day == now.day;
+    final tomorrow = now.add(const Duration(days: 1));
+    final isTomorrow = dt.year == tomorrow.year && dt.month == tomorrow.month && dt.day == tomorrow.day;
+
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final timeStr = '$hour:$minute';
+
+    if (isToday) {
+      return 'Today, $timeStr';
+    } else if (isTomorrow) {
+      return 'Tomorrow, $timeStr';
+    } else {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final monthStr = months[dt.month - 1];
+      return '${dt.day} $monthStr, $timeStr';
+    }
+  }
+
   List<Map<String, dynamic>> get _filteredMatches {
     final query = _searchController.text.trim().toLowerCase();
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    return _sportsMatches.where((m) {
+    final list = _sportsMatches.where((m) {
       final status = m['status']?.toString();
       if (status == 'FINISHED' || status == 'CANCELLED') return false;
 
@@ -1264,6 +1288,19 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
 
       return true;
     }).toList();
+
+    list.sort((a, b) {
+      final aLive = a['status'] == 'LIVE';
+      final bLive = b['status'] == 'LIVE';
+      if (aLive && !bLive) return -1;
+      if (!aLive && bLive) return 1;
+
+      final tA = a['startTime'] != null ? DateTime.tryParse(a['startTime'].toString())?.millisecondsSinceEpoch ?? 9999999999999 : 9999999999999;
+      final tB = b['startTime'] != null ? DateTime.tryParse(b['startTime'].toString())?.millisecondsSinceEpoch ?? 9999999999999 : 9999999999999;
+      return tA.compareTo(tB);
+    });
+
+    return list;
   }
 
   @override
@@ -1336,7 +1373,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                     },
                     borderRadius: BorderRadius.circular(10),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
                       decoration: BoxDecoration(
                         color: isSports ? const Color(0xFFEFF6FF) : AppColors.white,
                         borderRadius: BorderRadius.circular(10),
@@ -1346,18 +1383,19 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                         ),
                       ),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text('🏏', style: TextStyle(fontSize: 20)),
-                          const SizedBox(height: 4),
+                          const Text('🏏', style: TextStyle(fontSize: 16)),
+                          const SizedBox(height: 2),
                           Text(
                             'Live Sports',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: FontWeight.w700,
                               color: isSports ? const Color(0xFF1D4ED8) : AppColors.slate800,
                             ),
                           ),
-                          const Text('Cricket, etc.', style: TextStyle(fontSize: 9, color: AppColors.slate500)),
+                          const Text('Cricket, etc.', style: TextStyle(fontSize: 8, color: AppColors.slate500)),
                         ],
                       ),
                     ),
@@ -1376,7 +1414,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                     },
                     borderRadius: BorderRadius.circular(10),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
                       decoration: BoxDecoration(
                         color: isTeenPatti ? const Color(0xFFFAF5FF) : AppColors.white,
                         borderRadius: BorderRadius.circular(10),
@@ -1386,18 +1424,19 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                         ),
                       ),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text('🃏', style: TextStyle(fontSize: 20)),
-                          const SizedBox(height: 4),
+                          const Text('🃏', style: TextStyle(fontSize: 16)),
+                          const SizedBox(height: 2),
                           Text(
                             'Teen Patti',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: FontWeight.w700,
                               color: isTeenPatti ? const Color(0xFF7E22CE) : AppColors.slate800,
                             ),
                           ),
-                          const Text('3 Cards (2-6p)', style: TextStyle(fontSize: 9, color: AppColors.slate500)),
+                          const Text('3 Cards (2-6p)', style: TextStyle(fontSize: 8, color: AppColors.slate500)),
                         ],
                       ),
                     ),
@@ -1416,7 +1455,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                     },
                     borderRadius: BorderRadius.circular(10),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
                       decoration: BoxDecoration(
                         color: (!isTeenPatti && !isSports) ? AppColors.emerald50 : AppColors.white,
                         borderRadius: BorderRadius.circular(10),
@@ -1426,18 +1465,19 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                         ),
                       ),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text('🎲', style: TextStyle(fontSize: 20)),
-                          const SizedBox(height: 4),
+                          const Text('🎲', style: TextStyle(fontSize: 16)),
+                          const SizedBox(height: 2),
                           Text(
                             'Dice Guess',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: FontWeight.w700,
                               color: (!isTeenPatti && !isSports) ? AppColors.emerald700 : AppColors.slate800,
                             ),
                           ),
-                          const Text('Number (2-4p)', style: TextStyle(fontSize: 9, color: AppColors.slate500)),
+                          const Text('Number (2-4p)', style: TextStyle(fontSize: 8, color: AppColors.slate500)),
                         ],
                       ),
                     ),
@@ -1571,7 +1611,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                     ),
                     const SizedBox(height: 6),
                     Container(
-                      constraints: const BoxConstraints(maxHeight: 160),
+                      constraints: const BoxConstraints(maxHeight: 260),
                       decoration: BoxDecoration(
                         color: AppColors.white,
                         borderRadius: BorderRadius.circular(8),
@@ -1617,10 +1657,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                                                         ? '🎾'
                                                         : '🏆';
 
-                                    final startTime = m['startTime'] != null ? DateTime.tryParse(m['startTime']) : null;
-                                    final timeStr = startTime != null
-                                        ? '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}'
-                                        : 'Upcoming';
+                                    final timeStr = _formatMatchDateTime(m['startTime']?.toString());
 
                                     return InkWell(
                                       onTap: () => setState(() => _selectedMatch = m),

@@ -40,6 +40,39 @@ const parseCustomConfig = (cfg: any): Record<string, any> => {
   return cfg;
 };
 
+export const formatMatchDateTime = (startTimeStr?: string) => {
+  if (!startTimeStr) return { date: 'Upcoming', time: '', full: 'Upcoming' };
+  const d = new Date(startTimeStr);
+  if (isNaN(d.getTime())) return { date: 'Upcoming', time: '', full: 'Upcoming' };
+
+  const now = new Date();
+  const isToday =
+    d.getDate() === now.getDate() &&
+    d.getMonth() === now.getMonth() &&
+    d.getFullYear() === now.getFullYear();
+
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  const isTomorrow =
+    d.getDate() === tomorrow.getDate() &&
+    d.getMonth() === tomorrow.getMonth() &&
+    d.getFullYear() === tomorrow.getFullYear();
+
+  const dateLabel = isToday
+    ? 'Today'
+    : isTomorrow
+    ? 'Tomorrow'
+    : d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+
+  const timeLabel = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  return {
+    date: dateLabel,
+    time: timeLabel,
+    full: `${dateLabel}, ${timeLabel}`,
+  };
+};
+
 export const LobbyView: React.FC<LobbyViewProps> = ({
   rooms,
   user,
@@ -129,7 +162,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       .getSportsMatches()
       .then((data) => {
         if (isMounted) {
-          setSportsMatches(data);
+          const sorted = [...(data || [])].sort((a: any, b: any) => {
+            const aLive = a.status === 'LIVE';
+            const bLive = b.status === 'LIVE';
+            if (aLive && !bLive) return -1;
+            if (!aLive && bLive) return 1;
+
+            const tA = a.startTime ? new Date(a.startTime).getTime() : Infinity;
+            const tB = b.startTime ? new Date(b.startTime).getTime() : Infinity;
+            return tA - tB;
+          });
+          setSportsMatches(sorted);
         }
       })
       .catch((err) => console.warn('Could not load sports matches:', err))
@@ -142,41 +185,52 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     };
   }, []);
 
-  // Filtered upcoming matches for room creation based on sport & search
-  const filteredCreateMatches = sportsMatches.filter((m: any) => {
-    const isFinished = m.status === 'FINISHED' || m.status === 'CANCELLED';
-    const isPast = m.startTime && new Date(m.startTime).getTime() <= Date.now();
-    if (isFinished || isPast) return false;
+  // Filtered upcoming matches for room creation based on sport & search, sorted chronologically (most recent / upcoming earliest at top)
+  const filteredCreateMatches = sportsMatches
+    .filter((m: any) => {
+      const isFinished = m.status === 'FINISHED' || m.status === 'CANCELLED';
+      const isPast = m.startTime && new Date(m.startTime).getTime() <= Date.now();
+      if (isFinished || isPast) return false;
 
-    if (
-      createSportCategory !== 'ALL' &&
-      m.sport?.toLowerCase() !== createSportCategory.toLowerCase()
-    ) {
-      return false;
-    }
+      if (
+        createSportCategory !== 'ALL' &&
+        m.sport?.toLowerCase() !== createSportCategory.toLowerCase()
+      ) {
+        return false;
+      }
 
-    if (createSportsSearch.trim()) {
-      const q = createSportsSearch.toLowerCase().trim();
-      const matchName = (m.name || '').toLowerCase();
-      const shortName = (m.shortName || '').toLowerCase();
-      const t1 = (m.team1?.name || '').toLowerCase();
-      const t1Short = (m.team1?.shortName || '').toLowerCase();
-      const t2 = (m.team2?.name || '').toLowerCase();
-      const t2Short = (m.team2?.shortName || '').toLowerCase();
-      const league = (m.league || '').toLowerCase();
+      if (createSportsSearch.trim()) {
+        const q = createSportsSearch.toLowerCase().trim();
+        const matchName = (m.name || '').toLowerCase();
+        const shortName = (m.shortName || '').toLowerCase();
+        const t1 = (m.team1?.name || '').toLowerCase();
+        const t1Short = (m.team1?.shortName || '').toLowerCase();
+        const t2 = (m.team2?.name || '').toLowerCase();
+        const t2Short = (m.team2?.shortName || '').toLowerCase();
+        const league = (m.league || '').toLowerCase();
 
-      // Combined corpus with both team orders (e.g. "India vs NZ" as well as "NZ vs India")
-      const combinedCorpus = `${matchName} ${shortName} ${league} ${t1} ${t1Short} ${t2} ${t2Short} ${t1} vs ${t2} ${t2} vs ${t1} ${t1} v ${t2} ${t2} v ${t1}`;
-      if (combinedCorpus.includes(q)) return true;
+        // Combined corpus with both team orders (e.g. "India vs NZ" as well as "NZ vs India")
+        const combinedCorpus = `${matchName} ${shortName} ${league} ${t1} ${t1Short} ${t2} ${t2Short} ${t1} vs ${t2} ${t2} vs ${t1} ${t1} v ${t2} ${t2} v ${t1}`;
+        if (combinedCorpus.includes(q)) return true;
 
-      // Smart token matching (filter out connector words like "vs", "v", "against", "and")
-      const tokens = q.split(/\s+/).filter((w) => !['vs', 'v', 'against', 'and'].includes(w));
-      if (tokens.length === 0) return true;
-      return tokens.every((tok) => combinedCorpus.includes(tok));
-    }
+        // Smart token matching (filter out connector words like "vs", "v", "against", "and")
+        const tokens = q.split(/\s+/).filter((w) => !['vs', 'v', 'against', 'and'].includes(w));
+        if (tokens.length === 0) return true;
+        return tokens.every((tok) => combinedCorpus.includes(tok));
+      }
 
-    return true;
-  });
+      return true;
+    })
+    .sort((a: any, b: any) => {
+      const aLive = a.status === 'LIVE';
+      const bLive = b.status === 'LIVE';
+      if (aLive && !bLive) return -1;
+      if (!aLive && bLive) return 1;
+
+      const tA = a.startTime ? new Date(a.startTime).getTime() : Infinity;
+      const tB = b.startTime ? new Date(b.startTime).getTime() : Infinity;
+      return tA - tB;
+    });
 
   // ─── CREATE ROOM HANDLER ───
   const handleCreateRoom = async (e: React.FormEvent) => {
@@ -463,8 +517,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         </button>
       </div>
 
-      {/* Featured / Live Sports Marquee Banner (Visible when on SPORTS_MATCH or ALL) */}
-      {(filterGame === 'SPORTS_MATCH' || filterGame === 'ALL') && (
+      {/* Featured / Live Sports Marquee Banner (Visible when on SPORTS_MATCH) */}
+      {filterGame === 'SPORTS_MATCH' && (
         <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 rounded-2xl p-5 text-white border border-indigo-800/40 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -568,7 +622,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     <div className="pt-1.5 border-t border-white/10 flex items-center justify-between text-[10px]">
                       <span className="text-slate-400 flex items-center gap-1">
                         <Calendar className="w-3 h-3 text-indigo-400" />
-                        {new Date(m.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {formatMatchDateTime(m.startTime).full}
                       </span>
                       <span className="font-bold text-indigo-300 hover:text-white flex items-center gap-1">
                         Create Pool <ArrowRight className="w-3 h-3" />
@@ -719,7 +773,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     </div>
                     {isSports && cfg.startTime && (
                       <span className="text-[11px] text-slate-400">
-                        Locks {new Date(cfg.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        Locks {formatMatchDateTime(cfg.startTime).full}
                       </span>
                     )}
                   </div>
@@ -1030,7 +1084,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       {/* ─── MODAL 4: CREATE TABLE / POOL MODAL ─── */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl p-5 shadow-xl space-y-3.5 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-slate-900">Create Table / Pool Room</h3>
               <button
@@ -1048,7 +1102,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               </div>
             )}
 
-            <form onSubmit={handleCreateRoom} className="space-y-4">
+            <form onSubmit={handleCreateRoom} className="space-y-3.5">
               {/* Game Selector Cards */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">Select Arena / Game</label>
@@ -1060,15 +1114,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       setEntryFee(100);
                       setSportsCapacity(10);
                     }}
-                    className={`p-3 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                    className={`py-2 px-2.5 rounded-xl border text-left transition flex items-center gap-2 cursor-pointer ${
                       selectedGameType === 'SPORTS_MATCH'
                         ? 'bg-indigo-50 border-indigo-600 text-indigo-900 ring-2 ring-indigo-600/20'
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <span className="text-xl">🏏</span>
-                    <span className="text-xs font-bold leading-tight">Live Sports</span>
-                    <span className="text-[10px] text-slate-500 font-medium">Cricket, Football...</span>
+                    <span className="text-xl shrink-0">🏏</span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold leading-tight truncate">Live Sports</div>
+                      <div className="text-[10px] text-slate-500 font-medium truncate">Cricket, Football...</div>
+                    </div>
                   </button>
 
                   <button
@@ -1078,15 +1134,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       setEntryFee(20);
                       setMaxPlayers(6);
                     }}
-                    className={`p-3 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                    className={`py-2 px-2.5 rounded-xl border text-left transition flex items-center gap-2 cursor-pointer ${
                       selectedGameType === 'TEEN_PATTI'
                         ? 'bg-purple-50 border-purple-600 text-purple-900 ring-2 ring-purple-600/20'
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <span className="text-xl">🃏</span>
-                    <span className="text-xs font-bold leading-tight">Teen Patti</span>
-                    <span className="text-[10px] text-slate-500 font-medium">3 Cards (2-6p)</span>
+                    <span className="text-xl shrink-0">🃏</span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold leading-tight truncate">Teen Patti</div>
+                      <div className="text-[10px] text-slate-500 font-medium truncate">3 Cards (2-6p)</div>
+                    </div>
                   </button>
 
                   <button
@@ -1096,15 +1154,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       setEntryFee(50);
                       setMaxPlayers(2);
                     }}
-                    className={`p-3 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                    className={`py-2 px-2.5 rounded-xl border text-left transition flex items-center gap-2 cursor-pointer ${
                       selectedGameType === 'GUESS_NUMBER'
                         ? 'bg-emerald-50 border-emerald-600 text-emerald-900 ring-2 ring-emerald-600/20'
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <span className="text-xl">🎲</span>
-                    <span className="text-xs font-bold leading-tight">Dice Guess</span>
-                    <span className="text-[10px] text-slate-500 font-medium">Number (2-4p)</span>
+                    <span className="text-xl shrink-0">🎲</span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold leading-tight truncate">Dice Guess</div>
+                      <div className="text-[10px] text-slate-500 font-medium truncate">Number (2-4p)</div>
+                    </div>
                   </button>
                 </div>
               </div>
@@ -1186,7 +1246,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       )}
                     </div>
 
-                    <div className="space-y-1.5 max-h-44 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-white">
+                    <div className="space-y-1.5 max-h-72 sm:max-h-80 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-white">
                       {filteredCreateMatches.length === 0 ? (
                         <div className="py-6 text-center text-xs text-slate-400 space-y-1">
                           <p className="font-semibold text-slate-600">No upcoming matches found</p>
@@ -1212,11 +1272,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                               ? '🎾'
                               : '🏆';
 
+                          const dt = formatMatchDateTime(m.startTime);
+
                           return (
                             <div
                               key={m.id}
                               onClick={() => setSelectedMatch(m)}
-                              className={`p-2.5 rounded-xl border text-xs cursor-pointer transition flex items-center justify-between gap-2 ${
+                              className={`p-2.5 rounded-xl border text-xs cursor-pointer transition flex items-center justify-between gap-2.5 ${
                                 isSel
                                   ? 'bg-indigo-50 border-indigo-600 ring-2 ring-indigo-600/20 text-indigo-950 font-bold'
                                   : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
@@ -1231,20 +1293,22 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                               </div>
 
                               <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-[10px] font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md font-semibold">
-                                  {m.startTime
-                                    ? new Date(m.startTime).toLocaleTimeString([], {
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                      })
-                                    : 'Upcoming'}
-                                </span>
+                                <div className="flex flex-col items-end text-right">
+                                  <span className="text-[10px] font-bold text-slate-700 leading-tight">
+                                    {dt.date}
+                                  </span>
+                                  {dt.time && (
+                                    <span className="text-[10px] font-mono font-semibold text-indigo-600 leading-tight">
+                                      {dt.time}
+                                    </span>
+                                  )}
+                                </div>
                                 {isSel ? (
-                                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center">
+                                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0">
                                     <Check className="w-3 h-3" />
                                   </span>
                                 ) : (
-                                  <span className="w-5 h-5 rounded-full border border-slate-200" />
+                                  <span className="w-5 h-5 rounded-full border border-slate-200 shrink-0" />
                                 )}
                               </div>
                             </div>
@@ -1259,7 +1323,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     <div className="pt-2 border-t border-slate-200 space-y-1.5 animate-fade-in">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-bold text-slate-800">
-                          3. Choose your winning pick ({selectedMatch.name})
+                          3. Choose your winning pick ({selectedMatch.name} - {formatMatchDateTime(selectedMatch.startTime).full})
                         </label>
                         <button
                           type="button"
