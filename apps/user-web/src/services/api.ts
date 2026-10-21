@@ -120,7 +120,7 @@ export interface NotificationItem {
   userId: string;
   title: string;
   message: string;
-  type: 'WITHDRAWAL_COMPLETED' | 'WITHDRAWAL_REJECTED' | 'DEPOSIT_APPROVED' | 'ROOM_WIN' | 'FEEDBACK_REPLY' | 'SYSTEM';
+  type: 'WITHDRAWAL_COMPLETED' | 'WITHDRAWAL_REJECTED' | 'WITHDRAWAL_REQUESTED' | 'DEPOSIT_APPROVED' | 'ROOM_WIN' | 'FEEDBACK_REPLY' | 'SYSTEM';
   isRead: boolean;
   metadata?: any;
   createdAt: string;

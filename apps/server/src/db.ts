@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { authService } from './modules/auth/auth.service';
+import { toPaise } from './money';
 
 export const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
@@ -38,6 +39,154 @@ export async function initDbDefaults() {
 
   // Repair corrupted sports rooms from before the fixture fix
   await repairLegacySportsRooms();
+
+  // Ensure notification table exists and sync historical records
+  await syncHistoricalNotifications();
+}
+
+export async function ensureNotificationTable() {
+  try {
+    const isPostgres = process.env.DATABASE_URL?.startsWith('postgres');
+    if (isPostgres) {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "Notification" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+          "title" TEXT NOT NULL,
+          "message" TEXT NOT NULL,
+          "type" TEXT NOT NULL,
+          "isRead" BOOLEAN NOT NULL DEFAULT false,
+          "metadata" TEXT,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Notification_userId_isRead_idx" ON "Notification"("userId", "isRead");`);
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Notification_userId_createdAt_idx" ON "Notification"("userId", "createdAt");`);
+    } else {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "Notification" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "userId" TEXT NOT NULL,
+          "title" TEXT NOT NULL,
+          "message" TEXT NOT NULL,
+          "type" TEXT NOT NULL,
+          "isRead" BOOLEAN NOT NULL DEFAULT false,
+          "metadata" TEXT,
+          "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+        );
+      `);
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Notification_userId_isRead_idx" ON "Notification"("userId", "isRead");`);
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Notification_userId_createdAt_idx" ON "Notification"("userId", "createdAt");`);
+    }
+  } catch (err: any) {
+    console.error('[Notification] ensureNotificationTable error:', err?.message || err);
+  }
+}
+
+export async function syncHistoricalNotifications() {
+  try {
+    await ensureNotificationTable();
+
+    // 1. Completed withdrawals
+    const completedWithdrawals = await prisma.withdrawal.findMany({
+      where: { status: 'COMPLETED' },
+    });
+
+    for (const w of completedWithdrawals) {
+      const existing = await prisma.notification.findFirst({
+        where: {
+          userId: w.userId,
+          metadata: { contains: w.id },
+        },
+      });
+
+      if (!existing) {
+        await prisma.notification.create({
+          data: {
+            userId: w.userId,
+            title: 'Withdrawal Completed',
+            message: `Your withdrawal of ₹${w.amount.toFixed(2)} has been sent to your UPI ID (${w.upiId}). Bank Payout UTR: ${w.payoutUtr || 'N/A'}`,
+            type: 'WITHDRAWAL_COMPLETED',
+            metadata: JSON.stringify({
+              withdrawalId: w.id,
+              amount: w.amount,
+              upiId: w.upiId,
+              payoutUtr: w.payoutUtr,
+            }),
+            createdAt: w.updatedAt || w.createdAt,
+          },
+        });
+      }
+    }
+
+    // 2. Completed rooms with winners
+    const wonRooms = await prisma.room.findMany({
+      where: { status: 'COMPLETED', winnerId: { not: null } },
+    });
+
+    for (const r of wonRooms) {
+      if (!r.winnerId) continue;
+      const existing = await prisma.notification.findFirst({
+        where: {
+          userId: r.winnerId,
+          metadata: { contains: r.id },
+        },
+      });
+
+      if (!existing) {
+        const prize = r.winnerPrize || (toPaise(r.entryFee) * 2 * 0.9) / 100;
+        await prisma.notification.create({
+          data: {
+            userId: r.winnerId,
+            title: `Won Table #${r.roomCode}`,
+            message: `Congratulations! You won ₹${prize.toFixed(2)} on Table #${r.roomCode} (${r.gameType}).`,
+            type: 'ROOM_WIN',
+            metadata: JSON.stringify({
+              roomId: r.id,
+              roomCode: r.roomCode,
+              gameType: r.gameType,
+              prize,
+            }),
+            createdAt: r.createdAt,
+          },
+        });
+      }
+    }
+
+    // 3. Approved deposits
+    const approvedDeposits = await prisma.deposit.findMany({
+      where: { status: 'APPROVED' },
+    });
+
+    for (const d of approvedDeposits) {
+      const existing = await prisma.notification.findFirst({
+        where: {
+          userId: d.userId,
+          metadata: { contains: d.id },
+        },
+      });
+
+      if (!existing) {
+        await prisma.notification.create({
+          data: {
+            userId: d.userId,
+            title: 'Deposit Approved',
+            message: `Deposit of ₹${d.baseAmount.toFixed(2)} has been credited to your wallet.${d.utr ? ` UTR: ${d.utr}` : ''}`,
+            type: 'DEPOSIT_APPROVED',
+            metadata: JSON.stringify({
+              depositId: d.id,
+              amount: d.baseAmount,
+              utr: d.utr,
+            }),
+            createdAt: d.approvedAt || d.createdAt,
+          },
+        });
+      }
+    }
+  } catch (err: any) {
+    console.error('[Notification] syncHistoricalNotifications error:', err?.message || err);
+  }
 }
 
 export async function repairLegacySportsRooms() {

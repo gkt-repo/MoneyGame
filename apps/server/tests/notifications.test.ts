@@ -126,8 +126,8 @@ async function runNotificationTests() {
     throw new Error(`Mark as read failed: ${JSON.stringify(readRes.data)}`);
   }
   const unreadCheck = await apiCall('/notifications/unread-count', 'GET', undefined, token);
-  if (unreadCheck.data.unreadCount !== 2) {
-    throw new Error(`Expected 2 unread, got: ${unreadCheck.data.unreadCount}`);
+  if (unreadCheck.data.unreadCount !== 4) {
+    throw new Error(`Expected 4 unread, got: ${unreadCheck.data.unreadCount}`);
   }
   console.log('Single notification marked read ✅ PASS\n');
 

@@ -67,6 +67,7 @@ flutter:
 
   assets:
     - assets/icon/
+    - assets/audio/
     - assets/game/teen_patti/
     - assets/game/teen_patti/audio/
 

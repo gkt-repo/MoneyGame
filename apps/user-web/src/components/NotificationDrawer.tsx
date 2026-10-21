@@ -88,6 +88,12 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
             <ArrowUpRight className="w-5 h-5" />
           </div>
         );
+      case 'WITHDRAWAL_REQUESTED':
+        return (
+          <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center shrink-0">
+            <ArrowUpRight className="w-5 h-5" />
+          </div>
+        );
       case 'WITHDRAWAL_REJECTED':
         return (
           <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
@@ -125,6 +131,8 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
     switch (type) {
       case 'WITHDRAWAL_COMPLETED':
         return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Payout Sent</span>;
+      case 'WITHDRAWAL_REQUESTED':
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">Pending Review</span>;
       case 'WITHDRAWAL_REJECTED':
         return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">Rejected & Refunded</span>;
       case 'DEPOSIT_APPROVED':

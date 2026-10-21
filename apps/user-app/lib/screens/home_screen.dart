@@ -4,6 +4,7 @@ import '../core/constants/colors.dart';
 import '../core/network/api_client.dart';
 import '../core/network/socket_service.dart';
 import '../core/storage/secure_storage_service.dart';
+import '../core/services/notification_sound_service.dart';
 import 'lobby/lobby_screen.dart';
 import 'wallet/add_cash_screen.dart';
 import 'wallet/withdraw_screen.dart';
@@ -31,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<NotificationItemModel> _notifications = [];
   int _unreadNotificationCount = 0;
   bool _loadingNotifications = false;
+  String? _notificationError;
 
   @override
   void initState() {
@@ -59,6 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
           });
           _loadTransactions();
           _loadNotifications();
+          NotificationSoundService().playNotificationRing();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Payment approved! Wallet balance: ₹${newBalance.toStringAsFixed(2)}'),
@@ -73,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _notifications.insert(0, notif);
             _unreadNotificationCount++;
           });
+          NotificationSoundService().playNotificationRing();
         }
       },
       onNotificationUnreadCount: (count) {
@@ -97,8 +101,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadNotifications() async {
-    if (_loadingNotifications) return;
-    if (mounted) setState(() => _loadingNotifications = true);
+    if (mounted) {
+      setState(() {
+        _loadingNotifications = true;
+        _notificationError = null;
+      });
+    }
     try {
       final items = await ApiClient.getMyNotifications();
       final unread = await ApiClient.getUnreadNotificationCount();
@@ -107,10 +115,16 @@ class _HomeScreenState extends State<HomeScreen> {
           _notifications = items;
           _unreadNotificationCount = unread;
           _loadingNotifications = false;
+          _notificationError = null;
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _loadingNotifications = false);
+    } catch (err) {
+      if (mounted) {
+        setState(() {
+          _loadingNotifications = false;
+          _notificationError = err.toString();
+        });
+      }
     }
   }
 
@@ -778,6 +792,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showNotificationSheet() {
+    _loadNotifications();
     String currentFilter = 'all';
 
     showModalBottomSheet(
@@ -790,6 +805,244 @@ class _HomeScreenState extends State<HomeScreen> {
             final filtered = currentFilter == 'unread'
                 ? _notifications.where((n) => !n.isRead).toList()
                 : _notifications;
+
+            Widget bodyContent;
+            if (_loadingNotifications && _notifications.isEmpty) {
+              bodyContent = const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.emerald600),
+                      SizedBox(height: 12),
+                      Text('Loading updates...', style: TextStyle(fontSize: 12, color: AppColors.slate500)),
+                    ],
+                  ),
+                ),
+              );
+            } else if (_notificationError != null && _notifications.isEmpty) {
+              bodyContent = Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.cloud_off, size: 36, color: AppColors.slate400),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Failed to load notifications',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.slate800),
+                      ),
+                      const SizedBox(height: 6),
+                      TextButton.icon(
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('Try Again'),
+                        onPressed: () async {
+                          await _loadNotifications();
+                          setModalState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            } else if (filtered.isEmpty) {
+              bodyContent = RefreshIndicator(
+                onRefresh: () async {
+                  await _loadNotifications();
+                  setModalState(() {});
+                },
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    SizedBox(height: MediaQuery.of(context).size.height * 0.16),
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              color: AppColors.slate100,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Icon(Icons.notifications_none, size: 30, color: AppColors.slate400),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'No notifications',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.slate800),
+                          ),
+                          const SizedBox(height: 4),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                            child: Text(
+                              currentFilter == 'unread'
+                                  ? 'You have read all your notifications.'
+                                  : 'Payout confirmations, deposit updates, and table results will appear here.',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 12, color: AppColors.slate400),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            } else {
+              bodyContent = RefreshIndicator(
+                onRefresh: () async {
+                  await _loadNotifications();
+                  setModalState(() {});
+                },
+                child: ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  itemCount: filtered.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final notif = filtered[index];
+                    final utr = notif.metadata?['payoutUtr'] ?? notif.metadata?['utr'];
+
+                    return InkWell(
+                      onTap: () async {
+                        if (!notif.isRead) {
+                          await _markAsRead(notif.id);
+                          setModalState(() {});
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: notif.isRead ? Colors.white : AppColors.emerald50.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: notif.isRead ? AppColors.slate200 : AppColors.emerald200,
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _getNotificationIconWidget(notif.type),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          notif.title,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.slate900,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        _formatRelativeTime(notif.createdAt),
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          color: AppColors.slate400,
+                                          fontFamily: 'monospace',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    notif.message,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.slate600,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                  if (utr != null && utr.toString().isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    GestureDetector(
+                                      onTap: () {
+                                        Clipboard.setData(ClipboardData(text: utr.toString()));
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('UTR copied: $utr'),
+                                            duration: const Duration(seconds: 2),
+                                            backgroundColor: AppColors.slate900,
+                                          ),
+                                        );
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.slate100,
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: AppColors.slate200),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Text(
+                                              'UTR: ',
+                                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.slate500),
+                                            ),
+                                            Text(
+                                              utr.toString(),
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                fontFamily: 'monospace',
+                                                color: AppColors.slate800,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            const Icon(Icons.copy, size: 11, color: AppColors.slate500),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Column(
+                              children: [
+                                if (!notif.isRead)
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    margin: const EdgeInsets.only(top: 2, bottom: 4),
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.emerald600,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                InkWell(
+                                  onTap: () async {
+                                    await _deleteNotification(notif.id);
+                                    setModalState(() {});
+                                  },
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(4.0),
+                                    child: Icon(Icons.delete_outline, size: 15, color: AppColors.slate400),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              );
+            }
 
             return Container(
               height: MediaQuery.of(context).size.height * 0.78,
@@ -898,181 +1151,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   // Notification List
                   Expanded(
-                    child: filtered.isEmpty
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(24.0),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 60,
-                                    height: 60,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.slate100,
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    child: const Icon(Icons.notifications_none, size: 30, color: AppColors.slate400),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  const Text(
-                                    'No notifications',
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.slate800),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    currentFilter == 'unread'
-                                        ? 'You have read all your notifications.'
-                                        : 'Payout confirmations, deposit updates, and table results will appear here.',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(fontSize: 12, color: AppColors.slate400),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                        : ListView.separated(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            itemCount: filtered.length,
-                            separatorBuilder: (context, index) => const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              final notif = filtered[index];
-                              final utr = notif.metadata?['payoutUtr'] ?? notif.metadata?['utr'];
-
-                              return InkWell(
-                                onTap: () async {
-                                  if (!notif.isRead) {
-                                    await _markAsRead(notif.id);
-                                    setModalState(() {});
-                                  }
-                                },
-                                borderRadius: BorderRadius.circular(12),
-                                child: Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: notif.isRead ? Colors.white : AppColors.emerald50.withValues(alpha: 0.35),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: notif.isRead ? AppColors.slate200 : AppColors.emerald200,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      _getNotificationIconWidget(notif.type),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    notif.title,
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                      fontWeight: FontWeight.w700,
-                                                      color: AppColors.slate900,
-                                                    ),
-                                                  ),
-                                                ),
-                                                Text(
-                                                  _formatRelativeTime(notif.createdAt),
-                                                  style: const TextStyle(
-                                                    fontSize: 10,
-                                                    color: AppColors.slate400,
-                                                    fontFamily: 'monospace',
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 3),
-                                            Text(
-                                              notif.message,
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                                color: AppColors.slate600,
-                                                height: 1.35,
-                                              ),
-                                            ),
-                                            if (utr != null && utr.toString().isNotEmpty) ...[
-                                              const SizedBox(height: 6),
-                                              GestureDetector(
-                                                onTap: () {
-                                                  Clipboard.setData(ClipboardData(text: utr.toString()));
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text('UTR copied: $utr'),
-                                                      duration: const Duration(seconds: 2),
-                                                      backgroundColor: AppColors.slate900,
-                                                    ),
-                                                  );
-                                                },
-                                                child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                                  decoration: BoxDecoration(
-                                                    color: AppColors.slate100,
-                                                    borderRadius: BorderRadius.circular(6),
-                                                    border: Border.all(color: AppColors.slate200),
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      const Text(
-                                                        'UTR: ',
-                                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.slate500),
-                                                      ),
-                                                      Text(
-                                                        utr.toString(),
-                                                        style: const TextStyle(
-                                                          fontSize: 10,
-                                                          fontWeight: FontWeight.w700,
-                                                          fontFamily: 'monospace',
-                                                          color: AppColors.slate800,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(width: 4),
-                                                      const Icon(Icons.copy, size: 11, color: AppColors.slate500),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Column(
-                                        children: [
-                                          if (!notif.isRead)
-                                            Container(
-                                              width: 7,
-                                              height: 7,
-                                              margin: const EdgeInsets.only(top: 2, bottom: 4),
-                                              decoration: const BoxDecoration(
-                                                color: AppColors.emerald600,
-                                                shape: BoxShape.circle,
-                                              ),
-                                            ),
-                                          InkWell(
-                                            onTap: () async {
-                                              await _deleteNotification(notif.id);
-                                              setModalState(() {});
-                                            },
-                                            child: const Padding(
-                                              padding: EdgeInsets.all(4.0),
-                                              child: Icon(Icons.delete_outline, size: 15, color: AppColors.slate400),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                    child: bodyContent,
                   ),
                 ],
               ),
@@ -1121,6 +1200,11 @@ class _HomeScreenState extends State<HomeScreen> {
         icon = Icons.arrow_outward;
         iconColor = AppColors.emerald700;
         bgColor = AppColors.emerald50;
+        break;
+      case 'WITHDRAWAL_REQUESTED':
+        icon = Icons.hourglass_top_rounded;
+        iconColor = Colors.indigo.shade700;
+        bgColor = Colors.indigo.shade50;
         break;
       case 'WITHDRAWAL_REJECTED':
         icon = Icons.error_outline;

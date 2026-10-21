@@ -6,6 +6,7 @@ import { moveWallet } from '../../../../wallet-ledger';
 import { serializable } from '../../../../transaction';
 import { money, toPaise } from '../../../../money';
 import { walletService, getEffectiveCommissionPercent } from '../../../wallet/wallet.service';
+import { notificationService } from '../../../notification/notification.service';
 import { SportsMatch, SportsTeam, SportsRoomConfig } from '@moneygame/shared-types';
 
 interface CachedData<T> {
@@ -742,6 +743,7 @@ export class SportsService {
         losers,
         payoutPerWinner,
         totalWinnerPrize,
+        matchTitle: customConfigObj.matchTitle,
         room: updated,
       };
     });
@@ -768,6 +770,25 @@ export class SportsService {
         const wallet = await walletService.getWallet(p.userId);
         this.io.to(`user:${p.userId}`).emit('balance_updated', wallet);
         this.io.to(`user:${p.userId}`).emit('wallet_updated', wallet);
+      }
+
+      // Send win notification to each winner
+      if (settlementResult.winners && settlementResult.winners.length > 0) {
+        for (const w of settlementResult.winners) {
+          notificationService.create({
+            userId: w.userId,
+            title: `Won Sports Table #${room.roomCode}`,
+            message: `Congratulations! You won ₹${(settlementResult.payoutPerWinner || 0).toFixed(2)} on ${settlementResult.matchTitle || room.roomCode}${winningTeamName ? ` (${winningTeamName})` : ''}.`,
+            type: 'ROOM_WIN',
+            metadata: {
+              roomId: room.id,
+              roomCode: room.roomCode,
+              matchTitle: settlementResult.matchTitle,
+              prize: settlementResult.payoutPerWinner,
+              winningTeam: winningTeamName,
+            },
+          }).catch(err => console.error('Failed to create sports win notification:', err));
+        }
       }
 
       const { gameManager } = await import('../../game.manager');

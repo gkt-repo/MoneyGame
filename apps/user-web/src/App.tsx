@@ -9,6 +9,7 @@ import { WalletView } from './views/WalletView';
 import { SupportFeedbackView } from './views/SupportFeedbackView';
 import { Loader2 } from 'lucide-react';
 import { connectSocket } from './services/socket';
+import { playNotificationSound } from './utils/audio';
 
 export const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -181,6 +182,7 @@ export const App: React.FC = () => {
       socket.on('new_notification', (newNotif: NotificationItem) => {
         setNotifications((prev) => [newNotif, ...prev]);
         setUnreadNotificationsCount((c) => c + 1);
+        playNotificationSound();
       });
 
       socket.on('notification_unread_count', (data: { unreadCount: number }) => {

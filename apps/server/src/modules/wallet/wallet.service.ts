@@ -210,7 +210,7 @@ export class WalletService {
     commissionPercent: number,
     playerBets?: Record<string, number>
   ) {
-    return serializable(async (tx) => {
+    const result = await serializable(async (tx) => {
       const room = await tx.room.findUnique({
         where: { id: roomId },
         include: { players: true },
@@ -348,6 +348,7 @@ export class WalletService {
       }
 
       return {
+        room,
         winnerId,
         winnerPrize,
         commissionAmount,
@@ -355,6 +356,30 @@ export class WalletService {
         winnerWallet,
       };
     });
+
+    if (this.io) {
+      this.io.to(`user:${result.winnerId}`).emit('balance_updated', {
+        balance: result.winnerWallet.balance,
+        lockedBalance: result.winnerWallet.lockedBalance,
+      });
+    }
+
+    // Trigger in-app notification for the winning player
+    notificationService.create({
+      userId: result.winnerId,
+      title: `Won Table #${result.room.roomCode}`,
+      message: `Congratulations! You won ₹${result.winnerPrize.toFixed(2)} on Table #${result.room.roomCode} (${result.room.gameType}).`,
+      type: 'ROOM_WIN',
+      metadata: {
+        roomId: result.room.id,
+        roomCode: result.room.roomCode,
+        gameType: result.room.gameType,
+        prize: result.winnerPrize,
+        winningNumber: result.winningNumber,
+      },
+    }).catch(err => console.error('Failed to create room win notification:', err));
+
+    return result;
   }
 
   /**
@@ -425,6 +450,19 @@ export class WalletService {
         userId,
       });
     }
+
+    // Trigger in-app notification for the player
+    notificationService.create({
+      userId,
+      title: 'Withdrawal Requested',
+      message: `Your withdrawal request of ₹${result.withdrawal.amount.toFixed(2)} to ${cleanUpi} has been submitted for admin processing.`,
+      type: 'WITHDRAWAL_REQUESTED',
+      metadata: {
+        withdrawalId: result.withdrawal.id,
+        amount: result.withdrawal.amount,
+        upiId: cleanUpi,
+      },
+    }).catch(err => console.error('Failed to create withdrawal requested notification:', err));
 
     return result;
   }

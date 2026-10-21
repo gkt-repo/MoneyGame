@@ -31,6 +31,7 @@ model User {
   auditLogsTarget   AuditLog[]         @relation("TargetUser")
   adminActions      AuditLog[]         @relation("ActorAdmin")
   feedbacks         Feedback[]
+  notifications     Notification[]
 }
 
 model RefreshToken {
@@ -209,5 +210,20 @@ model Feedback {
 
   @@index([userId])
   @@index([status])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   // WITHDRAWAL_COMPLETED, WITHDRAWAL_REJECTED, WITHDRAWAL_REQUESTED, DEPOSIT_APPROVED, ROOM_WIN, FEEDBACK_REPLY, SYSTEM
+  isRead    Boolean  @default(false)
+  metadata  String?  // JSON text with e.g. utr, amount, referenceId
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
 }
 

@@ -4,6 +4,7 @@ import { prisma } from '../../db';
 export type NotificationType =
   | 'WITHDRAWAL_COMPLETED'
   | 'WITHDRAWAL_REJECTED'
+  | 'WITHDRAWAL_REQUESTED'
   | 'DEPOSIT_APPROVED'
   | 'ROOM_WIN'
   | 'FEEDBACK_REPLY'
