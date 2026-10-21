@@ -527,7 +527,10 @@ export class AdminService {
 
       const updatedUser = await tx.user.update({
         where: { id: userId },
-        data: { status: newStatus },
+        data: {
+          status: newStatus,
+          ...(newStatus !== 'ACTIVE' ? { tokenVersion: { increment: 1 } } : {}),
+        },
         select: { id: true, username: true, status: true, role: true },
       });
 

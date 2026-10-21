@@ -171,14 +171,13 @@ export const Dice3D: React.FC<Dice3DProps> = ({
         <div
           className="absolute bottom-10 w-32 h-10 rounded-full transition-all duration-500 pointer-events-none"
           style={{
-            background:
-              'radial-gradient(ellipse at center, rgba(15, 23, 42, 0.75) 0%, rgba(15, 23, 42, 0.25) 50%, transparent 75%)',
+            backgroundColor: 'rgba(15, 23, 42, 0.5)',
             transform:
               bouncePhase === 'airborne'
                 ? 'scale(0.55) translateY(18px)'
                 : 'scale(1.1) translateY(0px)',
             opacity: bouncePhase === 'airborne' ? 0.35 : 0.85,
-            filter: bouncePhase === 'airborne' ? 'blur(6px)' : 'blur(2px)',
+            filter: bouncePhase === 'airborne' ? 'blur(8px)' : 'blur(4px)',
           }}
         />
 
@@ -213,9 +212,8 @@ export const Dice3D: React.FC<Dice3DProps> = ({
               width: `${faceWidth}px`,
               height: `${faceWidth}px`,
               borderRadius: '50%',
-              background: 'radial-gradient(circle, #f59e0b 0%, #b45309 60%, #78350f 100%)',
+              backgroundColor: '#b45309',
               border: '2px solid rgba(254, 240, 138, 0.8)',
-              boxShadow: 'inset 0 0 8px rgba(0,0,0,0.5), 0 0 6px rgba(245, 158, 11, 0.4)',
               transform: `rotateX(90deg) translateZ(${faceHeight / 2}px)`,
               backfaceVisibility: 'hidden',
             }}
@@ -232,7 +230,7 @@ export const Dice3D: React.FC<Dice3DProps> = ({
               width: `${faceWidth}px`,
               height: `${faceWidth}px`,
               borderRadius: '50%',
-              background: 'radial-gradient(circle, #064e3b 0%, #022c22 100%)',
+              backgroundColor: '#064e3b',
               border: '2px solid rgba(16, 185, 129, 0.6)',
               transform: `rotateX(-90deg) translateZ(${faceHeight / 2}px)`,
               backfaceVisibility: 'hidden',
@@ -251,19 +249,16 @@ export const Dice3D: React.FC<Dice3DProps> = ({
                   width: `${faceWidth}px`,
                   height: `${faceHeight}px`,
                   transform: `rotateY(${angle}deg) translateZ(${radius}px)`,
-                  background: isTarget && isMatch
-                    ? 'linear-gradient(145deg, #f59e0b 0%, #d97706 50%, #92400e 100%)'
+                  backgroundColor: isTarget && isMatch
+                    ? '#d97706'
                     : isTarget
-                    ? 'linear-gradient(145deg, #10b981 0%, #059669 50%, #064e3b 100%)'
-                    : 'linear-gradient(145deg, #047857 0%, #065f46 60%, #022c22 100%)',
+                    ? '#059669'
+                    : '#065f46',
                   border: isTarget && isMatch
-                    ? '2px solid rgba(254, 240, 138, 0.95)'
+                    ? '2px solid #fbbf24'
                     : isTarget
-                    ? '2px solid rgba(110, 231, 183, 0.9)'
-                    : '1.5px solid rgba(251, 191, 36, 0.65)',
-                  boxShadow: isTarget && isMatch
-                    ? 'inset 0 0 12px rgba(254, 240, 138, 0.6), 0 0 14px rgba(245, 158, 11, 0.8)'
-                    : 'inset 0 0 8px rgba(0, 0, 0, 0.45)',
+                    ? '2px solid #34d399'
+                    : '1.5px solid #10b981',
                   backfaceVisibility: 'hidden',
                 }}
               >
@@ -306,15 +301,6 @@ export const Dice3D: React.FC<Dice3DProps> = ({
                     }`}
                   />
                 </div>
-
-                {/* Subtle Glass Sheen Reflection */}
-                <div
-                  className="absolute inset-0 rounded-md pointer-events-none"
-                  style={{
-                    background:
-                      'linear-gradient(135deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.05) 45%, transparent 60%)',
-                  }}
-                />
               </div>
             );
           })}

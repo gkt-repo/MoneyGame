@@ -17,6 +17,7 @@ model User {
   passwordHash      String             @default("")
   role              String             @default("USER") // USER, ADMIN, SUPER_ADMIN
   status            String             @default("ACTIVE") // ACTIVE, SUSPENDED, BANNED
+  tokenVersion      Int                @default(0)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @default(now()) @updatedAt
 

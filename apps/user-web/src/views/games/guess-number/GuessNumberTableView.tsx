@@ -243,8 +243,8 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
         <div
           className={`p-6 sm:p-8 rounded-3xl border text-center space-y-4 shadow-md transition-all ${
             isWinner
-              ? 'bg-gradient-to-b from-emerald-950 via-slate-900 to-slate-950 border-emerald-500/50 text-white'
-              : 'bg-gradient-to-b from-slate-900 to-slate-950 border-slate-800 text-white'
+              ? 'bg-slate-900 border-2 border-emerald-500 text-white'
+              : 'bg-slate-900 border border-slate-800 text-white'
           }`}
         >
           <div className="inline-block px-4 py-1.5 rounded-full text-xs font-black tracking-wider uppercase bg-amber-500/20 border border-amber-400/40 text-amber-300">
@@ -311,7 +311,7 @@ export const GuessNumberTableView: React.FC<GuessNumberTableViewProps> = ({
         </div>
       ) : isRolling ? (
         /* 3. Rolling Random Winner State with 3D 10-Digit Dice */
-        <div className="p-6 sm:p-8 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border border-slate-800 rounded-3xl text-center space-y-5 shadow-xl text-white">
+        <div className="p-6 sm:p-8 bg-slate-900 border border-slate-800 rounded-3xl text-center space-y-5 shadow-md text-white">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div className="flex items-center gap-2.5 text-left">
               <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-sm shadow-xs">

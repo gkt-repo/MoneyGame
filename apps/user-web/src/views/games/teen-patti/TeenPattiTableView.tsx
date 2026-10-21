@@ -413,20 +413,19 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
   return (
     <div className="space-y-4">
       {/* ─── POKER FELT TABLE ARENA ─── */}
-      <div className="relative bg-emerald-950 border-4 border-amber-900/60 rounded-3xl p-6 sm:p-10 shadow-2xl overflow-hidden min-h-[480px] flex flex-col justify-between">
+      <div className="relative bg-emerald-950 border-4 border-slate-800 rounded-3xl p-6 sm:p-10 shadow-xl overflow-hidden min-h-[480px] flex flex-col justify-between">
         {/* Felt Texture & Ring */}
         <div className="absolute inset-4 rounded-2xl border-2 border-emerald-500/20 pointer-events-none" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-800/40 via-emerald-950/80 to-slate-950 pointer-events-none" />
 
         {/* Deal Distribution Animation Overlay */}
         {isDealing && (
           <div className="absolute inset-0 z-30 pointer-events-none flex flex-col items-center justify-center overflow-hidden">
-            {/* Dealer glowing deck at top */}
-            <div className="absolute top-10 flex flex-col items-center animate-pulse">
-              <div className="w-12 h-16 bg-gradient-to-br from-red-800 to-red-950 border-2 border-amber-300 rounded-lg shadow-[0_0_25px_rgba(251,191,36,0.7)] flex items-center justify-center text-amber-300 font-bold text-sm transform -rotate-3">
+            {/* Dealer deck at top */}
+            <div className="absolute top-10 flex flex-col items-center">
+              <div className="w-12 h-16 bg-slate-900 border-2 border-slate-700 rounded-lg shadow-md flex items-center justify-center text-slate-300 font-bold text-sm transform -rotate-3">
                 ♠
               </div>
-              <span className="text-[10px] font-bold text-amber-300 uppercase tracking-widest mt-1 bg-slate-900/90 px-2.5 py-0.5 rounded-full border border-amber-400/60 shadow-md">
+              <span className="text-[10px] font-bold text-slate-200 uppercase tracking-wider mt-1 bg-slate-900 px-2.5 py-0.5 rounded-full border border-slate-700 shadow-xs">
                 Dealing Cards...
               </span>
             </div>
@@ -470,7 +469,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                         '--ty': `${targetY - 14}vh`,
                         '--rot': `${(cIdx - 1) * 12}deg`,
                       } as React.CSSProperties}
-                      className="w-10 h-14 bg-gradient-to-br from-red-800 to-red-950 border border-amber-300 rounded-md shadow-2xl flex items-center justify-center text-amber-300 text-xs font-bold"
+                      className="w-10 h-14 bg-slate-900 border border-slate-700 rounded-md shadow-md flex items-center justify-center text-slate-300 text-xs font-bold"
                     >
                       ♠
                     </div>
@@ -512,14 +511,14 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Rules Dialog Button (Matching Flutter App) */}
+            {/* Rules Dialog Button (Solid non-vibe-coded) */}
             <button
               type="button"
               onClick={() => setShowRulesModal(true)}
-              className="px-2.5 py-1 bg-purple-900/80 hover:bg-purple-800 border border-purple-600/60 rounded-full text-purple-200 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer shadow-xs"
+              className="px-2.5 py-1 bg-emerald-900 hover:bg-emerald-800 border border-emerald-700 rounded-full text-emerald-200 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer shadow-xs"
               title="View Hand Rankings & Rules"
             >
-              <BookOpen className="w-3 h-3 text-purple-300" />
+              <BookOpen className="w-3 h-3 text-emerald-300" />
               <span>Rules</span>
             </button>
 
@@ -697,7 +696,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                   ) : isSeen ? (
                     <span className="text-[10px] font-bold text-cyan-300 uppercase">Seen</span>
                   ) : (
-                    <span className="text-[10px] font-bold text-purple-300 uppercase">Blind</span>
+                    <span className="text-[10px] font-bold text-slate-300 uppercase">Blind</span>
                   )}
                 </div>
 
@@ -757,7 +756,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                 {myPlayerState.isSeen && myPlayerState.cards ? (
                   // Cards Revealed with Hand Evaluator Badge
                   <div className="flex flex-col items-center gap-1.5">
-                    <span className="px-2.5 py-0.5 bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 text-slate-950 font-black text-[10px] rounded-full shadow-md border border-amber-200 uppercase tracking-wider flex items-center gap-1">
+                    <span className="px-2.5 py-0.5 bg-amber-400 text-slate-950 font-black text-[10px] rounded-full shadow-xs border border-amber-300 uppercase tracking-wider flex items-center gap-1">
                       <Sparkles className="w-3 h-3 text-amber-800" />
                       <span>{evaluateTeenPattiHandName(myPlayerState.cards)}</span>
                     </span>
@@ -778,19 +777,19 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                       {[0, 1, 2].map((i) => (
                         <div
                           key={i}
-                          className={`w-11 h-16 bg-gradient-to-br from-red-800 to-red-950 border-2 border-amber-300/80 rounded-lg shadow-lg flex items-center justify-center transform transition ${
+                          className={`w-11 h-16 bg-slate-900 border-2 border-slate-700 rounded-lg shadow-md flex items-center justify-center transform transition ${
                             i === 0 ? '-rotate-6' : i === 2 ? 'rotate-6' : 'z-10'
                           }`}
                         >
-                          <div className="w-8 h-12 border border-amber-400/40 rounded bg-red-900/60 flex items-center justify-center text-amber-300 text-xs font-bold">
+                          <div className="w-8 h-12 border border-slate-800 rounded bg-slate-950 flex items-center justify-center text-slate-400 text-xs font-bold">
                             ♠
                           </div>
                         </div>
                       ))}
 
-                      {/* Orange "See" pill in center */}
+                      {/* Center "See" pill */}
                       <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-                        <span className="px-3 py-1 bg-gradient-to-r from-amber-500 to-orange-600 border border-white text-white font-black text-xs rounded-full shadow-lg group-hover:brightness-110">
+                        <span className="px-2.5 py-0.5 bg-slate-900 border border-slate-600 text-white font-black text-xs rounded-full shadow-sm">
                           See
                         </span>
                       </div>
@@ -802,7 +801,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                         handleAction('SEE_CARDS');
                       }}
                       disabled={submittingAction}
-                      className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-md border border-amber-300/60"
+                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs border border-slate-700"
                     >
                       <Eye className="w-3.5 h-3.5" />
                       <span>See Cards</span>
@@ -817,7 +816,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                 <button
                   disabled={!isMyTurn || submittingAction}
                   onClick={() => handleAction('PACK')}
-                  className="px-4 py-2 bg-gradient-to-b from-red-700 to-red-900 hover:from-red-600 hover:to-red-800 text-white border border-red-500/60 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md"
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white border border-red-700 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-xs cursor-pointer"
                 >
                   Pack (Fold)
                 </button>
@@ -827,7 +826,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                   <button
                     disabled={submittingAction || !hasEnoughForShow}
                     onClick={() => handleAction('SHOW')}
-                    className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 border border-amber-200 rounded-xl text-xs font-extrabold transition shadow-md animate-bounce disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 border border-amber-600 rounded-xl text-xs font-extrabold transition shadow-xs disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1 cursor-pointer"
                     title={!hasEnoughForShow ? `Insufficient balance. Required: ₹${showCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
                   >
                     <span>Show (₹{showCost.toFixed(2)})!</span>
@@ -839,10 +838,10 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                   <button
                     disabled={!canSideShow || submittingAction}
                     onClick={() => handleAction('SIDE_SHOW')}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md border ${
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs border ${
                       canSideShow
-                        ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border-cyan-300/80 shadow-cyan-500/20'
-                        : 'bg-slate-800/80 text-slate-400 border-slate-700 opacity-40 cursor-not-allowed'
+                        ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-600 cursor-pointer'
+                        : 'bg-slate-900/60 text-slate-500 border-slate-800 opacity-40 cursor-not-allowed'
                     }`}
                     title={
                       canSideShow
@@ -877,24 +876,24 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                   <button
                     disabled={!isMyTurn || submittingAction || myBalance < activeBlindCost}
                     onClick={() => handleAction('BLIND', { multiplier: betMultiplier })}
-                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white border border-purple-400/60 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-1.5"
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
                     title={myBalance < activeBlindCost ? `Insufficient balance. Required: ₹${activeBlindCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
                   >
                     <span>Blind (₹{activeBlindCost.toFixed(2)})</span>
                     {betMultiplier === 2 && (
-                      <span className="text-[10px] bg-amber-400 text-slate-950 px-1 rounded font-black">2x</span>
+                      <span className="text-[10px] bg-amber-400 text-slate-950 px-1 rounded font-bold">2x</span>
                     )}
                   </button>
                 ) : (
                   <button
                     disabled={!isMyTurn || submittingAction || myBalance < activeChaalCost}
                     onClick={() => handleAction('CHAAL', { multiplier: betMultiplier })}
-                    className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white border border-amber-300/70 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-1.5"
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
                     title={myBalance < activeChaalCost ? `Insufficient balance. Required: ₹${activeChaalCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
                   >
                     <span>Chaal (₹{activeChaalCost.toFixed(2)})</span>
                     {betMultiplier === 2 && (
-                      <span className="text-[10px] bg-amber-200 text-slate-950 px-1 rounded font-black">2x</span>
+                      <span className="text-[10px] bg-amber-300 text-slate-950 px-1 rounded font-bold">2x</span>
                     )}
                   </button>
                 )}

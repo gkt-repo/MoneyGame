@@ -42,12 +42,19 @@ export async function authenticateUser(
         email: true,
         role: true,
         status: true,
+        tokenVersion: true,
         updatedAt: true,
       },
     });
 
     if (!user) {
       res.status(401).json({ error: 'User not found or deleted' });
+      return;
+    }
+
+    const tokenVersion = typeof decoded.tokenVersion === 'number' ? decoded.tokenVersion : 0;
+    if (tokenVersion !== user.tokenVersion) {
+      res.status(401).json({ error: 'Session invalidated. Please log in again.', code: 'SESSION_REVOKED' });
       return;
     }
 
@@ -102,12 +109,19 @@ export async function authenticateAdmin(
         email: true,
         role: true,
         status: true,
+        tokenVersion: true,
         updatedAt: true,
       },
     });
 
     if (!user) {
       res.status(401).json({ error: 'Admin account not found' });
+      return;
+    }
+
+    const tokenVersion = typeof decoded.tokenVersion === 'number' ? decoded.tokenVersion : 0;
+    if (tokenVersion !== user.tokenVersion) {
+      res.status(401).json({ error: 'Admin session invalidated. Please log in again.', code: 'SESSION_REVOKED' });
       return;
     }
 

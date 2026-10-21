@@ -355,9 +355,10 @@ router.get('/rooms/by-code/:code', async (req: Request, res: Response): Promise<
         if (decoded?.userId) {
           const user = await prisma.user.findUnique({
             where: { id: decoded.userId },
-            select: { id: true, status: true },
+            select: { id: true, status: true, tokenVersion: true },
           });
-          if (user && user.status === 'ACTIVE') {
+          const tokenVersion = typeof decoded.tokenVersion === 'number' ? decoded.tokenVersion : 0;
+          if (user && user.status === 'ACTIVE' && user.tokenVersion === tokenVersion) {
             userId = user.id;
           }
         }
@@ -393,9 +394,10 @@ router.get('/rooms/:roomId', async (req: Request, res: Response): Promise<void> 
         if (decoded?.userId) {
           const user = await prisma.user.findUnique({
             where: { id: decoded.userId },
-            select: { id: true, status: true },
+            select: { id: true, status: true, tokenVersion: true },
           });
-          if (user && user.status === 'ACTIVE') {
+          const tokenVersion = typeof decoded.tokenVersion === 'number' ? decoded.tokenVersion : 0;
+          if (user && user.status === 'ACTIVE' && user.tokenVersion === tokenVersion) {
             userId = user.id;
           }
         }
@@ -479,12 +481,14 @@ async function isWebhookAuthorized(authHeader?: string | string[]): Promise<bool
       if (decoded?.userId) {
         const adminUser = await prisma.user.findUnique({
           where: { id: decoded.userId },
-          select: { id: true, role: true, status: true },
+          select: { id: true, role: true, status: true, tokenVersion: true },
         });
+        const tokenVersion = typeof decoded.tokenVersion === 'number' ? decoded.tokenVersion : 0;
         if (
           adminUser &&
           adminUser.status === 'ACTIVE' &&
-          (adminUser.role === 'ADMIN' || adminUser.role === 'SUPER_ADMIN')
+          (adminUser.role === 'ADMIN' || adminUser.role === 'SUPER_ADMIN') &&
+          adminUser.tokenVersion === tokenVersion
         ) {
           return true;
         }

@@ -141,7 +141,13 @@ async function runTests() {
   });
   console.log(`Status: ${logoutRes.status}`, logoutRes.data.success ? '✅ PASS' : '❌ FAIL');
 
-  console.log('\n🎉 ALL 11 AUTHENTICATION & RBAC TESTS PASSED SUCCESSFULLY!\n');
+  // 12. Session Invalidation: Token issued before logout must be rejected
+  console.log('\nTest 12: Session Invalidation Check (Revoked Token Rejected with 401)');
+  const meAfterLogout = await apiCall('/v1/auth/me', 'GET', undefined, refreshRes.data.accessToken);
+  console.log(`Status: ${meAfterLogout.status}`, meAfterLogout.status === 401 ? '✅ PASS (Session Revoked as expected)' : '❌ FAIL');
+  if (meAfterLogout.status !== 401) throw new Error(`Revoked token was still accepted: status ${meAfterLogout.status}`);
+
+  console.log('\n🎉 ALL 12 AUTHENTICATION, RBAC & SESSION VERSIONING TESTS PASSED SUCCESSFULLY!\n');
 
   server.close();
   await prisma.$disconnect();

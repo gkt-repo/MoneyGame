@@ -7,6 +7,7 @@ import { LobbyView } from './views/LobbyView';
 import { ActiveRoomView } from './views/ActiveRoomView';
 import { WalletView } from './views/WalletView';
 import { SupportFeedbackView } from './views/SupportFeedbackView';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { Loader2, Bell, X } from 'lucide-react';
 import { connectSocket } from './services/socket';
 import { playNotificationSound } from './utils/audio';
@@ -255,7 +256,34 @@ export const App: React.FC = () => {
         loading={loadingNotifications}
       />
 
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-24 sm:pb-8">
+        {/* Sticky Active Game Resumption Bar */}
+        {!activeRoomId && (() => {
+          const activeUserRoom = rooms.find(
+            (r) => ['WAITING', 'PLAYING'].includes(r.status) && r.players?.some((p) => p.userId === user.id)
+          );
+          if (!activeUserRoom) return null;
+
+          return (
+            <div
+              onClick={() => setActiveRoomId(activeUserRoom.id)}
+              className="mb-4 p-3.5 bg-slate-900 text-white rounded-xl border border-slate-700 flex items-center justify-between cursor-pointer hover:bg-slate-800 transition shadow-xs"
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs font-bold">Active Match in Progress (#{activeUserRoom.roomCode})</span>
+                <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+                  {activeUserRoom.gameType === 'TEEN_PATTI' ? 'Teen Patti' : activeUserRoom.gameType === 'SPORTS_MATCH' ? 'Sports Pool' : 'Dice Guess'} · Boot ₹{activeUserRoom.entryFee}
+                </span>
+              </div>
+              <div className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                <span>Return to Table</span>
+                <span>→</span>
+              </div>
+            </div>
+          );
+        })()}
+
         {activeRoomId ? (
           <ActiveRoomView
             roomId={activeRoomId}
@@ -303,6 +331,16 @@ export const App: React.FC = () => {
           </>
         )}
       </main>
+
+      {/* Mobile Fixed Bottom Navigation Bar */}
+      <MobileBottomNav
+        currentTab={currentTab}
+        onTabChange={(t) => {
+          setActiveRoomId(null);
+          setCurrentTab(t);
+        }}
+        balance={balance}
+      />
 
       {toastNotification && (
         <div

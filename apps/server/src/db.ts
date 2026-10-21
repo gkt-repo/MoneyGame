@@ -34,6 +34,9 @@ export async function initDbDefaults() {
     });
   }
 
+  // Ensure tokenVersion column exists on User table
+  await ensureTokenVersionColumn();
+
   // Seed Super Admin if none exists
   await authService.seedSuperAdmin();
 
@@ -42,6 +45,25 @@ export async function initDbDefaults() {
 
   // Ensure notification table exists and sync historical records
   await syncHistoricalNotifications();
+}
+
+export async function ensureTokenVersionColumn() {
+  try {
+    const isPostgres = process.env.DATABASE_URL?.startsWith('postgres');
+    if (isPostgres) {
+      await prisma.$executeRawUnsafe(`
+        ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "tokenVersion" INTEGER NOT NULL DEFAULT 0;
+      `);
+    } else {
+      const tableInfo: any[] = await prisma.$queryRawUnsafe(`PRAGMA table_info("User");`);
+      const hasCol = Array.isArray(tableInfo) && tableInfo.some((c: any) => c.name === 'tokenVersion');
+      if (!hasCol) {
+        await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "tokenVersion" INTEGER NOT NULL DEFAULT 0;`);
+      }
+    }
+  } catch (err: any) {
+    // Ignore if column already exists
+  }
 }
 
 export async function ensureNotificationTable() {

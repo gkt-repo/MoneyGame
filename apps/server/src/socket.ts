@@ -12,11 +12,14 @@ export function configureSockets(io: Server) {
       const decoded = jwt.verify(token, config.jwtSecret, {
         algorithms: ['HS256'], audience: [config.userAudience, config.adminAudience],
       }) as TokenPayload & jwt.JwtPayload;
-      const user = await prisma.user.findUnique({ where: { id: decoded.userId }, select: { id: true, role: true, status: true } });
+      const user = await prisma.user.findUnique({ where: { id: decoded.userId }, select: { id: true, role: true, status: true, tokenVersion: true } });
       if (!user || user.status !== 'ACTIVE') throw new Error('Account unavailable');
+      const tokenVersion = typeof decoded.tokenVersion === 'number' ? decoded.tokenVersion : 0;
+      if (tokenVersion !== user.tokenVersion) throw new Error('Session revoked');
       const admin = decoded.aud === config.adminAudience && ['ADMIN', 'SUPER_ADMIN'].includes(user.role);
       socket.data.userId = user.id;
       socket.data.admin = admin;
+      socket.data.tokenVersion = tokenVersion;
       socket.data.expiresAt = (decoded.exp || 0) * 1000;
       next();
     } catch {
@@ -37,9 +40,14 @@ export function configureSockets(io: Server) {
       try {
         const user = await prisma.user.findUnique({
           where: { id: socket.data.userId },
-          select: { id: true, role: true, status: true },
+          select: { id: true, role: true, status: true, tokenVersion: true },
         });
-        if (!user || user.status !== 'ACTIVE' || !['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+        if (
+          !user ||
+          user.status !== 'ACTIVE' ||
+          !['ADMIN', 'SUPER_ADMIN'].includes(user.role) ||
+          (socket.data.tokenVersion !== undefined && user.tokenVersion !== socket.data.tokenVersion)
+        ) {
           socket.data.admin = false;
           socket.leave?.('admin_channel');
           socket.disconnect?.(true);
@@ -67,10 +75,14 @@ export function configureSockets(io: Server) {
       try {
         const user = await prisma.user.findUnique({
           where: { id: socket.data.userId },
-          select: { id: true, status: true },
+          select: { id: true, status: true, tokenVersion: true },
         });
-        if (!user || user.status !== 'ACTIVE') {
-          socket.emit('game_action_response', { success: false, action, message: 'Account is not active' });
+        if (
+          !user ||
+          user.status !== 'ACTIVE' ||
+          (socket.data.tokenVersion !== undefined && user.tokenVersion !== socket.data.tokenVersion)
+        ) {
+          socket.emit('game_action_response', { success: false, action, message: 'Account is not active or session revoked' });
           socket.disconnect?.(true);
           return;
         }

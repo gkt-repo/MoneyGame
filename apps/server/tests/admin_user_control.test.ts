@@ -58,7 +58,7 @@ async function runAdminControlTests() {
     });
     console.log(`Status: ${regRes.status}`, regRes.data.success ? '✅ PASS' : '❌ FAIL');
     if (!regRes.data.success) throw new Error('Registration failed');
-    const userToken = regRes.data.tokens.accessToken;
+    let userToken = regRes.data.tokens.accessToken;
     const userId = regRes.data.user.id;
 
     // 2. Fetch Support Contact Info
@@ -122,6 +122,19 @@ async function runAdminControlTests() {
       reason: 'Review complete - verified user',
     }, adminToken);
     console.log(`   Re-activate Status: ${activateRes.status}`, activateRes.data.user?.status === 'ACTIVE' ? '✅ PASS' : '❌ FAIL');
+
+    // Verify session revocation: Old token issued before suspension must be rejected
+    const revokedCheck = await apiCall('/support/my-feedback', 'GET', undefined, userToken);
+    console.log(`   Session Revocation on Suspension Check: ${revokedCheck.status}`, revokedCheck.status === 401 ? '✅ PASS (Old Token Revoked)' : '❌ FAIL');
+    if (revokedCheck.status !== 401) throw new Error('Suspended user token was not revoked');
+
+    // Re-login as active user to obtain fresh token with current tokenVersion
+    const reloginRes = await apiCall('/v1/auth/login', 'POST', {
+      identifier: testPhone,
+      password: 'SecurePassword123!',
+    });
+    if (!reloginRes.data.success) throw new Error('Re-login failed after reactivation');
+    userToken = reloginRes.data.tokens.accessToken;
 
     // 9. Admin Adjusts User Balance (Credit)
     console.log('\nTest 9: Admin Credits User Wallet (+₹250.00)');

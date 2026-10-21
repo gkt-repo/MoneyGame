@@ -129,11 +129,7 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Match Header Card */}
-      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden border border-slate-700/50">
-        {/* Ambient Glow */}
-        <div className="absolute top-0 right-0 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-
+      <div className="bg-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-md relative overflow-hidden border border-slate-800">
         <div className="relative z-10 space-y-6">
           {/* League & Status Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -216,13 +212,13 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
                   }}
                 />
               ) : (
-                <div className="w-16 h-16 rounded-full bg-purple-600/30 flex items-center justify-center font-bold text-xl mb-2">
+                <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center font-bold text-xl mb-2 text-amber-400">
                   {team2.shortName || team2.name.slice(0, 3)}
                 </div>
               )}
               <h3 className="font-extrabold text-base sm:text-lg leading-tight text-white">{team2.name}</h3>
-              {team2.score && <span className="text-xs font-mono text-purple-400 mt-1">{team2.score}</span>}
-              <div className="mt-3 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+              {team2.score && <span className="text-xs font-mono text-amber-400 mt-1">{team2.score}</span>}
+              <div className="mt-3 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                 {team2Players.length} Backers
               </div>
             </div>
@@ -230,13 +226,7 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
 
           {/* User's Choice Highlight */}
           {myPick && (
-            <div
-              className={`p-3.5 rounded-2xl flex items-center justify-between border ${
-                myPick === 1
-                  ? 'bg-indigo-950/60 border-indigo-500/40 text-indigo-200'
-                  : 'bg-purple-950/60 border-purple-500/40 text-purple-200'
-              }`}
-            >
+            <div className="p-3.5 rounded-2xl flex items-center justify-between border bg-slate-800 border-slate-700 text-slate-200">
               <div className="flex items-center gap-2">
                 <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
                 <span className="text-xs font-semibold">Your Prediction:</span>
@@ -322,7 +312,7 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
               }}
             />
             <div
-              className="bg-purple-600 h-full transition-all duration-500"
+              className="bg-amber-500 h-full transition-all duration-500"
               style={{
                 width: `${
                   room.players.length > 0 ? (team2Players.length / room.players.length) * 100 : 50
@@ -334,22 +324,22 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
 
         {/* Potential Payout Formula Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-          <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl space-y-1">
-            <div className="flex items-center justify-between text-xs text-indigo-900 font-semibold">
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+            <div className="flex items-center justify-between text-xs text-slate-800 font-bold">
               <span>If {team1.name} Wins</span>
-              <span className="font-bold font-mono text-indigo-700">₹{team1PotentialPayout}/winner</span>
+              <span className="font-bold font-mono text-slate-900">₹{team1PotentialPayout}/winner</span>
             </div>
-            <p className="text-[11px] text-indigo-700/80">
+            <p className="text-[11px] text-slate-500">
               ₹{totalPot.toFixed(2)} total pot divided equally among {team1Players.length || 1} backer(s).
             </p>
           </div>
 
-          <div className="p-3 bg-purple-50 border border-purple-100 rounded-xl space-y-1">
-            <div className="flex items-center justify-between text-xs text-purple-900 font-semibold">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
+            <div className="flex items-center justify-between text-xs text-amber-900 font-bold">
               <span>If {team2.name} Wins</span>
-              <span className="font-bold font-mono text-purple-700">₹{team2PotentialPayout}/winner</span>
+              <span className="font-bold font-mono text-amber-800">₹{team2PotentialPayout}/winner</span>
             </div>
-            <p className="text-[11px] text-purple-700/80">
+            <p className="text-[11px] text-amber-800/80">
               ₹{totalPot.toFixed(2)} total pot divided equally among {team2Players.length || 1} backer(s).
             </p>
           </div>
@@ -401,8 +391,8 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
                   <span
                     className={`px-3 py-1 rounded-full text-xs font-bold border ${
                       p.guessNumber === 1
-                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                        : 'bg-purple-50 text-purple-700 border-purple-200'
+                        ? 'bg-slate-100 text-slate-800 border-slate-300'
+                        : 'bg-amber-50 text-amber-800 border-amber-300'
                     }`}
                   >
                     {chosenTeam.shortName || chosenTeam.name}

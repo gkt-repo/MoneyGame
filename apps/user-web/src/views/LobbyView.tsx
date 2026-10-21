@@ -770,7 +770,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           onClick={() => setFilterGame('TEEN_PATTI')}
           className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
             filterGame === 'TEEN_PATTI'
-              ? 'bg-purple-800 text-white shadow-xs'
+              ? 'bg-slate-900 text-white shadow-xs'
               : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
           }`}
         >
@@ -792,7 +792,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
       {/* Featured / Live Sports Marquee Banner (Visible when on SPORTS_MATCH) */}
       {filterGame === 'SPORTS_MATCH' && (
-        <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 rounded-2xl p-5 text-white border border-indigo-800/40 shadow-sm space-y-4">
+        <div className="bg-slate-900 rounded-2xl p-5 text-white border border-slate-800 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-xl">🏏</span>
@@ -803,7 +803,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     LIVE FEED
                   </span>
                 </h3>
-                <p className="text-[11px] text-indigo-300">
+                <p className="text-[11px] text-slate-400">
                   Select a match to create a 2p, 4p, 6p, 10p, or Unlimited player pool!
                 </p>
               </div>
@@ -884,7 +884,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
                           />
                         ) : (
-                          <div className="w-8 h-8 rounded-full bg-purple-600/40 flex items-center justify-center font-bold text-xs mb-1">
+                          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs mb-1">
                             {m.team2?.shortName || m.team2?.name?.slice(0, 2)}
                           </div>
                         )}
@@ -963,24 +963,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             return (
               <div
                 key={room.id}
-                className={`rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4 transition border ${
-                  isSports
-                    ? isEven
-                      ? 'bg-purple-50/50 border-purple-200'
-                      : 'bg-blue-50/50 border-blue-200'
-                    : isTeenPatti
-                    ? 'bg-purple-50/50 border-purple-200'
-                    : 'bg-emerald-50/40 border-emerald-200'
-                } ${
+                className={`rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4 transition border bg-white ${
                   isPlayerInRoom
-                    ? isSports
-                      ? isEven
-                        ? 'border-purple-600 ring-1 ring-purple-600/30'
-                        : 'border-indigo-600 ring-1 ring-indigo-600/30'
-                      : isTeenPatti
-                      ? 'border-purple-600 ring-1 ring-purple-600/30'
-                      : 'border-emerald-600 ring-1 ring-emerald-600/30'
-                    : 'hover:border-slate-300'
+                    ? 'border-emerald-600 ring-1 ring-emerald-600/30'
+                    : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
                 <div>
@@ -989,10 +975,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       <span
                         className={`text-[10px] font-extrabold px-2 py-0.5 rounded border ${
                           isSports
-                            ? 'bg-blue-100 text-blue-700 border-blue-300'
+                            ? 'bg-slate-100 text-slate-800 border-slate-300'
                             : isTeenPatti
-                            ? 'bg-purple-100 text-purple-700 border-purple-300'
-                            : 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-300'
                         }`}
                       >
                         {isSports ? '🏏 LIVE SPORTS' : isTeenPatti ? '🃏 3 PATTI' : '🎲 DICE GUESS'}
@@ -1026,9 +1012,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     const team2Percent = 100 - team1Percent;
 
                     return (
-                      <div className="mb-2 p-3 bg-white border border-blue-200 rounded-xl space-y-2">
+                      <div className="mb-2 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                         <div className="flex items-center justify-between gap-1.5">
-                          <p className="text-xs font-black text-blue-950 truncate flex items-center gap-1.5">
+                          <p className="text-xs font-bold text-slate-900 truncate flex items-center gap-1.5">
                             <span>🏏</span>
                             <span className="truncate">{matchTitle}</span>
                           </p>
@@ -1041,19 +1027,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             {renderTeamLogo(team1.logo, 'bg-blue-600', 16)}
                             <span className="truncate">{team1.shortName || team1.name}: {team1Count}</span>
                           </span>
-                          <span className="text-purple-700 flex items-center gap-1.5 truncate justify-end">
+                          <span className="text-amber-700 flex items-center gap-1.5 truncate justify-end">
                             <span className="truncate">{team2.shortName || team2.name}: {team2Count}</span>
-                            {renderTeamLogo(team2.logo, 'bg-purple-600', 16)}
+                            {renderTeamLogo(team2.logo, 'bg-amber-600', 16)}
                           </span>
                         </div>
 
                         {/* Horizontal Picks Proportion Bar */}
-                        <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden flex">
+                        <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden flex">
                           {totalPicks === 0 ? (
                             <>
-                              <div className="h-full bg-blue-300 w-1/2" />
+                              <div className="h-full bg-blue-500 w-1/2" />
                               <div className="w-0.5 h-full bg-white shrink-0" />
-                              <div className="h-full bg-purple-300 w-1/2" />
+                              <div className="h-full bg-amber-500 w-1/2" />
                             </>
                           ) : (
                             <>
@@ -1066,7 +1052,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                               {team1Count > 0 && team2Count > 0 && <div className="w-0.5 h-full bg-white shrink-0" />}
                               {team2Count > 0 && (
                                 <div
-                                  className="h-full bg-purple-600 transition-all duration-300"
+                                  className="h-full bg-amber-500 transition-all duration-300"
                                   style={{ width: `${team2Percent}%` }}
                                 />
                               )}
@@ -1113,9 +1099,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         : isFull
                         ? 'bg-slate-100 text-slate-400 border border-slate-200'
                         : isSports
-                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                        ? 'bg-slate-900 hover:bg-slate-800 text-white'
                         : isTeenPatti
-                        ? 'bg-purple-700 hover:bg-purple-800 text-white'
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                         : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                     }`}
                   >
@@ -1160,12 +1146,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               </button>
             </div>
 
-            <div className="p-3.5 bg-purple-50 border border-purple-100 rounded-xl space-y-1 text-xs">
-              <div className="flex justify-between font-semibold text-purple-900">
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs">
+              <div className="flex justify-between font-semibold text-slate-800">
                 <span>Boot Amount</span>
-                <span className="font-mono font-bold text-purple-950">₹{selectedTeenPattiRoom.entryFee}</span>
+                <span className="font-mono font-bold text-slate-900">₹{selectedTeenPattiRoom.entryFee}</span>
               </div>
-              <div className="flex justify-between font-semibold text-purple-900">
+              <div className="flex justify-between font-semibold text-slate-800">
                 <span>Your Available Balance</span>
                 <span className="font-mono font-bold text-emerald-700">₹{balance.toFixed(2)}</span>
               </div>
@@ -1190,7 +1176,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 type="button"
                 disabled={submitting}
                 onClick={handleConfirmTeenPattiJoin}
-                className="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Confirm & Sit</span>}
               </button>
@@ -1259,15 +1245,15 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     onClick={() => setSportsJoinTeam(2)}
                     className={`p-4 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
                       sportsJoinTeam === 2
-                        ? 'bg-purple-50 border-purple-600 text-purple-950 ring-2 ring-purple-600/20'
+                        ? 'bg-amber-50 border-amber-600 text-amber-950 ring-2 ring-amber-600/20'
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    {renderTeamLogo(team2.logo, 'bg-purple-600', 28)}
+                    {renderTeamLogo(team2.logo, 'bg-amber-600', 28)}
                     <span className="text-xs font-extrabold line-clamp-1">
                       {team2.name}
                     </span>
-                    <span className="text-[11px] text-purple-600 font-bold">
+                    <span className="text-[11px] text-amber-700 font-bold">
                       {selectedSportsRoom.players.filter((p) => p.guessNumber === 2).length} picks so far
                     </span>
                   </button>
@@ -1469,7 +1455,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     }}
                     className={`py-2 px-2.5 rounded-xl border text-left transition flex items-center gap-2 cursor-pointer ${
                       selectedGameType === 'TEEN_PATTI'
-                        ? 'bg-purple-50 border-purple-600 text-purple-900 ring-2 ring-purple-600/20'
+                        ? 'bg-slate-900 border-slate-900 text-white'
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
@@ -1688,7 +1674,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                           onClick={() => setSportsPick(2)}
                           className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
                             sportsPick === 2
-                              ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                               : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
                           }`}
                         >
@@ -1721,11 +1707,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       onClick={() => setEntryFee(stake)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono border transition cursor-pointer ${
                         entryFee === stake
-                          ? selectedGameType === 'SPORTS_MATCH'
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                            : selectedGameType === 'TEEN_PATTI'
-                            ? 'bg-purple-700 text-white border-purple-700 shadow-xs'
-                            : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
                           : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
@@ -1815,9 +1797,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   disabled={submitting || (selectedGameType === 'SPORTS_MATCH' && !selectedMatch)}
                   className={`px-5 py-2 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50 ${
                     selectedGameType === 'SPORTS_MATCH'
-                      ? 'bg-indigo-600 hover:bg-indigo-700'
+                      ? 'bg-slate-900 hover:bg-slate-800'
                       : selectedGameType === 'TEEN_PATTI'
-                      ? 'bg-purple-700 hover:bg-purple-800'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
                       : 'bg-emerald-600 hover:bg-emerald-700'
                   }`}
                 >
@@ -2016,13 +1998,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             onClick={() => setCodeSportsTeam(2)}
                             className={`p-3 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
                               codeSportsTeam === 2
-                                ? 'bg-purple-50 border-purple-600 text-purple-950 ring-2 ring-purple-600/20'
+                                ? 'bg-amber-50 border-amber-600 text-amber-950 ring-2 ring-amber-600/20'
                                 : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                             }`}
                           >
-                            {renderTeamLogo(team2.logo, 'bg-purple-600', 24)}
+                            {renderTeamLogo(team2.logo, 'bg-amber-600', 24)}
                             <span className="text-xs font-extrabold line-clamp-1">{team2.name}</span>
-                            <span className="text-[10px] text-purple-600 font-bold">
+                            <span className="text-[10px] text-amber-700 font-bold">
                               {t2Count} picks so far
                             </span>
                           </button>
@@ -2068,9 +2050,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
                   {/* Next Info Asked: Teen Patti Seat Confirmation */}
                   {codeTargetRoom.gameType === 'TEEN_PATTI' && (
-                    <div className="p-3 bg-purple-50/60 border border-purple-100 rounded-xl text-xs text-purple-900 space-y-1">
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 space-y-1">
                       <p className="font-semibold">Ready to join this Teen Patti table?</p>
-                      <p className="text-[11px] text-purple-700">
+                      <p className="text-[11px] text-slate-500">
                         Confirming will reserve your seat and commit the ₹{codeTargetRoom.entryFee} boot stake.
                       </p>
                     </div>

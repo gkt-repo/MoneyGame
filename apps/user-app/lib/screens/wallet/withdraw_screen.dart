@@ -123,15 +123,15 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: AppColors.emerald50,
+              color: AppColors.amber50,
               shape: BoxShape.circle,
-              border: Border.all(color: AppColors.emerald600),
+              border: Border.all(color: AppColors.amber600),
             ),
-            child: const Icon(Icons.check_circle_outline, color: AppColors.emerald600, size: 32),
+            child: const Icon(Icons.hourglass_top_rounded, color: AppColors.amber600, size: 28),
           ),
           const SizedBox(height: 16),
           const Text(
-            'Withdrawal Queued',
+            'Withdrawal Initiated',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -145,7 +145,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
               fontFamily: 'monospace',
               fontSize: 28,
               fontWeight: FontWeight.w700,
-              color: AppColors.emerald600,
+              color: AppColors.slate900,
             ),
           ),
           const SizedBox(height: 4),
@@ -159,22 +159,53 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
           ),
           const SizedBox(height: 20),
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: AppColors.slate50,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(color: AppColors.slate200),
             ),
-            child: const Row(
+            child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.access_time, size: 16, color: AppColors.slate500),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Your payout has been added to the Super Admin clearance queue. It will be credited to your UPI directly with an IMPS UTR number within 15 minutes.',
-                    style: TextStyle(fontSize: 12, color: AppColors.slate600, height: 1.4),
-                  ),
+                Row(
+                  children: [
+                    Icon(Icons.check_circle, size: 15, color: AppColors.emerald600),
+                    SizedBox(width: 8),
+                    Text(
+                      '1. Withdrawal Initiated',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.radio_button_checked, size: 15, color: AppColors.amber600),
+                    SizedBox(width: 8),
+                    Text(
+                      '2. Processing & IMPS Clearance',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.amber700),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.circle_outlined, size: 15, color: AppColors.slate400),
+                    SizedBox(width: 8),
+                    Text(
+                      '3. Paid (Dispatched with Bank UTR)',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.slate500),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 10),
+                Divider(height: 1, color: AppColors.slate200),
+                SizedBox(height: 8),
+                Text(
+                  'Your payout has been initiated. Once approved by Super Admin, the status will automatically update to Paid with your bank IMPS UTR.',
+                  style: TextStyle(fontSize: 11, color: AppColors.slate600, height: 1.4),
                 ),
               ],
             ),

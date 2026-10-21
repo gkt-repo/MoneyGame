@@ -51,7 +51,7 @@ export class AuthService {
    * Generate Access and Refresh tokens
    */
   private async issueTokens(
-    user: { id: string; role: string; username: string },
+    user: { id: string; role: string; username: string; tokenVersion?: number },
     audience: string,
     deviceInfo?: string,
     ipAddress?: string,
@@ -61,6 +61,7 @@ export class AuthService {
       userId: user.id,
       role: user.role as Role,
       username: user.username,
+      tokenVersion: user.tokenVersion ?? 0,
     };
 
     const accessToken = jwt.sign(payload, config.jwtSecret, {
@@ -444,11 +445,14 @@ export class AuthService {
         data: { consumedAt: new Date() },
       });
 
-      // Update password hash
+      // Update password hash and revoke active sessions
       const newPasswordHash = await bcrypt.hash(newPassword, 10);
       await tx.user.update({
         where: { id: user.id },
-        data: { passwordHash: newPasswordHash },
+        data: {
+          passwordHash: newPasswordHash,
+          tokenVersion: { increment: 1 },
+        },
       });
 
       // Revoke all existing sessions for security
@@ -465,25 +469,33 @@ export class AuthService {
   }
 
   /**
-   * Logout (revoke single refresh token)
+   * Logout (revoke refresh tokens and invalidate access tokens)
    */
   async logout(refreshTokenStr?: string, userId?: string): Promise<boolean> {
+    let targetUserId = userId;
     if (refreshTokenStr) {
       const tokenHash = this.hashToken(refreshTokenStr);
+      const tokenRecord = await prisma.refreshToken.findUnique({
+        where: { tokenHash },
+        select: { userId: true },
+      });
+      if (tokenRecord) {
+        targetUserId = targetUserId || tokenRecord.userId;
+      }
       await prisma.refreshToken.updateMany({
         where: { tokenHash, revokedAt: null },
         data: { revokedAt: new Date() },
       });
     }
-    if (userId) {
+    if (targetUserId) {
       await prisma.refreshToken.updateMany({
-        where: { userId, revokedAt: null },
+        where: { userId: targetUserId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
       await prisma.user.update({
-        where: { id: userId },
-        data: { updatedAt: new Date() },
-      });
+        where: { id: targetUserId },
+        data: { tokenVersion: { increment: 1 } },
+      }).catch(() => {});
     }
     return true;
   }

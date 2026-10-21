@@ -114,7 +114,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
         );
       case 'FEEDBACK_REPLY':
         return (
-          <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-200 text-purple-600 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center shrink-0">
             <MessageSquare className="w-5 h-5" />
           </div>
         );
@@ -130,17 +130,17 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   const getBadge = (type: string) => {
     switch (type) {
       case 'WITHDRAWAL_COMPLETED':
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Payout Sent</span>;
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Paid</span>;
       case 'WITHDRAWAL_REQUESTED':
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">Pending Review</span>;
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Withdrawal Initiated</span>;
       case 'WITHDRAWAL_REJECTED':
         return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">Rejected & Refunded</span>;
       case 'DEPOSIT_APPROVED':
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Deposit Credited</span>;
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Deposit Credited</span>;
       case 'ROOM_WIN':
         return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Winner</span>;
       case 'FEEDBACK_REPLY':
-        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">Support Reply</span>;
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-800">Support Reply</span>;
       default:
         return null;
     }
