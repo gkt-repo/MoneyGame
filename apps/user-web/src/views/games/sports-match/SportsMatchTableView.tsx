@@ -112,6 +112,10 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
   const team2PotentialPayout =
     team2Players.length > 0 ? (totalPot / team2Players.length).toFixed(2) : totalPot.toFixed(2);
 
+  const totalPicks = team1Players.length + team2Players.length;
+  const team1Percent = totalPicks > 0 ? Math.round((team1Players.length / totalPicks) * 100) : 50;
+  const team2Percent = 100 - team1Percent;
+
   const myPlayer = room.players.find((p) => p.userId === user.id);
   const myPick = myPlayer ? myPlayer.guessNumber : null;
   const myPickName = myPick === 1 ? team1.name : myPick === 2 ? team2.name : null;
@@ -189,7 +193,7 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
               <h3 className="font-extrabold text-base sm:text-lg leading-tight text-white">{team1.name}</h3>
               {team1.score && <span className="text-xs font-mono text-emerald-400 mt-1">{team1.score}</span>}
               <div className="mt-3 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                {team1Players.length} Backers
+                {team1Percent}% Backers
               </div>
             </div>
 
@@ -219,7 +223,7 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
               <h3 className="font-extrabold text-base sm:text-lg leading-tight text-white">{team2.name}</h3>
               {team2.score && <span className="text-xs font-mono text-amber-400 mt-1">{team2.score}</span>}
               <div className="mt-3 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                {team2Players.length} Backers
+                {team2Percent}% Backers
               </div>
             </div>
           </div>
@@ -294,29 +298,25 @@ export const SportsMatchTableView: React.FC<SportsMatchTableViewProps> = ({
 
         {/* Visual Pool Split Bar */}
         <div className="space-y-1.5">
-          <div className="flex justify-between text-xs font-semibold text-slate-600">
-            <span>
-              {team1.name} ({team1Players.length} picks)
+          <div className="flex justify-between text-xs font-bold text-slate-700">
+            <span className="text-blue-700">
+              {team1.name} ({team1Percent}%)
             </span>
-            <span>
-              {team2.name} ({team2Players.length} picks)
+            <span className="text-amber-700">
+              {team2.name} ({team2Percent}%)
             </span>
           </div>
           <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden flex">
             <div
-              className="bg-indigo-600 h-full transition-all duration-500"
+              className="bg-blue-600 h-full transition-all duration-500"
               style={{
-                width: `${
-                  room.players.length > 0 ? (team1Players.length / room.players.length) * 100 : 50
-                }%`,
+                width: `${team1Percent}%`,
               }}
             />
             <div
               className="bg-amber-500 h-full transition-all duration-500"
               style={{
-                width: `${
-                  room.players.length > 0 ? (team2Players.length / room.players.length) * 100 : 50
-                }%`,
+                width: `${team2Percent}%`,
               }}
             />
           </div>

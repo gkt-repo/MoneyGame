@@ -233,6 +233,10 @@ class _SportsMatchTableScreenState extends State<SportsMatchTableScreen> {
     final team1Payout = team1Players.isNotEmpty ? (totalPot / team1Players.length).toStringAsFixed(2) : totalPot.toStringAsFixed(2);
     final team2Payout = team2Players.isNotEmpty ? (totalPot / team2Players.length).toStringAsFixed(2) : totalPot.toStringAsFixed(2);
 
+    final totalMatchPicks = team1Players.length + team2Players.length;
+    final team1Percent = totalMatchPicks == 0 ? 50 : ((team1Players.length / totalMatchPicks) * 100).round();
+    final team2Percent = 100 - team1Percent;
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
@@ -370,7 +374,7 @@ class _SportsMatchTableScreenState extends State<SportsMatchTableScreen> {
                             const SizedBox(height: 8),
                             Text(team1['name'] ?? 'Team 1', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.white), textAlign: TextAlign.center, maxLines: 1),
                             const SizedBox(height: 4),
-                            Text('${team1Players.length} picks', style: const TextStyle(fontSize: 11, color: Color(0xFFA5B4FC), fontWeight: FontWeight.w600)),
+                            Text('$team1Percent% picks', style: const TextStyle(fontSize: 11, color: Color(0xFFA5B4FC), fontWeight: FontWeight.w600)),
                             const SizedBox(height: 2),
                             Text('Pays ₹$team1Payout', style: const TextStyle(fontSize: 10, color: Color(0xFF34D399), fontWeight: FontWeight.w700)),
                           ],
@@ -425,7 +429,7 @@ class _SportsMatchTableScreenState extends State<SportsMatchTableScreen> {
                             const SizedBox(height: 8),
                             Text(team2['name'] ?? 'Team 2', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.white), textAlign: TextAlign.center, maxLines: 1),
                             const SizedBox(height: 4),
-                            Text('${team2Players.length} picks', style: const TextStyle(fontSize: 11, color: Color(0xFFE9D5FF), fontWeight: FontWeight.w600)),
+                            Text('$team2Percent% picks', style: const TextStyle(fontSize: 11, color: Color(0xFFE9D5FF), fontWeight: FontWeight.w600)),
                             const SizedBox(height: 2),
                             Text('Pays ₹$team2Payout', style: const TextStyle(fontSize: 10, color: Color(0xFF34D399), fontWeight: FontWeight.w700)),
                           ],

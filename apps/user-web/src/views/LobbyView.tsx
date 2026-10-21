@@ -160,11 +160,11 @@ export const MatchCountdownBadge: React.FC<{
   const target = startTimeStr ? new Date(startTimeStr).getTime() : null;
 
   if (!target || isNaN(target)) {
-    if (roomStatus === 'PLAYING') {
+    if (roomStatus === 'PLAYING' || roomStatus === 'COMPLETED') {
       return (
         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-100 text-slate-700 border border-slate-300 shrink-0">
           <Lock className="w-2.5 h-2.5 text-slate-500" />
-          <span>Match Live</span>
+          <span>Locked</span>
         </span>
       );
     }
@@ -178,11 +178,11 @@ export const MatchCountdownBadge: React.FC<{
 
   const diff = target - now;
 
-  if (diff <= 0) {
+  if (diff <= 0 || roomStatus === 'PLAYING' || roomStatus === 'COMPLETED') {
     return (
       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-100 text-slate-700 border border-slate-300 shrink-0">
         <Lock className="w-2.5 h-2.5 text-slate-500" />
-        <span>{roomStatus === 'PLAYING' ? 'Match Live' : 'Locked'}</span>
+        <span>Locked</span>
       </span>
     );
   }
@@ -1021,14 +1021,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                           <MatchCountdownBadge startTimeStr={startTimeStr} roomStatus={room.status} />
                         </div>
 
-                        {/* Team Labels Row */}
+                        {/* Team Labels Row with Percentages */}
                         <div className="flex items-center justify-between text-[11px] font-bold">
                           <span className="text-blue-700 flex items-center gap-1.5 truncate">
                             {renderTeamLogo(team1.logo, 'bg-blue-600', 16)}
-                            <span className="truncate">{team1.shortName || team1.name}: {team1Count}</span>
+                            <span className="truncate">{team1.shortName || team1.name}: {team1Percent}%</span>
                           </span>
                           <span className="text-amber-700 flex items-center gap-1.5 truncate justify-end">
-                            <span className="truncate">{team2.shortName || team2.name}: {team2Count}</span>
+                            <span className="truncate">{team2.shortName || team2.name}: {team2Percent}%</span>
                             {renderTeamLogo(team2.logo, 'bg-amber-600', 16)}
                           </span>
                         </div>
@@ -1214,51 +1214,61 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 </div>
               </div>
 
-              {/* Match Pick Cards */}
-              <div>
-                <label className="block text-xs font-bold text-slate-800 mb-2">
-                  Which team will win this match?
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Team 1 */}
-                  <button
-                    type="button"
-                    onClick={() => setSportsJoinTeam(1)}
-                    className={`p-4 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
-                      sportsJoinTeam === 1
-                        ? 'bg-indigo-50 border-indigo-600 text-indigo-950 ring-2 ring-indigo-600/20'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    {renderTeamLogo(team1.logo, 'bg-blue-600', 28)}
-                    <span className="text-xs font-extrabold line-clamp-1">
-                      {team1.name}
-                    </span>
-                    <span className="text-[11px] text-indigo-600 font-bold">
-                      {selectedSportsRoom.players.filter((p) => p.guessNumber === 1).length} picks so far
-                    </span>
-                  </button>
+              {/* Match Pick Cards with Percentages */}
+              {(() => {
+                const t1P = selectedSportsRoom.players.filter((p) => p.guessNumber === 1).length;
+                const t2P = selectedSportsRoom.players.filter((p) => p.guessNumber === 2).length;
+                const totalM = t1P + t2P;
+                const t1Pct = totalM === 0 ? 50 : Math.round((t1P / totalM) * 100);
+                const t2Pct = 100 - t1Pct;
 
-                  {/* Team 2 */}
-                  <button
-                    type="button"
-                    onClick={() => setSportsJoinTeam(2)}
-                    className={`p-4 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
-                      sportsJoinTeam === 2
-                        ? 'bg-amber-50 border-amber-600 text-amber-950 ring-2 ring-amber-600/20'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    {renderTeamLogo(team2.logo, 'bg-amber-600', 28)}
-                    <span className="text-xs font-extrabold line-clamp-1">
-                      {team2.name}
-                    </span>
-                    <span className="text-[11px] text-amber-700 font-bold">
-                      {selectedSportsRoom.players.filter((p) => p.guessNumber === 2).length} picks so far
-                    </span>
-                  </button>
-                </div>
-              </div>
+                return (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-2">
+                      Which team will win this match?
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Team 1 */}
+                      <button
+                        type="button"
+                        onClick={() => setSportsJoinTeam(1)}
+                        className={`p-4 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
+                          sportsJoinTeam === 1
+                            ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-600/20'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {renderTeamLogo(team1.logo, 'bg-blue-600', 28)}
+                        <span className="text-xs font-extrabold line-clamp-1">
+                          {team1.name}
+                        </span>
+                        <span className="text-[11px] text-blue-700 font-bold">
+                          {t1Pct}% chosen
+                        </span>
+                      </button>
+
+                      {/* Team 2 */}
+                      <button
+                        type="button"
+                        onClick={() => setSportsJoinTeam(2)}
+                        className={`p-4 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
+                          sportsJoinTeam === 2
+                            ? 'bg-amber-50 border-amber-600 text-amber-950 ring-2 ring-amber-600/20'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {renderTeamLogo(team2.logo, 'bg-amber-600', 28)}
+                        <span className="text-xs font-extrabold line-clamp-1">
+                          {team2.name}
+                        </span>
+                        <span className="text-[11px] text-amber-700 font-bold">
+                          {t2Pct}% chosen
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Financial Summary */}
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs">
@@ -1968,6 +1978,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     const t1Count = codeTargetRoom.players.filter((p) => p.guessNumber === 1).length;
                     const t2Count = codeTargetRoom.players.filter((p) => p.guessNumber === 2).length;
 
+                    const totalCodePicks = t1Count + t2Count;
+                    const t1Percent = totalCodePicks === 0 ? 50 : Math.round((t1Count / totalCodePicks) * 100);
+                    const t2Percent = 100 - t1Percent;
+
                     return (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between font-bold text-xs text-blue-900 bg-blue-50 py-1.5 px-2.5 rounded-lg border border-blue-200">
@@ -1983,14 +1997,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             onClick={() => setCodeSportsTeam(1)}
                             className={`p-3 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
                               codeSportsTeam === 1
-                                ? 'bg-indigo-50 border-indigo-600 text-indigo-950 ring-2 ring-indigo-600/20'
+                                ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-600/20'
                                 : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                             }`}
                           >
                             {renderTeamLogo(team1.logo, 'bg-blue-600', 24)}
                             <span className="text-xs font-extrabold line-clamp-1">{team1.name}</span>
-                            <span className="text-[10px] text-indigo-600 font-bold">
-                              {t1Count} picks so far
+                            <span className="text-[10px] text-blue-700 font-bold">
+                              {t1Percent}% chosen
                             </span>
                           </button>
                           <button
@@ -2005,7 +2019,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             {renderTeamLogo(team2.logo, 'bg-amber-600', 24)}
                             <span className="text-xs font-extrabold line-clamp-1">{team2.name}</span>
                             <span className="text-[10px] text-amber-700 font-bold">
-                              {t2Count} picks so far
+                              {t2Percent}% chosen
                             </span>
                           </button>
                         </div>
