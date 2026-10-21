@@ -77,6 +77,56 @@ class _HomeScreenState extends State<HomeScreen> {
             _unreadNotificationCount++;
           });
           NotificationSoundService().playNotificationRing();
+          _loadTransactions();
+          _refreshProfile();
+
+          // Show floating on-screen banner popup
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              backgroundColor: AppColors.slate900,
+              elevation: 8,
+              content: Row(
+                children: [
+                  _getNotificationIconWidget(notif.type),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          notif.title,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          notif.message,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, color: AppColors.slate300),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              action: SnackBarAction(
+                label: 'OPEN',
+                textColor: AppColors.emerald500,
+                onPressed: _showNotificationSheet,
+              ),
+              duration: const Duration(seconds: 5),
+            ),
+          );
         }
       },
       onNotificationUnreadCount: (count) {

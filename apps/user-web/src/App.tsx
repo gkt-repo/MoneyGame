@@ -7,7 +7,7 @@ import { LobbyView } from './views/LobbyView';
 import { ActiveRoomView } from './views/ActiveRoomView';
 import { WalletView } from './views/WalletView';
 import { SupportFeedbackView } from './views/SupportFeedbackView';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Bell, X } from 'lucide-react';
 import { connectSocket } from './services/socket';
 import { playNotificationSound } from './utils/audio';
 
@@ -26,6 +26,7 @@ export const App: React.FC = () => {
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [toastNotification, setToastNotification] = useState<NotificationItem | null>(null);
 
   // Authenticate on Mount
   useEffect(() => {
@@ -183,6 +184,9 @@ export const App: React.FC = () => {
         setNotifications((prev) => [newNotif, ...prev]);
         setUnreadNotificationsCount((c) => c + 1);
         playNotificationSound();
+        refreshBalance();
+        setToastNotification(newNotif);
+        setTimeout(() => setToastNotification((curr) => curr?.id === newNotif.id ? null : curr), 6000);
       });
 
       socket.on('notification_unread_count', (data: { unreadCount: number }) => {
@@ -299,6 +303,33 @@ export const App: React.FC = () => {
           </>
         )}
       </main>
+
+      {toastNotification && (
+        <div
+          onClick={() => {
+            setNotificationsOpen(true);
+            setToastNotification(null);
+          }}
+          className="fixed top-18 right-4 z-50 max-w-sm w-full bg-slate-900 text-white rounded-2xl p-4 shadow-2xl border border-slate-700 cursor-pointer animate-in fade-in slide-in-from-top-4 duration-300 flex items-start gap-3"
+        >
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+            <Bell className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="text-sm font-bold text-white truncate">{toastNotification.title}</h4>
+            <p className="text-xs text-slate-300 mt-0.5 line-clamp-2">{toastNotification.message}</p>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setToastNotification(null);
+            }}
+            className="text-slate-400 hover:text-white shrink-0 p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
