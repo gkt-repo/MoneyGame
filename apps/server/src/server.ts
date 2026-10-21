@@ -1,3 +1,4 @@
+import { moderatorService } from './modules/moderator/moderator.service';
 import http from 'http';
 import { configureSockets } from './socket';
 import path from 'path';
@@ -108,6 +109,7 @@ gameManager.setSocketServer(io);
 walletService.setSocketServer(io);
 notificationService.setSocketServer(io);
 paymentService.setSocketServer(io);
+moderatorService.setSocketServer(io);
 sportsService.setSocketServer(io);
 
 configureSockets(io);

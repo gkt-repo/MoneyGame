@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/constants/colors.dart';
 import '../../core/network/admin_api_client.dart';
@@ -11,6 +12,7 @@ class ModeratorsScreen extends StatefulWidget {
 
 class _ModeratorsScreenState extends State<ModeratorsScreen> {
   List<Map<String, dynamic>> _moderators = [];
+  Timer? _timer;
   bool _loading = true;
   String? _error;
 
@@ -18,7 +20,11 @@ class _ModeratorsScreenState extends State<ModeratorsScreen> {
   void initState() {
     super.initState();
     _load();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _load());
   }
+
+  @override
+  void dispose() { _timer?.cancel(); super.dispose(); }
 
   Future<void> _load() async {
     setState(() {
@@ -27,11 +33,13 @@ class _ModeratorsScreenState extends State<ModeratorsScreen> {
     });
     try {
       final list = await AdminApiClient.listModerators();
+      if (!mounted) return;
       setState(() {
         _moderators = list;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _loading = false;
@@ -77,7 +85,7 @@ class _ModeratorsScreenState extends State<ModeratorsScreen> {
                 const SizedBox(height: 16),
                 _buildField(usernameCtrl, 'Username *'),
                 const SizedBox(height: 10),
-                _buildField(passwordCtrl, 'Password * (min 6 chars)',
+                _buildField(passwordCtrl, 'Password * (min 12 chars)',
                     obscure: true),
                 const SizedBox(height: 16),
                 const Text('UPI Assignment (optional)',
@@ -192,7 +200,7 @@ class _ModeratorsScreenState extends State<ModeratorsScreen> {
         title: const Text('Delete Moderator?',
             style: TextStyle(color: AppColors.white)),
         content: Text(
-            'Remove @${mod['username']} and deactivate their UPI from the pool. This cannot be undone.',
+            'Archive @${mod['username']} and deactivate their UPI from the pool. Financial history is retained.',
             style: const TextStyle(color: AppColors.slate300)),
         actions: [
           TextButton(
@@ -226,6 +234,27 @@ class _ModeratorsScreenState extends State<ModeratorsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _resetPassword(Map<String, dynamic> mod) async {
+    final controller = TextEditingController();
+    final username = TextEditingController(text: mod['username']);
+    String? error;
+    bool saving = false;
+    await showDialog<void>(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setDialog) => AlertDialog(
+      title: Text('Edit ${mod['username']} credentials'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('This signs out the moderator and revokes their listener credential.'),
+        TextField(controller: username, decoration: const InputDecoration(labelText: 'Username')),
+        TextField(controller: controller, obscureText: true, decoration: const InputDecoration(labelText: 'New password (optional, 12+ characters)')),
+        if (error != null) Text(error!, style: const TextStyle(color: Colors.red)),
+      ]), actions: [TextButton(onPressed: saving ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+        FilledButton(onPressed: saving ? null : () async {
+          setDialog(() => saving = true);
+          try { await AdminApiClient.updateModerator(mod['id'], {'username': username.text.trim(), if (controller.text.isNotEmpty) 'password': controller.text}); if (ctx.mounted) Navigator.pop(ctx); }
+          catch(e) { if (ctx.mounted) setDialog(() { error = '$e'; saving = false; }); }
+        }, child: const Text('Save credentials'))],
+    )));
   }
 
   void _showSuspend(Map<String, dynamic> mod) {
@@ -323,12 +352,12 @@ class _ModeratorsScreenState extends State<ModeratorsScreen> {
                       child: ListView.separated(
                         padding: const EdgeInsets.all(12),
                         itemCount: _moderators.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        separatorBuilder: (context, index) => const SizedBox(height: 8),
                         itemBuilder: (_, i) {
                           final mod = _moderators[i];
                           final upi =
                               mod['upiAccount'] as Map<String, dynamic>?;
-                          final todayCount = upi?['todayTxCount'] ?? 0;
+                          final todayCount = upi?['issuedCount'] ?? 0;
                           final dailyLimit = upi?['dailyLimit'] ?? 15;
                           final progress = upi != null
                               ? (todayCount / dailyLimit).clamp(0.0, 1.0)
@@ -374,6 +403,7 @@ class _ModeratorsScreenState extends State<ModeratorsScreen> {
                                     ])),
                                     PopupMenuButton<String>(
                                       onSelected: (v) {
+                                        if (v == 'password') _resetPassword(mod);
                                         if (v == 'suspend') _showSuspend(mod);
                                         if (v == 'delete') _showDelete(mod);
                                       },
@@ -384,6 +414,7 @@ class _ModeratorsScreenState extends State<ModeratorsScreen> {
                                                     'ACTIVE'
                                                 ? 'Suspend'
                                                 : 'Activate')),
+                                        const PopupMenuItem(value: 'password', child: Text('Edit credentials')),
                                         const PopupMenuItem(
                                             value: 'delete',
                                             child: Text('Delete',
@@ -393,6 +424,10 @@ class _ModeratorsScreenState extends State<ModeratorsScreen> {
                                     ),
                                   ]),
                                   if (upi != null) ...[
+                                    Text('${upi['deviceStatus']} · ${upi['poolStatus']} · Battery ${upi['batteryLevel'] ?? '—'}%',
+                                      style: TextStyle(color: upi['lowBattery'] == true || upi['deviceStatus'] == 'OFFLINE' ? Colors.red : AppColors.emerald700)),
+                                    Text('${upi['issuedCount']} slots issued · ${upi['todayTxCount']} received today'),
+                                    Text('Last seen: ${upi['lastHeartbeatAt'] ?? 'Never'}'),
                                     const SizedBox(height: 10),
                                     Row(children: [
                                       const Icon(

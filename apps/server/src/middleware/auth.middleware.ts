@@ -135,6 +135,18 @@ export async function authenticateAdmin(
       return;
     }
 
+    const path = decodeURIComponent(req.originalUrl.split('?')[0]).toLowerCase().replace(/\/+/g, '/').replace(/^\/api(?:\/v1)?/, '').replace(/\/$/, '');
+    const superOnly = /^\/admin\/(moderators|upi-pool|rotation-settings|upi-settings|solvency-audit)(\/|$)/.test(path)
+      || /^\/admin\/users\/[^/]+\/adjust-balance$/.test(path);
+    if (superOnly && user.role !== 'SUPER_ADMIN') {
+      res.status(403).json({ error: 'Super Admin access required' }); return;
+    }
+    if (user.role === 'MODERATOR') {
+      const allowed = (req.method === 'GET' && /^\/admin\/(auth\/me|deposits|withdrawals|feedback|listener-config|moderator-status)$/.test(path))
+        || (req.method === 'POST' && /^\/admin\/(logout|deposits\/[^/]+\/(approve|reject)|withdrawals\/(claim|complete|reject)|listener-heartbeat)$/.test(path))
+        || (req.method === 'PATCH' && /^\/admin\/feedback\/[^/]+\/reply$/.test(path));
+      if (!allowed) { res.status(403).json({ error: 'This operation is not available to moderators' }); return; }
+    }
     req.user = user;
     next();
   } catch (err: any) {

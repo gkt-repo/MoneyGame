@@ -471,7 +471,20 @@ export class WalletService {
    * Admin approves & completes withdrawal after sending money via UPI
    * Verifies UTR uniqueness to prevent duplicate settlements
    */
-  async completeWithdrawal(withdrawalId: string, payoutUtr: string) {
+  async claimWithdrawal(withdrawalId: string, actorId: string) {
+    return serializable(async tx => {
+      const actor = await tx.user.findUnique({ where: { id: actorId } });
+      if (!actor || actor.status !== 'ACTIVE' || !['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(actor.role)) throw new Error('Operator access revoked');
+      const w = await tx.withdrawal.findUniqueOrThrow({ where: { id: withdrawalId } });
+      if (w.status === 'PROCESSING' && w.processingById === actorId) return { success: true, withdrawal: w };
+      if (w.status !== 'PENDING') throw new Error('Another operator has already taken this payout');
+      const withdrawal = await tx.withdrawal.update({ where: { id: withdrawalId }, data: { status: 'PROCESSING', processingById: actorId } });
+      await tx.auditLog.create({ data: { actorId, targetId: w.userId, action: 'CLAIM_WITHDRAWAL', details: JSON.stringify({ withdrawalId }) } });
+      return { success: true, withdrawal };
+    });
+  }
+
+  async completeWithdrawal(withdrawalId: string, payoutUtr: string, actorId?: string) {
     const cleanUtr = bankReference(payoutUtr);
     if (!cleanUtr) throw new Error('Bank payout UTR is required');
 
@@ -488,7 +501,12 @@ export class WalletService {
       });
 
       if (!withdrawal) throw new Error('Withdrawal request not found');
-      if (withdrawal.status !== 'PENDING') throw new Error(`Withdrawal is already ${withdrawal.status}`);
+      if (!['PENDING', 'PROCESSING'].includes(withdrawal.status)) throw new Error(`Withdrawal is already ${withdrawal.status}`);
+      const actor = actorId ? await tx.user.findUnique({ where: { id: actorId } }) : null;
+      if (actorId && (!actor || actor.status !== 'ACTIVE' || !['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(actor.role))) throw new Error('Operator access revoked');
+      if (withdrawal.processingById && withdrawal.processingById !== actorId && actor?.role !== 'SUPER_ADMIN') throw new Error('Payout belongs to another operator');
+      if (actor?.role === 'MODERATOR' && withdrawal.processingById !== actorId) throw new Error('Claim the payout before processing it');
+      if (actorId) await tx.auditLog.create({ data: { actorId, targetId: withdrawal.userId, action: 'COMPLETE_WITHDRAWAL', details: JSON.stringify({ withdrawalId, payoutUtr: cleanUtr }) } });
 
       // Deduct permanently from lockedBalance
       const wallet = await moveWallet(tx, withdrawal.userId, 0, -withdrawal.amount);
@@ -496,7 +514,7 @@ export class WalletService {
       const updatedWithdrawal = await tx.withdrawal.update({
         where: { id: withdrawalId },
         data: {
-          status: 'COMPLETED',
+          status: 'COMPLETED', processedById: actorId,
           payoutUtr: cleanUtr,
         },
       });
@@ -545,14 +563,19 @@ export class WalletService {
   /**
    * Admin rejects withdrawal and refunds locked balance back to available balance
    */
-  async rejectWithdrawal(withdrawalId: string, reason?: string) {
+  async rejectWithdrawal(withdrawalId: string, reason?: string, actorId?: string) {
     const result = await serializable(async (tx) => {
       const withdrawal = await tx.withdrawal.findUnique({
         where: { id: withdrawalId },
       });
 
       if (!withdrawal) throw new Error('Withdrawal request not found');
-      if (withdrawal.status !== 'PENDING') throw new Error(`Withdrawal is already ${withdrawal.status}`);
+      if (!['PENDING', 'PROCESSING'].includes(withdrawal.status)) throw new Error(`Withdrawal is already ${withdrawal.status}`);
+      const actor = actorId ? await tx.user.findUnique({ where: { id: actorId } }) : null;
+      if (actorId && (!actor || actor.status !== 'ACTIVE' || !['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(actor.role))) throw new Error('Operator access revoked');
+      if (withdrawal.processingById && withdrawal.processingById !== actorId && actor?.role !== 'SUPER_ADMIN') throw new Error('Payout belongs to another operator');
+      if (actor?.role === 'MODERATOR' && withdrawal.processingById !== actorId) throw new Error('Claim the payout before processing it');
+      if (actorId) await tx.auditLog.create({ data: { actorId, targetId: withdrawal.userId, action: 'REJECT_WITHDRAWAL', details: JSON.stringify({ withdrawalId, reason }) } });
 
       // Refund from lockedBalance to balance
       const wallet = await moveWallet(tx, withdrawal.userId, withdrawal.amount, -withdrawal.amount);
@@ -560,7 +583,7 @@ export class WalletService {
       const updatedWithdrawal = await tx.withdrawal.update({
         where: { id: withdrawalId },
         data: {
-          status: 'REJECTED',
+          status: 'REJECTED', processedById: actorId,
           reason: reason || 'Declined by administrator',
         },
       });

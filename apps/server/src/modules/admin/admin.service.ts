@@ -507,7 +507,7 @@ export class AdminService {
       if (!existingUser) throw new Error('User not found');
 
       // 1. Regular ADMIN cannot modify ADMIN or SUPER_ADMIN
-      if (actor.role === 'ADMIN' && ['ADMIN', 'SUPER_ADMIN'].includes(existingUser.role)) {
+      if (actor.role === 'ADMIN' && ['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(existingUser.role)) {
         throw new Error('Administrators cannot modify status of other administrators or superadmins');
       }
 
@@ -535,6 +535,7 @@ export class AdminService {
         select: { id: true, username: true, status: true, role: true },
       });
 
+      if (newStatus !== 'ACTIVE') await tx.upiAccount.updateMany({ where: { assignedUserId: userId }, data: { listenerTokenHash: null, listenerConnected: false } });
       // Revoke refresh tokens on ban/suspension
       if (newStatus !== 'ACTIVE') {
         await tx.refreshToken.updateMany({
@@ -614,7 +615,7 @@ export class AdminService {
         throw new Error('User not found');
       }
 
-      if (user.role === 'SUPER_ADMIN') {
+      if (user.role !== 'USER') {
         throw new Error('Cannot delete a SUPER_ADMIN account');
       }
 
@@ -756,13 +757,13 @@ export class AdminService {
 
     if (skip === 0) {
       const pending = await prisma.deposit.findMany({
-        where: { status: 'PENDING' },
+        where: { status: { in: ['PENDING', 'CLAIMED', 'PROCESSING'] } },
         include: { user: { select: { id: true, username: true, phone: true } } },
         orderBy: { createdAt: 'asc' },
       });
       const remainingSlots = Math.max(0, limit - pending.length);
       const nonPending = remainingSlots > 0 ? await prisma.deposit.findMany({
-        where: { status: { not: 'PENDING' } },
+        where: { status: { notIn: ['PENDING', 'CLAIMED', 'PROCESSING'] } },
         include: { user: { select: { id: true, username: true, phone: true } } },
         orderBy: { createdAt: 'desc' },
         take: remainingSlots,
@@ -798,13 +799,13 @@ export class AdminService {
 
     if (skip === 0) {
       const pending = await prisma.withdrawal.findMany({
-        where: { status: 'PENDING' },
+        where: { status: { in: ['PENDING', 'CLAIMED', 'PROCESSING'] } },
         include: { user: { select: { id: true, username: true, phone: true } } },
         orderBy: { createdAt: 'asc' },
       });
       const remainingSlots = Math.max(0, limit - pending.length);
       const nonPending = remainingSlots > 0 ? await prisma.withdrawal.findMany({
-        where: { status: { not: 'PENDING' } },
+        where: { status: { notIn: ['PENDING', 'CLAIMED', 'PROCESSING'] } },
         include: { user: { select: { id: true, username: true, phone: true } } },
         orderBy: { createdAt: 'desc' },
         take: remainingSlots,

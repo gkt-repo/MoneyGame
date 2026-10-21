@@ -80,6 +80,8 @@ model Deposit {
   totalAmount      Float
   activeAmountKey  Int?              @unique // amount in paise, held only while active
   receivingUpi     String
+  upiAccountId     String?
+  allocationDay    String?
   status           String            @default("PENDING") // PENDING, CLAIMED, APPROVED, EXPIRED, REJECTED
   utr              String?           @unique
   userClaimedUtr   String?
@@ -103,6 +105,8 @@ model UnmatchedPayment {
   senderUpi         String?
   senderName        String?
   rawPayload        String?
+  receivingUpi      String?
+  reportedById      String?
   status            String    @default("UNCLAIMED") // UNCLAIMED, ASSIGNED, REFUNDED
   assignedDepositId String?   @unique
   assignedDeposit   Deposit?  @relation(fields: [assignedDepositId], references: [id], onDelete: SetNull)
@@ -122,6 +126,8 @@ model Withdrawal {
   upiId     String
   status    String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, REJECTED
   payoutUtr String?  @unique
+  processingById String?
+  processedById String?
   reason    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -241,6 +247,12 @@ model UpiAccount {
   isActive       Boolean   @default(true)
   assignedUserId String?   @unique
   assignedUser   User?     @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+  listenerTokenHash String? @unique
+  lastHeartbeatAt DateTime?
+  listenerConnected Boolean @default(false)
+  batteryLevel Int?
+  phoneModel String?
+  usage UpiDailyUsage[]
   lastResetAt    DateTime  @default(now())
   lastUsedAt     DateTime?
   createdAt      DateTime  @default(now())
@@ -250,3 +262,14 @@ model UpiAccount {
   @@index([assignedUserId])
 }
 
+
+// Issued slots remain reserved for the day: expired QR codes can still be paid.
+model UpiDailyUsage {
+  id String @id @default(uuid())
+  accountId String
+  account UpiAccount @relation(fields: [accountId], references: [id])
+  day String
+  issuedCount Int @default(0)
+  receivedCount Int @default(0)
+  @@unique([accountId, day])
+}

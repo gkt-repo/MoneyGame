@@ -445,6 +445,7 @@ export class AuthService {
         data: { consumedAt: new Date() },
       });
 
+      await tx.upiAccount.updateMany({ where: { assignedUserId: user.id }, data: { listenerTokenHash: null, listenerConnected: false } });
       // Update password hash and revoke active sessions
       const newPasswordHash = await bcrypt.hash(newPassword, 10);
       await tx.user.update({
@@ -488,6 +489,7 @@ export class AuthService {
       });
     }
     if (targetUserId) {
+      await prisma.upiAccount.updateMany({ where: { assignedUserId: targetUserId }, data: { listenerTokenHash: null, listenerConnected: false } });
       await prisma.refreshToken.updateMany({
         where: { userId: targetUserId, revokedAt: null },
         data: { revokedAt: new Date() },

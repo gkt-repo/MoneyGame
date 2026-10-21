@@ -754,6 +754,7 @@ class AdminApiClient {
       );
 
       final admin = AdminProfileModel.fromJson(res.data['admin'] ?? res.data['user']);
+      if (admin.role == 'MODERATOR') { await AdminSecureStorage.clearSession(); throw 'Use the MoneyGame Moderator app'; }
       await AdminSecureStorage.saveAdminProfile(jsonEncode(admin.toJson()));
       return admin;
     } on DioException catch (e) {
@@ -764,7 +765,9 @@ class AdminApiClient {
   static Future<AdminProfileModel> getMe() async {
     try {
       final res = await _dio.get('/admin/auth/me');
-      return AdminProfileModel.fromJson(res.data['admin'] ?? res.data['user']);
+      final profile = AdminProfileModel.fromJson(res.data['admin'] ?? res.data['user']);
+      if (profile.role == 'MODERATOR') { await AdminSecureStorage.clearSession(); throw 'Use the MoneyGame Moderator app'; }
+      return profile;
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to authenticate admin';
     }
@@ -1076,7 +1079,7 @@ class AdminApiClient {
 
   static Future<List<Map<String, dynamic>>> listModerators() async {
     try {
-      final res = await _dio.get('/api/admin/moderators');
+      final res = await _dio.get('/admin/moderators');
       return List<Map<String, dynamic>>.from(res.data as List);
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to load moderators';
@@ -1094,7 +1097,7 @@ class AdminApiClient {
     int batchSize = 2,
   }) async {
     try {
-      final res = await _dio.post('/api/admin/moderators', data: {
+      final res = await _dio.post('/admin/moderators', data: {
         'username': username,
         'password': password,
         if (email != null && email.isNotEmpty) 'email': email,
@@ -1112,7 +1115,7 @@ class AdminApiClient {
 
   static Future<Map<String, dynamic>> updateModerator(String id, Map<String, dynamic> data) async {
     try {
-      final res = await _dio.patch('/api/admin/moderators/$id', data: data);
+      final res = await _dio.patch('/admin/moderators/$id', data: data);
       return Map<String, dynamic>.from(res.data);
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to update moderator';
@@ -1121,7 +1124,7 @@ class AdminApiClient {
 
   static Future<void> deleteModerator(String id) async {
     try {
-      await _dio.delete('/api/admin/moderators/$id');
+      await _dio.delete('/admin/moderators/$id');
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to delete moderator';
     }
@@ -1131,7 +1134,7 @@ class AdminApiClient {
 
   static Future<List<Map<String, dynamic>>> listUpiPool() async {
     try {
-      final res = await _dio.get('/api/admin/upi-pool');
+      final res = await _dio.get('/admin/upi-pool');
       return List<Map<String, dynamic>>.from(res.data as List);
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to load UPI pool';
@@ -1145,7 +1148,7 @@ class AdminApiClient {
     int batchSize = 2,
   }) async {
     try {
-      final res = await _dio.post('/api/admin/upi-pool', data: {
+      final res = await _dio.post('/admin/upi-pool', data: {
         'upiId': upiId,
         'receiverName': receiverName,
         'dailyLimit': dailyLimit,
@@ -1159,7 +1162,7 @@ class AdminApiClient {
 
   static Future<Map<String, dynamic>> updateUpiAccount(String id, Map<String, dynamic> data) async {
     try {
-      final res = await _dio.patch('/api/admin/upi-pool/$id', data: data);
+      final res = await _dio.patch('/admin/upi-pool/$id', data: data);
       return Map<String, dynamic>.from(res.data);
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to update UPI account';
@@ -1168,9 +1171,14 @@ class AdminApiClient {
 
   static Future<void> deleteUpiAccount(String id) async {
     try {
-      await _dio.delete('/api/admin/upi-pool/$id');
+      await _dio.delete('/admin/upi-pool/$id');
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to delete UPI account';
     }
   }
+  static Future<Map<String, dynamic>> rotationSettings() async => Map<String, dynamic>.from((await _dio.get('/admin/rotation-settings')).data);
+  static Future<void> saveRotation(int batchSize) async { await _dio.patch('/admin/rotation-settings', data: {'batchSize': batchSize}); }
+
+  static Future<void> createPoolAccount(Map<String, dynamic> data) async { await _dio.post('/admin/upi-pool', data: data); }
+
 }

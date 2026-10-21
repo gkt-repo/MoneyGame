@@ -72,3 +72,34 @@ test('production rejects default secrets and accepts deployment-specific secrets
   assert.notEqual(rejected.status, 0); assert.match(rejected.stderr, /JWT_SECRET|WEBHOOK_SECRET/);
   run(process.execPath, ['-r', 'ts-node/register', '-e', "require('./src/config')"], { ...env, JWT_SECRET: 'a'.repeat(64), WEBHOOK_SECRET: 'b'.repeat(64) });
 });
+
+test('moderator upgrade retains assigned UPIs and backfills IST daily reservations', () => {
+  const output = run('python3', ['-c', `
+import sqlite3, json
+from pathlib import Path
+c = sqlite3.connect(':memory:')
+paths = sorted(Path('prisma/migrations').glob('*/migration.sql'))
+for p in paths:
+    if p.parent.name == '20261022010000_moderator_devices':
+        c.executescript('''
+INSERT INTO User(id,username,role) VALUES('mod','desk','MODERATOR'),('player','player','USER');
+INSERT INTO UpiAccount(id,upiId,receiverName,assignedUserId) VALUES('upi','desk@bank','Desk','mod');
+INSERT INTO Deposit(id,userId,baseAmount,offsetPaise,totalAmount,receivingUpi,status,expiresAt,createdAt)
+VALUES('d1','player',100,1,100.01,'desk@bank','APPROVED','2026-10-21T20:00:00Z','2026-10-21T19:00:00Z');
+INSERT INTO Deposit(id,userId,baseAmount,offsetPaise,totalAmount,receivingUpi,status,expiresAt,createdAt)
+VALUES('d2','player',200,1,200.01,'desk@bank','EXPIRED','2026-10-21T20:00:00Z',1792609200000);
+''')
+    c.executescript(p.read_text())
+print(json.dumps({
+ 'owner': c.execute('SELECT assignedUserId FROM UpiAccount').fetchone()[0],
+ 'usage': c.execute('SELECT day,issuedCount,receivedCount FROM UpiDailyUsage ORDER BY day').fetchall(),
+ 'deposits': c.execute('SELECT COUNT(*) FROM Deposit WHERE upiAccountId = ?', ('upi',)).fetchone()[0],
+ 'foreignKeys': c.execute('PRAGMA foreign_key_list(UpiAccount)').fetchall()
+}))
+`]);
+  const data = JSON.parse(output);
+  assert.equal(data.owner, 'mod');
+  assert.equal(data.deposits, 2);
+  assert.deepEqual(data.usage, [['2026-10-22', 2, 1]]);
+  assert(data.foreignKeys.some(key => key[2] === 'User'));
+});

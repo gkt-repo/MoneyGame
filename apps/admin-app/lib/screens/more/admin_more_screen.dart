@@ -3,6 +3,8 @@ import '../../core/constants/colors.dart';
 import '../../core/network/admin_api_client.dart';
 import '../../core/storage/admin_secure_storage.dart';
 import '../feedback/feedback_screen.dart';
+import '../moderators/moderators_screen.dart';
+import '../moderators/upi_pool_screen.dart';
 import '../rooms/rooms_screen.dart';
 import '../settings/admin_settings_screen.dart';
 
@@ -56,6 +58,16 @@ class _AdminMoreScreenState extends State<AdminMoreScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (widget.admin.role == 'SUPER_ADMIN') ...[
+                _buildMenuTile(icon: Icons.groups_outlined, iconColor: AppColors.emerald700, iconBg: AppColors.emerald50,
+                  title: 'Moderator Fleet', subtitle: 'Accounts, device health and daily usage',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ModeratorsScreen()))),
+                const SizedBox(height: 8),
+                _buildMenuTile(icon: Icons.account_balance_outlined, iconColor: AppColors.emerald700, iconBg: AppColors.emerald50,
+                  title: 'UPI Pool', subtitle: 'Assignments, daily limits and batch rotation',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UpiPoolScreen()))),
+                const SizedBox(height: 20),
+              ],
               // Admin Header Card
               Container(
                 padding: const EdgeInsets.all(16),

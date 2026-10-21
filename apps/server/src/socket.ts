@@ -16,7 +16,7 @@ export function configureSockets(io: Server) {
       if (!user || user.status !== 'ACTIVE') throw new Error('Account unavailable');
       const tokenVersion = typeof decoded.tokenVersion === 'number' ? decoded.tokenVersion : 0;
       if (tokenVersion !== user.tokenVersion) throw new Error('Session revoked');
-      const admin = decoded.aud === config.adminAudience && ['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(user.role);
+      const admin = decoded.aud === config.adminAudience && ['ADMIN', 'SUPER_ADMIN'].includes(user.role);
       socket.data.userId = user.id;
       socket.data.admin = admin;
       socket.data.tokenVersion = tokenVersion;
@@ -45,7 +45,7 @@ export function configureSockets(io: Server) {
         if (
           !user ||
           user.status !== 'ACTIVE' ||
-          !['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(user.role) ||
+          !['ADMIN', 'SUPER_ADMIN'].includes(user.role) ||
           (socket.data.tokenVersion !== undefined && user.tokenVersion !== socket.data.tokenVersion)
         ) {
           socket.data.admin = false;

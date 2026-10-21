@@ -1,3 +1,5 @@
+import { moderatorRouter } from './moderator.routes';
+import { moderatorService } from '../modules/moderator/moderator.service';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Router, Request, Response } from 'express';
@@ -55,6 +57,7 @@ router.use('/auth', authRouter);
 router.use('/v1/auth', authRouter);
 router.use('/admin/auth', adminAuthRouter);
 router.use('/v1/admin/auth', adminAuthRouter);
+router.use('/admin', moderatorRouter);
 
 // ─── User Profile & Wallet (Protected) ───────────────────────────────────────
 
@@ -503,7 +506,9 @@ async function isWebhookAuthorized(authHeader?: string | string[]): Promise<bool
 router.post('/webhooks/upi-notify', webhookLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const authHeader = req.headers['x-webhook-secret'] || req.headers['authorization'];
-    if (!(await isWebhookAuthorized(authHeader))) {
+    const deviceToken = typeof authHeader === 'string' ? authHeader.replace(/^Bearer /, '') : '';
+    const device = deviceToken.startsWith('mg_listener_') ? await moderatorService.device(deviceToken) : null;
+    if (!device && !(await isWebhookAuthorized(authHeader))) {
       res.status(401).json({ error: 'Unauthorized webhook request' });
       return;
     }
@@ -518,6 +523,7 @@ router.post('/webhooks/upi-notify', webhookLimiter, async (req: Request, res: Re
       senderUpi,
       senderName,
       rawPayload: req.body,
+      receivingUpi: device?.upiId, reportedById: device?.assignedUserId || undefined, listenerTokenHash: device?.listenerTokenHash || undefined,
     });
 
     res.json(result);
@@ -530,12 +536,16 @@ router.post('/webhooks/upi-notify', webhookLimiter, async (req: Request, res: Re
 router.post('/webhooks/listener-heartbeat', webhookLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const authHeader = req.headers['x-webhook-secret'] || req.headers['authorization'];
-    if (!(await isWebhookAuthorized(authHeader))) {
+    const deviceToken = typeof authHeader === 'string' ? authHeader.replace(/^Bearer /, '') : '';
+    const device = deviceToken.startsWith('mg_listener_') ? await moderatorService.device(deviceToken) : null;
+    if (!device && !(await isWebhookAuthorized(authHeader))) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
     const { batteryLevel, phoneModel } = req.body || {};
+
+    if (device) { res.json(await moderatorService.heartbeat(device.id, req.body)); return; }
 
     // Persist heartbeat in DB for watchdog
     await prisma.systemSetting.upsert({
@@ -564,8 +574,9 @@ router.post('/webhooks/listener-heartbeat', webhookLimiter, async (req: Request,
 
 // ─── Admin Listener Management Endpoints ──────────────────────────────────────
 
-router.get('/admin/listener-config', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get('/admin/listener-config', authenticateAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    if (req.user?.role === 'MODERATOR') { res.json(await moderatorService.listenerConfig(req.user.id)); return; }
     const lastHeartbeat = await prisma.systemSetting.findUnique({ where: { key: 'last_listener_heartbeat' } });
     const metaSetting = await prisma.systemSetting.findUnique({ where: { key: 'listener_metadata' } });
     let listenerMetadata = null;
@@ -600,8 +611,13 @@ router.get('/admin/listener-config', authenticateAdmin, async (req: Request, res
   }
 });
 
-router.post('/admin/listener-heartbeat', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post('/admin/listener-heartbeat', authenticateAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    if (req.user?.role === 'MODERATOR') {
+      const a = await prisma.upiAccount.findUnique({ where: { assignedUserId: req.user.id } });
+      if (!a) throw new Error('No assigned UPI');
+      res.json(await moderatorService.heartbeat(a.id, req.body)); return;
+    }
     const { batteryLevel, phoneModel } = req.body || {};
 
     await prisma.systemSetting.upsert({
@@ -734,28 +750,28 @@ router.get('/admin/withdrawals', authenticateAdmin, async (req: Request, res: Re
   }
 });
 
-router.post('/admin/withdrawals/complete', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post('/admin/withdrawals/complete', authenticateAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { withdrawalId, payoutUtr } = req.body;
     if (!withdrawalId || !payoutUtr) {
       res.status(400).json({ error: 'withdrawalId and payoutUtr are required' });
       return;
     }
-    const result = await adminService.completeWithdrawal(withdrawalId, payoutUtr);
+    const result = await walletService.completeWithdrawal(withdrawalId, payoutUtr, req.user!.id);
     res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
 });
 
-router.post('/admin/withdrawals/reject', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
+router.post('/admin/withdrawals/reject', authenticateAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { withdrawalId, reason } = req.body;
     if (!withdrawalId) {
       res.status(400).json({ error: 'withdrawalId is required' });
       return;
     }
-    const result = await adminService.rejectWithdrawal(withdrawalId, reason);
+    const result = await walletService.rejectWithdrawal(withdrawalId, reason, req.user!.id);
     res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(400).json({ error: err.message });

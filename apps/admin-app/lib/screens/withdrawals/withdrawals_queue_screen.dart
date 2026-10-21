@@ -73,7 +73,7 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
   }
 
   void _showCompleteDialog(AdminWithdrawalModel withdrawal) {
-    final utrController = TextEditingController(text: 'UTR${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}');
+    final utrController = TextEditingController();
     bool submitting = false;
     String? submitError;
 
@@ -460,7 +460,7 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
   Widget _buildWithdrawalCard(AdminWithdrawalModel item) {
     Color statusBg = AppColors.slate100;
     Color statusText = AppColors.slate700;
-    if (item.status == 'PENDING') {
+    if (item.status == 'PENDING' || item.status == 'PROCESSING') {
       statusBg = AppColors.amber50;
       statusText = AppColors.amber800;
     } else if (item.status == 'COMPLETED') {
@@ -613,7 +613,7 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
           ),
 
           // Pending Action Buttons
-          if (item.status == 'PENDING') ...[
+          if (item.status == 'PENDING' || item.status == 'PROCESSING') ...[
             const SizedBox(height: 12),
             Row(
               children: [

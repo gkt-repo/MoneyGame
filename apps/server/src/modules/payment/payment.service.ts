@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { reserveUpi, istDay } from '../moderator/upi-pool.service';
 import { moveWallet } from '../../wallet-ledger';
 import QRCode from 'qrcode';
 import { Prisma } from '@prisma/client';
@@ -52,92 +53,13 @@ export class PaymentService {
         .find(offset => !used.has(toPaise(baseAmount) + offset));
       if (offsetPaise === undefined) throw new Error('All payment slots for this amount are in use. Please try later.');
 
-      // ── UPI Pool Rotation ─────────────────────────────────────────────────────
-      let receivingUpi: string;
-
-      // Check if we have any active UPI pool accounts
-      const upiPool = await tx.upiAccount.findMany({
-        where: { isActive: true },
-        orderBy: { sortOrder: 'asc' },
-      });
-
-      if (upiPool.length > 0) {
-        // Reset daily counts for accounts whose lastResetAt is from a previous calendar day (IST = UTC+5:30)
-        const nowUtc = new Date();
-        const nowIst = new Date(nowUtc.getTime() + 5.5 * 60 * 60 * 1000);
-        const todayIstMidnight = new Date(nowIst);
-        todayIstMidnight.setHours(0, 0, 0, 0);
-        const todayMidnightUtc = new Date(todayIstMidnight.getTime() - 5.5 * 60 * 60 * 1000);
-
-        // Find accounts that need daily reset
-        const needsReset = upiPool.filter(u => u.lastResetAt < todayMidnightUtc);
-        if (needsReset.length > 0) {
-          await tx.upiAccount.updateMany({
-            where: { id: { in: needsReset.map(u => u.id) } },
-            data: { todayTxCount: 0, batchCount: 0, lastResetAt: new Date() },
-          });
-          // Refresh pool after reset
-          needsReset.forEach(u => { u.todayTxCount = 0; u.batchCount = 0; });
-        }
-
-        // Find the current active batch account (has batchCount < batchSize AND is under daily limit)
-        const activeBatch = upiPool.find(u =>
-          u.todayTxCount < u.dailyLimit && u.batchCount < u.batchSize
-        );
-
-        if (activeBatch) {
-          // Continue using this UPI ID in its current batch turn
-          receivingUpi = activeBatch.upiId;
-          await tx.upiAccount.update({
-            where: { id: activeBatch.id },
-            data: { batchCount: activeBatch.batchCount + 1, lastUsedAt: new Date() },
-          });
-        } else {
-          // Current batch is full (batchCount >= batchSize), move to next available UPI
-          // Find the account just after the last-used one (round-robin by sortOrder)
-          const lastUsedAccount = upiPool
-            .filter(u => u.lastUsedAt != null)
-            .sort((a, b) => (b.lastUsedAt!.getTime() - a.lastUsedAt!.getTime()))[0];
-
-          const lastSortOrder = lastUsedAccount?.sortOrder ?? -1;
-
-          // Find next account with capacity, wrapping around
-          const sorted = [...upiPool].sort((a, b) => a.sortOrder - b.sortOrder);
-          const afterCurrent = [
-            ...sorted.filter(u => u.sortOrder > lastSortOrder),
-            ...sorted.filter(u => u.sortOrder <= lastSortOrder),
-          ];
-          const nextAccount = afterCurrent.find(u => u.todayTxCount < u.dailyLimit);
-
-          if (!nextAccount) {
-            throw new Error('All deposit channels have reached their daily limit. Please try again tomorrow.');
-          }
-
-          // Reset the previously active batch account's batchCount
-          if (lastUsedAccount && lastUsedAccount.id !== nextAccount.id) {
-            await tx.upiAccount.update({
-              where: { id: lastUsedAccount.id },
-              data: { batchCount: 0 },
-            });
-          }
-
-          receivingUpi = nextAccount.upiId;
-          await tx.upiAccount.update({
-            where: { id: nextAccount.id },
-            data: { batchCount: 1, lastUsedAt: new Date() },
-          });
-        }
-      } else {
-        // Fallback: use legacy single admin_upi_id from system settings
-        receivingUpi = (await tx.systemSetting.findUnique({ where: { key: 'admin_upi_id' } }))?.value || config.adminUpiId;
-      }
-      // ─────────────────────────────────────────────────────────────────────────
-
+      const allocation = await reserveUpi(tx);
+      const receivingUpi = allocation?.upiId || (await tx.systemSetting.findUnique({ where: { key: 'admin_upi_id' } }))?.value || config.adminUpiId;
       return tx.deposit.create({ data: {
         userId, baseAmount, offsetPaise,
         totalAmount: (toPaise(baseAmount) + offsetPaise) / 100,
         activeAmountKey: toPaise(baseAmount) + offsetPaise,
-        receivingUpi,
+        receivingUpi, upiAccountId: allocation?.id, allocationDay: allocation?.day,
         expiresAt: new Date(Date.now() + config.depositExpiryMinutes * 60000),
       }});
     });
@@ -163,10 +85,15 @@ export class PaymentService {
 
   // Shared by webhook, UTR claim and manual approval. Caller owns the transaction.
   private async approve(tx: Prisma.TransactionClient, depositId: string, receiptId: string, claimStatus: string, adminId?: string) {
+    if (adminId) {
+      const actor = await tx.user.findUnique({ where: { id: adminId } });
+      if (!actor || actor.status !== 'ACTIVE' || !['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(actor.role)) throw new Error('Operator access revoked');
+    }
     const deposit = await tx.deposit.findUnique({ where: { id: depositId } });
     const receipt = await tx.unmatchedPayment.findUnique({ where: { id: receiptId } });
     if (!deposit || !receipt?.utr) throw new Error('Deposit or bank reference not found');
     if (!approvable.includes(deposit.status)) throw new Error(`Deposit is ${deposit.status}`);
+    if (receipt.receivingUpi && receipt.receivingUpi !== deposit.receivingUpi) throw new Error('Payment was received by a different UPI account');
     if (receipt.status !== 'UNCLAIMED') throw new Error('Payment has already been assigned');
     if (toPaise(receipt.amount) !== toPaise(deposit.totalAmount)) throw new Error('Bank payment amount does not match the deposit amount');
     const claimed = await tx.deposit.updateMany({
@@ -217,20 +144,28 @@ export class PaymentService {
     }).catch(err => console.error('Failed to create deposit notification:', err));
   }
 
-  async verifyIncomingPayment(amount: number, utr?: string, senderInfo?: { senderUpi?: string; senderName?: string; rawPayload?: any }) {
+  async verifyIncomingPayment(amount: number, utr?: string, senderInfo?: { senderUpi?: string; senderName?: string; rawPayload?: any; receivingUpi?: string; reportedById?: string; listenerTokenHash?: string }) {
     const receivedAmount = money(amount);
     const cleanUtr = bankReference(utr);
     const result = await serializable(async tx => {
+      if (senderInfo?.listenerTokenHash) {
+        const device = await tx.upiAccount.findUnique({ where: { listenerTokenHash: senderInfo.listenerTokenHash }, include: { assignedUser: true } });
+        if (!device || device.assignedUser?.status !== 'ACTIVE' || device.upiId !== senderInfo.receivingUpi) throw new Error('Listener access revoked');
+      }
       // Include historical approvals created before receipt tracking was introduced.
       const approved = await tx.deposit.findUnique({ where: { utr: cleanUtr } });
       if (approved) {
+        if (senderInfo?.receivingUpi && senderInfo.receivingUpi !== approved.receivingUpi) throw new Error('Receiving UPI does not match');
         if (toPaise(approved.totalAmount) !== toPaise(receivedAmount)) throw new Error('UTR was previously received with a different amount');
         return { success: true as const, alreadyApproved: true, message: 'Payment already processed.' };
       }
       let receipt = await tx.unmatchedPayment.findUnique({ where: { utr: cleanUtr } });
+      if (receipt && senderInfo?.receivingUpi && receipt.receivingUpi !== senderInfo.receivingUpi) throw new Error('Receiving UPI does not match recorded receipt');
       if (receipt && toPaise(receipt.amount) !== toPaise(receivedAmount)) throw new Error('UTR was previously received with a different amount');
       if (receipt && receipt.status !== 'UNCLAIMED') return { success: true as const, alreadyApproved: true, message: 'Payment already processed.' };
+      const newReceipt = !receipt;
       if (!receipt) receipt = await tx.unmatchedPayment.create({ data: {
+        receivingUpi: senderInfo?.receivingUpi, reportedById: senderInfo?.reportedById,
         amount: receivedAmount, utr: cleanUtr, senderUpi: senderInfo?.senderUpi,
         senderName: senderInfo?.senderName,
         rawPayload: senderInfo?.rawPayload ? JSON.stringify(senderInfo.rawPayload) : null,
@@ -246,6 +181,26 @@ export class PaymentService {
         if (sameAmount.length === 1 && ['PENDING', 'CLAIMED'].includes(sameAmount[0].status)
             && sameAmount[0].expiresAt > new Date()
             && (!sameAmount[0].userClaimedUtr || sameAmount[0].userClaimedUtr === cleanUtr)) deposit = sameAmount[0];
+      }
+      if (newReceipt && !senderInfo?.receivingUpi && deposit?.upiAccountId) {
+        const day = istDay();
+        await tx.unmatchedPayment.update({ where: { id: receipt.id }, data: { receivingUpi: deposit.receivingUpi } });
+        await tx.upiDailyUsage.upsert({ where: { accountId_day: { accountId: deposit.upiAccountId, day } },
+          create: { accountId: deposit.upiAccountId, day, receivedCount: 1, issuedCount: 1 },
+          update: { receivedCount: { increment: 1 }, issuedCount: { increment: deposit.allocationDay === day ? 0 : 1 } } });
+      }
+      // A real receipt to a different receiving account stays available for reconciliation.
+      if (deposit && senderInfo?.receivingUpi && deposit.receivingUpi !== senderInfo.receivingUpi) deposit = null;
+      if (newReceipt && senderInfo?.receivingUpi) {
+        const account = await tx.upiAccount.findUnique({ where: { upiId: senderInfo.receivingUpi } });
+        if (account) {
+          const day = istDay();
+          // Only a confidently matched, same-day allocation already reserves this receipt.
+          const extra = deposit?.allocationDay === day ? 0 : 1;
+          await tx.upiDailyUsage.upsert({ where: { accountId_day: { accountId: account.id, day } },
+            create: { accountId: account.id, day, receivedCount: 1, issuedCount: Math.max(1, extra) },
+            update: { receivedCount: { increment: 1 }, issuedCount: { increment: extra } } });
+        }
       }
       if (!deposit) return {
         success: false as const, unmatched: true, unmatchedPaymentId: receipt.id,
@@ -295,7 +250,16 @@ export class PaymentService {
       // An admin may attest to a bank payment not received by the listener.
       // An existing receipt's amount must never be overwritten to fit a deposit.
       let receipt = await tx.unmatchedPayment.findUnique({ where: { utr: cleanUtr } });
-      if (!receipt) receipt = await tx.unmatchedPayment.create({ data: { amount: deposit.totalAmount, utr: cleanUtr } });
+      if (!receipt) {
+        receipt = await tx.unmatchedPayment.create({ data: { amount: deposit.totalAmount, utr: cleanUtr, receivingUpi: deposit.receivingUpi, reportedById: adminId } });
+        if (deposit.upiAccountId) {
+          const day = istDay();
+          const extra = deposit.allocationDay === day ? 0 : 1;
+          await tx.upiDailyUsage.upsert({ where: { accountId_day: { accountId: deposit.upiAccountId, day } },
+            create: { accountId: deposit.upiAccountId, day, receivedCount: 1, issuedCount: 1 },
+            update: { receivedCount: { increment: 1 }, issuedCount: { increment: extra } } });
+        }
+      }
       return this.approve(tx, depositId, receipt.id, 'MANUALLY_VERIFIED', adminId);
     });
     this.publishApproval(result);

@@ -21,11 +21,13 @@
     "test:payment": "npm --prefix apps/server run test:payment",
     "test:user-app": "(cd apps/user-app && flutter test)",
     "test:admin-app": "(cd apps/admin-app && flutter test)",
-    "analyze:flutter": "(cd apps/user-app && flutter analyze) && (cd apps/admin-app && flutter analyze)",
-    "test": "npm --prefix apps/server test && npm run test:web-sessions && npm run test:migrations && npm run test:user-app && npm run test:admin-app",
+    "analyze:flutter": "(cd apps/user-app && flutter analyze) && (cd apps/admin-app && flutter analyze) && (cd apps/moderator-app && flutter analyze)",
+    "test": "npm --prefix apps/server test && npm run test:web-sessions && npm run test:migrations && npm run test:user-app && npm run test:admin-app && npm run test:moderator-app",
     "test:security": "npm --prefix apps/server run test:security",
     "test:web-sessions": "node --test apps/server/tests/web_session.test.cjs",
-    "test:migrations": "node --test apps/server/tests/migration_upgrade.test.cjs"
+    "test:migrations": "node --test apps/server/tests/migration_upgrade.test.cjs",
+    "test:moderator": "npm --prefix apps/server run test -- moderator",
+    "test:moderator-app": "(cd apps/moderator-app && flutter test)"
   },
   "devDependencies": {
     "typescript": "^6.0.3"
