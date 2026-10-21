@@ -15,7 +15,7 @@ model User {
   phone             String?            @unique
   email             String?            @unique
   passwordHash      String             @default("")
-  role              String             @default("USER") // USER, ADMIN, SUPER_ADMIN
+  role              String             @default("USER") // USER, MODERATOR, ADMIN, SUPER_ADMIN
   status            String             @default("ACTIVE") // ACTIVE, SUSPENDED, BANNED
   tokenVersion      Int                @default(0)
   createdAt         DateTime           @default(now())
@@ -33,6 +33,7 @@ model User {
   adminActions      AuditLog[]         @relation("ActorAdmin")
   feedbacks         Feedback[]
   notifications     Notification[]
+  upiAccount        UpiAccount?
 }
 
 model RefreshToken {
@@ -226,5 +227,26 @@ model Notification {
 
   @@index([userId, isRead])
   @@index([userId, createdAt])
+}
+
+model UpiAccount {
+  id             String    @id @default(uuid())
+  upiId          String    @unique
+  receiverName   String
+  dailyLimit     Int       @default(15)
+  todayTxCount   Int       @default(0)
+  batchCount     Int       @default(0)
+  batchSize      Int       @default(2)
+  sortOrder      Int       @default(0)
+  isActive       Boolean   @default(true)
+  assignedUserId String?   @unique
+  assignedUser   User?     @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+  lastResetAt    DateTime  @default(now())
+  lastUsedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@index([assignedUserId])
 }
 

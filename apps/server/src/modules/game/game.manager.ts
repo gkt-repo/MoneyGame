@@ -5,6 +5,7 @@ import { serializable } from '../../transaction';
 import { money, toPaise } from '../../money';
 import { prisma } from '../../db';
 import { walletService } from '../wallet/wallet.service';
+import { notificationService } from '../notification/notification.service';
 import { gameRegistry } from './game.registry';
 import { RoomWithPlayers } from './engine.interface';
 
@@ -191,6 +192,159 @@ export class GameManager {
 
   async cancelWaitingRoom(roomId: string, userId: string) {
     return this.refundRoom(roomId, userId);
+  }
+
+  /**
+   * Admin cancels any active table (WAITING, COUNTDOWN, ROLLING, PLAYING)
+   * and automatically distributes 100% refund of entry fees & in-game stakes to all participants.
+   */
+  async cancelRoomByAdmin(roomId: string, adminId: string, reason?: string) {
+    const existing = await prisma.room.findUnique({
+      where: { id: roomId },
+      include: {
+        players: {
+          include: {
+            user: { select: { id: true, username: true } },
+          },
+        },
+      },
+    });
+
+    if (!existing) {
+      throw new Error('Table not found');
+    }
+
+    if (existing.status === 'COMPLETED') {
+      throw new Error(`Cannot cancel table #${existing.roomCode}: Table has already completed`);
+    }
+
+    if (existing.status === 'CANCELLED') {
+      throw new Error(`Table #${existing.roomCode} is already cancelled`);
+    }
+
+    if (!['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'].includes(existing.status)) {
+      throw new Error(`Cannot cancel table #${existing.roomCode} with status '${existing.status}'`);
+    }
+
+    let totalRefundPaise = 0;
+    const playerRefunds: { userId: string; username: string; amount: number }[] = [];
+
+    const players = await serializable(async tx => {
+      // Concurrency lock: Ensure table is still active
+      const locked = await tx.room.updateMany({
+        where: {
+          id: roomId,
+          status: { in: ['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'] },
+        },
+        data: { status: 'CANCELLED' },
+      });
+
+      if (locked.count !== 1) {
+        throw new Error('Table is no longer active or was settled concurrently');
+      }
+
+      let configObj: Record<string, any> = {};
+      try {
+        if (existing.customConfig) configObj = JSON.parse(existing.customConfig);
+      } catch (_) {}
+      const playerStakes = configObj.playerStakes || {};
+
+      for (const player of existing.players) {
+        const inGameStake = existing.status !== 'WAITING' && typeof playerStakes[player.userId] === 'number'
+          ? playerStakes[player.userId]
+          : 0;
+        const totalRefundPaiseForPlayer = toPaise(existing.entryFee) + toPaise(inGameStake);
+        const totalRefund = totalRefundPaiseForPlayer / 100;
+        totalRefundPaise += totalRefundPaiseForPlayer;
+        playerRefunds.push({
+          userId: player.userId,
+          username: player.user?.username || 'Player',
+          amount: totalRefund,
+        });
+
+        await moveWallet(tx, player.userId, totalRefund, -totalRefund);
+
+        const entryTx = await tx.transaction.findFirst({
+          where: { userId: player.userId, referenceId: roomId, type: 'ROOM_ENTRY' },
+        });
+        if (entryTx) {
+          await tx.transaction.create({
+            data: {
+              userId: player.userId,
+              amount: totalRefund,
+              type: 'REFUND',
+              referenceId: roomId,
+              idempotencyKey: `admin-room-refund:${roomId}:${player.userId}`,
+              description: `Table #${existing.roomCode} cancelled by admin. Entry and stakes refunded: ₹${totalRefund.toFixed(2)}${reason ? ` (${reason})` : ''}`,
+            },
+          });
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorId: adminId,
+          action: 'CANCEL_TABLE',
+          details: JSON.stringify({
+            roomId,
+            roomCode: existing.roomCode,
+            gameType: existing.gameType,
+            statusBeforeCancel: existing.status,
+            refundCount: existing.players.length,
+            totalRefundAmount: totalRefundPaise / 100,
+            playerRefunds,
+            reason: reason || 'Admin cancelled active table',
+          }),
+        },
+      });
+
+      return existing.players;
+    });
+
+    // Cleanup engine in-memory state and stop any active timers
+    const engine = gameRegistry.get(existing.gameType);
+    if (engine) {
+      engine.cleanupRoom(roomId);
+    }
+
+    // Real-time notifications and balance updates for all participants
+    for (const p of playerRefunds) {
+      const updatedWallet = await walletService.getWallet(p.userId);
+      this.io?.to(`user:${p.userId}`).emit('balance_updated', updatedWallet);
+      this.io?.to(`user:${p.userId}`).emit('wallet_updated', updatedWallet);
+
+      void notificationService.create({
+        userId: p.userId,
+        title: 'Table Cancelled & Refunded',
+        message: `Table #${existing.roomCode} was cancelled by administrator. ₹${p.amount.toFixed(2)} has been refunded to your wallet.${reason ? ` Reason: ${reason}` : ''}`,
+        type: 'SYSTEM',
+        metadata: {
+          roomId,
+          roomCode: existing.roomCode,
+          refundAmount: p.amount,
+          reason,
+        },
+      }).catch(err => console.error(`[AdminCancel] Notification failed for ${p.userId}:`, err?.message));
+    }
+
+    const roomDetails = await this.getRoomDetails(roomId);
+    this.io?.to(`room:${roomId}`).emit('room_updated', roomDetails);
+    this.io?.to(`room:${roomId}`).emit('room_cancelled', {
+      roomId,
+      roomCode: existing.roomCode,
+      reason: reason || 'Table cancelled by administrator',
+    });
+    await this.broadcastLobbyUpdate();
+
+    return {
+      success: true,
+      message: `Table #${existing.roomCode} successfully cancelled. ₹${(totalRefundPaise / 100).toFixed(2)} refunded across ${players.length} participant(s).`,
+      roomId,
+      roomCode: existing.roomCode,
+      refundedCount: players.length,
+      totalRefunded: totalRefundPaise / 100,
+      playerRefunds,
+    };
   }
 
   private async refundRoom(roomId: string, userId?: string) {

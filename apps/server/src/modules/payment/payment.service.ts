@@ -47,20 +47,101 @@ export class PaymentService {
         where: { status: { in: ['PENDING', 'CLAIMED'] }, expiresAt: { gt: new Date() } },
         select: { totalAmount: true },
       });
-      // Compare actual amounts, including deposits with a fractional base amount.
       const used = new Set(active.map(d => toPaise(d.totalAmount)));
       const offsetPaise = candidates.map((_, i) => candidates[(start + i) % 99])
         .find(offset => !used.has(toPaise(baseAmount) + offset));
       if (offsetPaise === undefined) throw new Error('All payment slots for this amount are in use. Please try later.');
-      const receivingUpi = (await tx.systemSetting.findUnique({ where: { key: 'admin_upi_id' } }))?.value || config.adminUpiId;
+
+      // ── UPI Pool Rotation ─────────────────────────────────────────────────────
+      let receivingUpi: string;
+
+      // Check if we have any active UPI pool accounts
+      const upiPool = await tx.upiAccount.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' },
+      });
+
+      if (upiPool.length > 0) {
+        // Reset daily counts for accounts whose lastResetAt is from a previous calendar day (IST = UTC+5:30)
+        const nowUtc = new Date();
+        const nowIst = new Date(nowUtc.getTime() + 5.5 * 60 * 60 * 1000);
+        const todayIstMidnight = new Date(nowIst);
+        todayIstMidnight.setHours(0, 0, 0, 0);
+        const todayMidnightUtc = new Date(todayIstMidnight.getTime() - 5.5 * 60 * 60 * 1000);
+
+        // Find accounts that need daily reset
+        const needsReset = upiPool.filter(u => u.lastResetAt < todayMidnightUtc);
+        if (needsReset.length > 0) {
+          await tx.upiAccount.updateMany({
+            where: { id: { in: needsReset.map(u => u.id) } },
+            data: { todayTxCount: 0, batchCount: 0, lastResetAt: new Date() },
+          });
+          // Refresh pool after reset
+          needsReset.forEach(u => { u.todayTxCount = 0; u.batchCount = 0; });
+        }
+
+        // Find the current active batch account (has batchCount < batchSize AND is under daily limit)
+        const activeBatch = upiPool.find(u =>
+          u.todayTxCount < u.dailyLimit && u.batchCount < u.batchSize
+        );
+
+        if (activeBatch) {
+          // Continue using this UPI ID in its current batch turn
+          receivingUpi = activeBatch.upiId;
+          await tx.upiAccount.update({
+            where: { id: activeBatch.id },
+            data: { batchCount: activeBatch.batchCount + 1, lastUsedAt: new Date() },
+          });
+        } else {
+          // Current batch is full (batchCount >= batchSize), move to next available UPI
+          // Find the account just after the last-used one (round-robin by sortOrder)
+          const lastUsedAccount = upiPool
+            .filter(u => u.lastUsedAt != null)
+            .sort((a, b) => (b.lastUsedAt!.getTime() - a.lastUsedAt!.getTime()))[0];
+
+          const lastSortOrder = lastUsedAccount?.sortOrder ?? -1;
+
+          // Find next account with capacity, wrapping around
+          const sorted = [...upiPool].sort((a, b) => a.sortOrder - b.sortOrder);
+          const afterCurrent = [
+            ...sorted.filter(u => u.sortOrder > lastSortOrder),
+            ...sorted.filter(u => u.sortOrder <= lastSortOrder),
+          ];
+          const nextAccount = afterCurrent.find(u => u.todayTxCount < u.dailyLimit);
+
+          if (!nextAccount) {
+            throw new Error('All deposit channels have reached their daily limit. Please try again tomorrow.');
+          }
+
+          // Reset the previously active batch account's batchCount
+          if (lastUsedAccount && lastUsedAccount.id !== nextAccount.id) {
+            await tx.upiAccount.update({
+              where: { id: lastUsedAccount.id },
+              data: { batchCount: 0 },
+            });
+          }
+
+          receivingUpi = nextAccount.upiId;
+          await tx.upiAccount.update({
+            where: { id: nextAccount.id },
+            data: { batchCount: 1, lastUsedAt: new Date() },
+          });
+        }
+      } else {
+        // Fallback: use legacy single admin_upi_id from system settings
+        receivingUpi = (await tx.systemSetting.findUnique({ where: { key: 'admin_upi_id' } }))?.value || config.adminUpiId;
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
       return tx.deposit.create({ data: {
         userId, baseAmount, offsetPaise,
         totalAmount: (toPaise(baseAmount) + offsetPaise) / 100,
         activeAmountKey: toPaise(baseAmount) + offsetPaise,
-        receivingUpi, expiresAt: new Date(Date.now() + config.depositExpiryMinutes * 60000),
-      } });
+        receivingUpi,
+        expiresAt: new Date(Date.now() + config.depositExpiryMinutes * 60000),
+      }});
     });
-    const receivingName = (await prisma.systemSetting.findUnique({ where: { key: 'admin_upi_name' } }))?.value || config.adminUpiName;
+    const receivingName = await this.getUpiDisplayName(deposit.receivingUpi);
     const upiUri = `upi://pay?pa=${encodeURIComponent(deposit.receivingUpi.trim())}&pn=${encodeURIComponent(receivingName.trim())}&am=${deposit.totalAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Order ${deposit.id.slice(0, 8)}`)}`;
     const qrCodeDataUrl = await QRCode.toDataURL(upiUri, { margin: 2, width: 280 });
     return {
@@ -70,6 +151,14 @@ export class PaymentService {
       expiresInSeconds: Math.max(0, Math.floor((deposit.expiresAt.getTime() - Date.now()) / 1000)),
       upiUri, upiDeepLink: upiUri, qrCodeDataUrl, qrCodeUrl: qrCodeDataUrl,
     };
+  }
+
+  private async getUpiDisplayName(upiId: string): Promise<string> {
+    // Check pool first
+    const poolAccount = await prisma.upiAccount.findUnique({ where: { upiId } });
+    if (poolAccount) return poolAccount.receiverName;
+    // Fall back to system setting
+    return (await prisma.systemSetting.findUnique({ where: { key: 'admin_upi_name' } }))?.value || config.adminUpiName;
   }
 
   // Shared by webhook, UTR claim and manual approval. Caller owns the transaction.

@@ -265,7 +265,7 @@ export class AuthService {
       throw new Error('Invalid admin credentials');
     }
 
-    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+    if (user.role !== 'MODERATOR' && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
       throw new Error('Access denied: Admin privileges required');
     }
 
@@ -308,7 +308,7 @@ export class AuthService {
       }
       if (token.user.status !== 'ACTIVE') throw new Error('Account is inactive');
       await tx.refreshToken.update({ where: { id: token.id }, data: { revokedAt: new Date() } });
-      const audience = ['ADMIN', 'SUPER_ADMIN'].includes(token.user.role) ? config.adminAudience : config.userAudience;
+      const audience = ['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(token.user.role) ? config.adminAudience : config.userAudience;
       return this.issueTokens(token.user, audience, deviceInfo, ipAddress, tx);
     });
     if (!result) throw new Error('Token compromised: Session terminated');
@@ -506,7 +506,7 @@ export class AuthService {
   async seedSuperAdmin(): Promise<void> {
     const adminCount = await prisma.user.count({
       where: {
-        role: { in: ['ADMIN', 'SUPER_ADMIN'] },
+        role: { in: ['MODERATOR', 'ADMIN', 'SUPER_ADMIN'] },
       },
     });
 

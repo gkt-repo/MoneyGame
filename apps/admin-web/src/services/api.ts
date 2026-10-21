@@ -114,6 +114,47 @@ export interface FeedbackItem {
   };
 }
 
+export interface AdminRoomPlayer {
+  id: string;
+  userId: string;
+  username: string;
+  phone?: string;
+  userStatus?: string;
+  userBalance?: number;
+  seatIndex: number;
+  status: string;
+  guessNumber?: number | null;
+  inGameStake: number;
+  totalPaid: number;
+  joinedAt: string;
+}
+
+export interface AdminRoomItem {
+  id: string;
+  roomCode: string;
+  gameType: string;
+  entryFee: number;
+  maxPlayers: number;
+  status: string;
+  winningNumber?: number | null;
+  winnerId?: string | null;
+  winnerUsername?: string | null;
+  winnerPrize?: number | null;
+  totalPot: number;
+  customConfig?: any;
+  createdAt: string;
+  players: AdminRoomPlayer[];
+}
+
+export interface AdminRoomsResponse {
+  success: boolean;
+  rooms: AdminRoomItem[];
+  totalCount: number;
+  activeCount: number;
+  completedCount: number;
+  cancelledCount: number;
+}
+
 export interface UserAdminListItem {
   id: string;
   username: string;
@@ -386,9 +427,24 @@ class AdminApiService {
     });
   }
 
-  async getRooms(): Promise<any[]> {
-    const res = await this.request<{ success: boolean; rooms: any[] }>('/rooms');
-    return res.rooms;
+  async getRooms(status?: string, search?: string): Promise<AdminRoomsResponse> {
+    const params = new URLSearchParams();
+    if (status && status !== 'ALL') params.append('status', status);
+    if (search && search.trim()) params.append('search', search.trim());
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request<AdminRoomsResponse>(`/admin/rooms${query}`);
+  }
+
+  async getRoomDetails(roomId: string): Promise<any> {
+    const res = await this.request<{ success: boolean; room: any }>(`/admin/rooms/${roomId}`);
+    return res.room;
+  }
+
+  async cancelRoom(roomId: string, reason?: string): Promise<{ success: boolean; message: string; refundedCount: number; totalRefunded: number }> {
+    return this.request(`/admin/rooms/${roomId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
   }
 
   async getUsers(search?: string, status?: string): Promise<UserAdminListItem[]> {

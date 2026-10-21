@@ -95,7 +95,7 @@ export async function authenticateAdmin(
       algorithms: ['HS256'],
     }) as TokenPayload;
 
-    if (decoded.role !== 'ADMIN' && decoded.role !== 'SUPER_ADMIN') {
+    if (!['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(decoded.role)) {
       res.status(403).json({ error: 'Access denied: Admin privileges required.' });
       return;
     }
@@ -125,7 +125,7 @@ export async function authenticateAdmin(
       return;
     }
 
-    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+    if (!['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
       res.status(403).json({ error: 'Access denied: Insufficient privileges.' });
       return;
     }

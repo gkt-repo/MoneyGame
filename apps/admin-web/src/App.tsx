@@ -134,7 +134,9 @@ export const App: React.FC = () => {
             onSelectUser={(userId) => setSelectedProfileUserId(userId)}
           />
         )}
-        {currentTab === 'rooms' && <RoomsView />}
+        {currentTab === 'rooms' && (
+          <RoomsView onSelectUser={(userId) => setSelectedProfileUserId(userId)} />
+        )}
         {currentTab === 'feedback' && <FeedbackView />}
         {currentTab === 'settings' && <SettingsView />}
       </main>

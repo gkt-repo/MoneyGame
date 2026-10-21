@@ -762,6 +762,42 @@ router.post('/admin/withdrawals/reject', authenticateAdmin, async (req: Request,
   }
 });
 
+// ─── Admin Game Tables Management ──────────────────────────────────────────
+
+router.get('/admin/rooms', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
+    const skip = req.query.skip ? parseInt(String(req.query.skip), 10) : 0;
+    const data = await adminService.getRoomsList(status, search, limit, skip);
+    res.json({ success: true, ...data });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/admin/rooms/:roomId', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const roomId = Array.isArray(req.params.roomId) ? req.params.roomId[0] : req.params.roomId;
+    const room = await adminService.getRoomDetails(roomId);
+    res.json({ success: true, room });
+  } catch (err: any) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+router.post('/admin/rooms/:roomId/cancel', authenticateAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const roomId = Array.isArray(req.params.roomId) ? req.params.roomId[0] : req.params.roomId;
+    const { reason } = req.body || {};
+    const result = await adminService.cancelRoom(roomId, req.user!.id, reason);
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ─── User Support & Feedback Routes ──────────────────────────────────────────
 
 router.get('/support/contact-info', async (_req: Request, res: Response): Promise<void> => {

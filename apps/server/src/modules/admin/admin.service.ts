@@ -3,6 +3,7 @@ import { serializable } from '../../transaction';
 import { walletService, getEffectiveCommissionPercent } from '../wallet/wallet.service';
 import { paymentService } from '../payment/payment.service';
 import { notificationService } from '../notification/notification.service';
+import { gameManager } from '../game/game.manager';
 import { toPaise } from '../../money';
 
 export class AdminService {
@@ -861,6 +862,194 @@ export class AdminService {
    */
   async rejectWithdrawal(withdrawalId: string, reason?: string) {
     return walletService.rejectWithdrawal(withdrawalId, reason);
+  }
+
+  /**
+   * Fetch game rooms with filtering, search, and detailed participant breakdown
+   */
+  async getRoomsList(statusFilter?: string, search?: string, limit = 50, skip = 0) {
+    const where: any = {};
+
+    if (statusFilter && statusFilter !== 'ALL') {
+      if (statusFilter === 'ACTIVE') {
+        where.status = { in: ['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'] };
+      } else {
+        where.status = statusFilter;
+      }
+    }
+
+    if (search && search.trim()) {
+      const q = search.trim();
+      where.OR = [
+        { roomCode: { contains: q } },
+        { players: { some: { user: { username: { contains: q } } } } },
+      ];
+    }
+
+    const [rooms, totalCount, activeCount, completedCount, cancelledCount] = await Promise.all([
+      prisma.room.findMany({
+        where,
+        include: {
+          players: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  username: true,
+                  phone: true,
+                  status: true,
+                  wallet: { select: { balance: true, lockedBalance: true } },
+                },
+              },
+            },
+            orderBy: { seatIndex: 'asc' },
+          },
+          winner: {
+            select: { id: true, username: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip,
+      }),
+      prisma.room.count({ where }),
+      prisma.room.count({ where: { status: { in: ['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'] } } }),
+      prisma.room.count({ where: { status: 'COMPLETED' } }),
+      prisma.room.count({ where: { status: 'CANCELLED' } }),
+    ]);
+
+    const formattedRooms = rooms.map(room => {
+      let configObj: Record<string, any> = {};
+      try {
+        if (room.customConfig) configObj = JSON.parse(room.customConfig);
+      } catch (_) {}
+
+      const playerStakes = configObj.playerStakes || {};
+      let totalInGameStakesPaise = 0;
+      for (const stake of Object.values(playerStakes)) {
+        if (typeof stake === 'number') {
+          totalInGameStakesPaise += toPaise(stake);
+        }
+      }
+
+      const entryPotPaise = toPaise(room.entryFee) * room.players.length;
+      const totalPot = (entryPotPaise + totalInGameStakesPaise) / 100;
+
+      const playersWithStakes = room.players.map(p => {
+        const inGameStake = typeof playerStakes[p.userId] === 'number' ? playerStakes[p.userId] : 0;
+        const totalPaid = (toPaise(room.entryFee) + toPaise(inGameStake)) / 100;
+        return {
+          id: p.id,
+          userId: p.userId,
+          username: p.user?.username || 'Player',
+          phone: p.user?.phone,
+          userStatus: p.user?.status,
+          userBalance: p.user?.wallet?.balance,
+          seatIndex: p.seatIndex,
+          status: p.status,
+          guessNumber: p.guessNumber,
+          inGameStake,
+          totalPaid,
+          joinedAt: p.joinedAt,
+        };
+      });
+
+      return {
+        id: room.id,
+        roomCode: room.roomCode,
+        gameType: room.gameType,
+        entryFee: room.entryFee,
+        maxPlayers: room.maxPlayers,
+        status: room.status,
+        winningNumber: room.winningNumber,
+        winnerId: room.winnerId,
+        winnerUsername: room.winner?.username,
+        winnerPrize: room.winnerPrize,
+        totalPot,
+        customConfig: configObj,
+        createdAt: room.createdAt,
+        players: playersWithStakes,
+      };
+    });
+
+    return {
+      rooms: formattedRooms,
+      totalCount,
+      activeCount,
+      completedCount,
+      cancelledCount,
+    };
+  }
+
+  /**
+   * Fetch full details for a single room
+   */
+  async getRoomDetails(roomId: string) {
+    const room = await prisma.room.findUnique({
+      where: { id: roomId },
+      include: {
+        players: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                phone: true,
+                status: true,
+                wallet: { select: { balance: true, lockedBalance: true } },
+              },
+            },
+          },
+          orderBy: { seatIndex: 'asc' },
+        },
+        winner: {
+          select: { id: true, username: true },
+        },
+      },
+    });
+
+    if (!room) {
+      throw new Error('Table not found');
+    }
+
+    let configObj: Record<string, any> = {};
+    try {
+      if (room.customConfig) configObj = JSON.parse(room.customConfig);
+    } catch (_) {}
+
+    const [transactions, auditLogs] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { referenceId: roomId },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.auditLog.findMany({
+        where: {
+          details: { contains: roomId },
+        },
+        include: {
+          actor: { select: { id: true, username: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }),
+    ]);
+
+    const liveState = await gameManager.getRoomDetails(roomId);
+
+    return {
+      ...room,
+      customConfig: configObj,
+      gameState: liveState?.gameState || null,
+      transactions,
+      auditLogs,
+    };
+  }
+
+  /**
+   * Cancel an active game room and distribute 100% refund to participants
+   */
+  async cancelRoom(roomId: string, adminId: string, reason?: string) {
+    return gameManager.cancelRoomByAdmin(roomId, adminId, reason);
   }
 
   /**

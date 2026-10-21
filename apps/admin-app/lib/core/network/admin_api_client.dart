@@ -611,21 +611,30 @@ class AdminRoomPlayerModel {
   final String id;
   final String userId;
   final String username;
-  final int guessNumber;
+  final int? guessNumber;
+  final int seatIndex;
+  final double inGameStake;
+  final double totalPaid;
 
   AdminRoomPlayerModel({
     required this.id,
     required this.userId,
     required this.username,
-    required this.guessNumber,
+    this.guessNumber,
+    this.seatIndex = 0,
+    this.inGameStake = 0.0,
+    this.totalPaid = 0.0,
   });
 
   factory AdminRoomPlayerModel.fromJson(Map<String, dynamic> json) {
     return AdminRoomPlayerModel(
       id: json['id'] ?? '',
       userId: json['userId'] ?? '',
-      username: json['user']?['username'] ?? 'Player',
-      guessNumber: json['guessNumber'] ?? 0,
+      username: json['user']?['username'] ?? json['username'] ?? 'Player',
+      guessNumber: json['guessNumber'],
+      seatIndex: json['seatIndex'] ?? 0,
+      inGameStake: (json['inGameStake'] as num?)?.toDouble() ?? 0.0,
+      totalPaid: (json['totalPaid'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }
@@ -633,39 +642,55 @@ class AdminRoomPlayerModel {
 class AdminRoomModel {
   final String id;
   final String roomCode;
+  final String gameType;
   final double entryFee;
   final int maxPlayers;
   final String status;
   final int? winningNumber;
   final String? winnerId;
+  final String? winnerUsername;
+  final double? winnerPrize;
+  final double totalPot;
   final String createdAt;
   final List<AdminRoomPlayerModel> players;
 
   AdminRoomModel({
     required this.id,
     required this.roomCode,
+    this.gameType = 'GUESS_NUMBER',
     required this.entryFee,
     required this.maxPlayers,
     required this.status,
     this.winningNumber,
     this.winnerId,
+    this.winnerUsername,
+    this.winnerPrize,
+    this.totalPot = 0.0,
     required this.createdAt,
     required this.players,
   });
 
   factory AdminRoomModel.fromJson(Map<String, dynamic> json) {
+    final entry = (json['entryFee'] as num?)?.toDouble() ?? 0.0;
+    final playersList = (json['players'] as List? ?? [])
+        .map((p) => AdminRoomPlayerModel.fromJson(p))
+        .toList();
+    final pot = (json['totalPot'] as num?)?.toDouble() ?? (entry * playersList.length);
+
     return AdminRoomModel(
       id: json['id'] ?? '',
       roomCode: json['roomCode'] ?? '',
-      entryFee: (json['entryFee'] as num?)?.toDouble() ?? 0.0,
+      gameType: json['gameType'] ?? 'GUESS_NUMBER',
+      entryFee: entry,
       maxPlayers: json['maxPlayers'] ?? 4,
       status: json['status'] ?? 'WAITING',
       winningNumber: json['winningNumber'],
       winnerId: json['winnerId'],
+      winnerUsername: json['winnerUsername'] ?? json['winner']?['username'],
+      winnerPrize: (json['winnerPrize'] as num?)?.toDouble(),
+      totalPot: pot,
       createdAt: json['createdAt'] ?? '',
-      players: (json['players'] as List? ?? [])
-          .map((p) => AdminRoomPlayerModel.fromJson(p))
-          .toList(),
+      players: playersList,
     );
   }
 }
@@ -953,13 +978,29 @@ class AdminApiClient {
 
   // ─── GAME TABLES & ROOMS ───────────────────────────────────────────────────
 
-  static Future<List<AdminRoomModel>> getRooms() async {
+  static Future<List<AdminRoomModel>> getRooms({String? status, String? search}) async {
     try {
-      final res = await _dio.get('/rooms');
+      final queryParams = <String, dynamic>{};
+      if (status != null && status != 'ALL') queryParams['status'] = status;
+      if (search != null && search.trim().isNotEmpty) queryParams['search'] = search.trim();
+      final res = await _dio.get('/admin/rooms', queryParameters: queryParams);
       final list = res.data['rooms'] as List? ?? [];
       return list.map((r) => AdminRoomModel.fromJson(r)).toList();
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to load game rooms';
+    }
+  }
+
+  static Future<Map<String, dynamic>> cancelRoom(String roomId, {String? reason}) async {
+    try {
+      final data = <String, dynamic>{};
+      if (reason != null && reason.trim().isNotEmpty) {
+        data['reason'] = reason.trim();
+      }
+      final res = await _dio.post('/admin/rooms/$roomId/cancel', data: data);
+      return Map<String, dynamic>.from(res.data);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to cancel table';
     }
   }
 
@@ -1028,6 +1069,108 @@ class AdminApiClient {
       await _dio.post('/admin/listener-heartbeat', data: data);
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to transmit listener heartbeat';
+    }
+  }
+
+  // ─── Moderator Management (SUPER_ADMIN only) ───────────────────────────────
+
+  static Future<List<Map<String, dynamic>>> listModerators() async {
+    try {
+      final res = await _dio.get('/api/admin/moderators');
+      return List<Map<String, dynamic>>.from(res.data as List);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to load moderators';
+    }
+  }
+
+  static Future<Map<String, dynamic>> createModerator({
+    required String username,
+    required String password,
+    String? email,
+    String? phone,
+    String? upiId,
+    String? receiverName,
+    int dailyLimit = 15,
+    int batchSize = 2,
+  }) async {
+    try {
+      final res = await _dio.post('/api/admin/moderators', data: {
+        'username': username,
+        'password': password,
+        if (email != null && email.isNotEmpty) 'email': email,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
+        if (upiId != null && upiId.isNotEmpty) 'upiId': upiId,
+        if (receiverName != null && receiverName.isNotEmpty) 'receiverName': receiverName,
+        'dailyLimit': dailyLimit,
+        'batchSize': batchSize,
+      });
+      return Map<String, dynamic>.from(res.data);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to create moderator';
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateModerator(String id, Map<String, dynamic> data) async {
+    try {
+      final res = await _dio.patch('/api/admin/moderators/$id', data: data);
+      return Map<String, dynamic>.from(res.data);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to update moderator';
+    }
+  }
+
+  static Future<void> deleteModerator(String id) async {
+    try {
+      await _dio.delete('/api/admin/moderators/$id');
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to delete moderator';
+    }
+  }
+
+  // ─── UPI Pool Management (SUPER_ADMIN only) ──────────────────────────────────
+
+  static Future<List<Map<String, dynamic>>> listUpiPool() async {
+    try {
+      final res = await _dio.get('/api/admin/upi-pool');
+      return List<Map<String, dynamic>>.from(res.data as List);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to load UPI pool';
+    }
+  }
+
+  static Future<Map<String, dynamic>> addUpiAccount({
+    required String upiId,
+    required String receiverName,
+    int dailyLimit = 15,
+    int batchSize = 2,
+  }) async {
+    try {
+      final res = await _dio.post('/api/admin/upi-pool', data: {
+        'upiId': upiId,
+        'receiverName': receiverName,
+        'dailyLimit': dailyLimit,
+        'batchSize': batchSize,
+      });
+      return Map<String, dynamic>.from(res.data);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to add UPI account';
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateUpiAccount(String id, Map<String, dynamic> data) async {
+    try {
+      final res = await _dio.patch('/api/admin/upi-pool/$id', data: data);
+      return Map<String, dynamic>.from(res.data);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to update UPI account';
+    }
+  }
+
+  static Future<void> deleteUpiAccount(String id) async {
+    try {
+      await _dio.delete('/api/admin/upi-pool/$id');
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to delete UPI account';
     }
   }
 }

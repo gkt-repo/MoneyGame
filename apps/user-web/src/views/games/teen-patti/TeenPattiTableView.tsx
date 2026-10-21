@@ -20,6 +20,7 @@ import {
   Check,
   RotateCw,
   X,
+  XCircle,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { teenPattiSound } from './services/teenPattiSound';
@@ -289,8 +290,9 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
   }, [room.id, user.id, onRefreshBalance]);
 
   const gameState = localGameState;
+  const isCancelled = room.status === 'CANCELLED';
   const isCompleted = room.status === 'COMPLETED' || finishData !== null;
-  const isPlaying = room.status === 'PLAYING' && !isCompleted;
+  const isPlaying = room.status === 'PLAYING' && !isCompleted && !isCancelled;
 
   // Find user's player state
   const myPlayerState: TeenPattiPlayerState | undefined = gameState?.players?.[user.id];
@@ -314,8 +316,8 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
   // Send action to server
   const handleAction = async (action: string, payload: any = {}) => {
-    if (isCompleted) {
-      setActionError('This hand has already concluded');
+    if (isCompleted || isCancelled) {
+      setActionError(isCancelled ? 'This table was cancelled and refunded' : 'This hand has already concluded');
       return;
     }
 
@@ -559,10 +561,16 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                   : 'Opponent Thinking...'}
               </span>
             )}
-            {isCompleted && (
+            {isCompleted && !isCancelled && (
               <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-400 text-slate-950 flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Hand Concluded
+              </span>
+            )}
+            {isCancelled && (
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-500 text-white flex items-center gap-1">
+                <XCircle className="w-3.5 h-3.5" />
+                Table Cancelled & Refunded
               </span>
             )}
           </div>
@@ -580,7 +588,33 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
 
         {/* Center Table Area: Pot & Chips OR Final Winner Banner */}
         <div className="relative z-10 my-auto text-center py-4">
-          {!isCompleted ? (
+          {isCancelled ? (
+            /* Cancelled Table Card */
+            <div className="bg-red-950/85 border-2 border-red-500/70 rounded-2xl p-6 max-w-md mx-auto text-red-100 shadow-2xl backdrop-blur-md animate-fade-in space-y-3">
+              <div className="w-12 h-12 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center mx-auto text-red-400">
+                <XCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-red-300">
+                  Table Cancelled by Administrator
+                </h3>
+                <p className="text-xs text-red-200/90 mt-1 leading-relaxed">
+                  All entry fees and in-game bets have been 100% refunded to your wallet balance.
+                </p>
+              </div>
+              {onBack && (
+                <div className="pt-2">
+                  <button
+                    onClick={onBack}
+                    className="w-full py-2.5 px-4 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Back to Lobby</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : !isCompleted ? (
             <div className="inline-flex flex-col items-center bg-emerald-900/70 border border-amber-500/30 rounded-2xl px-6 py-3 shadow-lg backdrop-blur-xs">
               <div className="flex items-center gap-2 text-amber-400">
                 <Coins className="w-5 h-5 animate-bounce" />

@@ -1,4 +1,4 @@
-export type Role = 'USER' | 'ADMIN' | 'SUPER_ADMIN';
+export type Role = 'USER' | 'MODERATOR' | 'ADMIN' | 'SUPER_ADMIN';
 export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'BANNED';
 
 export interface TokenPayload {
