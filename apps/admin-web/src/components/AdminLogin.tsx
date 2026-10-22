@@ -32,10 +32,8 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess }) => {
       <div className="w-full max-w-md">
         {/* Header Icon */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-center text-emerald-500 mb-3 shadow-sm">
-            <Shield className="w-7 h-7" />
-          </div>
-          <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">MoneyGame Admin</h1>
+          <img src="/logo.png" alt="MoneyGame Super Admin" className="w-16 h-16 rounded-2xl object-contain mb-3 shadow-lg border border-zinc-800 bg-zinc-950" />
+          <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">MoneyGame Super Admin</h1>
           <p className="text-sm text-zinc-400 mt-1">Authorized Operations Gateway</p>
         </div>
 

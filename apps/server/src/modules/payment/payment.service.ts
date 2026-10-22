@@ -65,7 +65,10 @@ export class PaymentService {
       }});
     });
     const receivingName = await this.getUpiDisplayName(deposit.receivingUpi);
-    const upiUri = `upi://pay?pa=${encodeURIComponent(deposit.receivingUpi.trim())}&pn=${encodeURIComponent(receivingName.trim())}&am=${deposit.totalAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Order ${deposit.id.slice(0, 8)}`)}`;
+    // Keep the VPA separator literal for UPI apps that display/interpret %40
+    // without decoding it. Continue escaping query delimiters and all other data.
+    const payeeAddress = encodeURIComponent(deposit.receivingUpi.trim()).replace(/%40/g, '@');
+    const upiUri = `upi://pay?pa=${payeeAddress}&pn=${encodeURIComponent(receivingName.trim())}&am=${deposit.totalAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Order ${deposit.id.slice(0, 8)}`)}`;
     const qrCodeDataUrl = await QRCode.toDataURL(upiUri, { margin: 2, width: 280 });
     return {
       depositId: deposit.id, baseAmount, offsetPaise: deposit.offsetPaise,

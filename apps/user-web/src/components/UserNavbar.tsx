@@ -33,9 +33,7 @@ export const UserNavbar: React.FC<UserNavbarProps> = ({
         <div className="flex items-center justify-between h-16">
           {/* Brand */}
           <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => onTabChange('lobby')}>
-            <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white font-mono font-bold text-xs shadow-xs tracking-wider">
-              MG
-            </div>
+            <img src="/logo.png" alt="MoneyGame" className="w-8 h-8 rounded-lg object-contain shadow-2xs border border-slate-200" />
             <div>
               <span className="font-extrabold text-slate-900 tracking-wider text-sm sm:text-base uppercase">
                 MoneyGame

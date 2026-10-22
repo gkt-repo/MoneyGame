@@ -5,8 +5,8 @@ from PIL import Image
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 
-USER_ICON_SRC = "/home/gulshan/.gemini/antigravity/brain/0c888058-3e37-45a1-b327-ee06c15ad4f6/inr_500_mg_black_sans.png"
-ADMIN_ICON_SRC = "/home/gulshan/.gemini/antigravity/brain/0c888058-3e37-45a1-b327-ee06c15ad4f6/inr_500_mg_black_sans_admin.png"
+USER_ICON_SRC = "/home/gulshan/.gemini/antigravity/brain/c936982d-58b8-45fb-bc87-8c77b2811afe/user_app_tilted_perfect_neg14.png"
+ADMIN_ICON_SRC = "/home/gulshan/.gemini/antigravity/brain/c936982d-58b8-45fb-bc87-8c77b2811afe/admin_app_executive_shield.png"
 
 def process_app_icons(app_type, src_path):
     print(f"\nProcessing icons for {app_type} from {src_path}...")
@@ -75,13 +75,14 @@ def process_app_icons(app_type, src_path):
         img.resize((512, 512), Image.Resampling.LANCZOS).save(os.path.join(icons_dir, "Icon-maskable-512.png"), "PNG")
         print(f"Saved Flutter Web icons in {flutter_web_dir}")
 
-    # 5. React Web App public directory
+    # 5. React Web App public and dist directories
     if os.path.exists(web_dir):
-        public_dir = os.path.join(web_dir, "public")
-        os.makedirs(public_dir, exist_ok=True)
-        img.resize((64, 64), Image.Resampling.LANCZOS).save(os.path.join(public_dir, "favicon.png"), "PNG")
-        img.resize((512, 512), Image.Resampling.LANCZOS).save(os.path.join(public_dir, "logo.png"), "PNG")
-        print(f"Saved React Web icons in {public_dir}")
+        for sub in ["public", "dist"]:
+            target_dir = os.path.join(web_dir, sub)
+            if os.path.exists(target_dir):
+                img.resize((64, 64), Image.Resampling.LANCZOS).save(os.path.join(target_dir, "favicon.png"), "PNG")
+                img.resize((512, 512), Image.Resampling.LANCZOS).save(os.path.join(target_dir, "logo.png"), "PNG")
+                print(f"Saved React Web icons in {target_dir}")
 
 if __name__ == "__main__":
     process_app_icons("user", USER_ICON_SRC)

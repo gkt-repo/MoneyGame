@@ -51,8 +51,10 @@ class MainActivity : FlutterActivity() {
                     if (upi.isNullOrBlank() || amount.isNullOrBlank()) {
                         result.error("INVALID", "Payment details are missing", null)
                     } else try {
+                        // Preserve @ for UPI apps that treat an encoded %40 literally.
+                        // Uri.encode still escapes &, # and other query delimiters.
                         val uri = Uri.Builder().scheme("upi").authority("pay")
-                            .appendQueryParameter("pa", upi).appendQueryParameter("am", amount)
+                            .encodedQuery("pa=${Uri.encode(upi, "@")}").appendQueryParameter("am", amount)
                             .appendQueryParameter("cu", "INR").build()
                         startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW, uri), "Pay with"))
                         result.success(true)

@@ -62,14 +62,12 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
         <div className="flex items-center justify-between h-16">
           {/* Brand */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-zinc-800 border border-zinc-700 rounded-lg flex items-center justify-center text-emerald-400">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
+            <img src="/logo.png" alt="MoneyGame Super Admin" className="w-9 h-9 rounded-lg object-contain shadow-2xs border border-zinc-700 bg-zinc-950" />
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-zinc-100 tracking-tight text-base">MoneyGame</span>
-                <span className="text-[10px] font-semibold tracking-wider uppercase px-1.5 py-0.5 bg-zinc-800 text-emerald-400 border border-zinc-700 rounded">
-                  Admin
+                <span className="text-[10px] font-semibold tracking-wider uppercase px-1.5 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded">
+                  Super Admin
                 </span>
               </div>
             </div>

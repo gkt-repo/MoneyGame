@@ -297,20 +297,13 @@ class _HomeScreenState extends State<HomeScreen> {
         centerTitle: false,
         title: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.slate900,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Text(
-                'MG',
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.white,
-                ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.asset(
+                'assets/icon/app_icon.png',
+                width: 28,
+                height: 28,
+                fit: BoxFit.contain,
               ),
             ),
             const SizedBox(width: 8),

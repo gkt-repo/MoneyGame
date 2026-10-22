@@ -1,4 +1,5 @@
 import './test-env';
+import assert from 'assert/strict';
 import { prisma, initDbDefaults } from '../src/db';
 import { paymentService } from '../src/modules/payment/payment.service';
 import { walletService } from '../src/modules/wallet/wallet.service';
@@ -39,6 +40,11 @@ async function runPaymentSystemTests() {
   // 2. Generate First Deposit (₹100)
   console.log('Test 2: Create First Dynamic Deposit Request (₹100)');
   const dep1 = await paymentService.createDepositRequest(user.user.id, 100);
+  assert.match(dep1.upiDeepLink, /[?&]pa=[^&]*@[^&]+/,
+    'UPI links must preserve a literal @ for BHIM compatibility');
+  assert.equal(new URL(dep1.upiDeepLink).searchParams.get('pa'), dep1.receivingUpi.trim());
+  assert.equal(new URL(dep1.upiDeepLink).searchParams.get('am'), dep1.totalAmount.toFixed(2));
+  assert.equal(dep1.upiUri, dep1.upiDeepLink);
   console.log(`   Deposit 1 ID: ${dep1.depositId}, Total: ₹${dep1.totalAmount} (Offset: +${dep1.offsetPaise}p) ✅ PASS\n`);
 
   // 3. Generate Second Deposit (₹200) -> First deposit must be auto-expired
