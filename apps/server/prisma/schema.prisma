@@ -126,6 +126,10 @@ model Withdrawal {
   upiId     String
   status    String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, REJECTED
   payoutUtr String?  @unique
+  assignedModeratorId String?
+  assignedAt DateTime?
+  payoutAccountId String? // Stable funding account, independent of its current operator
+  fundingSource String? // ACCOUNT or EXTERNAL (explicit admin-funded payout)
   processingById String?
   processedById String?
   reason    String?
@@ -133,6 +137,8 @@ model Withdrawal {
   updatedAt DateTime @default(now()) @updatedAt
 
   @@index([userId])
+  @@index([assignedModeratorId, status])
+  @@index([status, assignedAt])
 }
 
 model Room {
@@ -240,6 +246,12 @@ model UpiAccount {
   upiId          String    @unique
   receiverName   String
   dailyLimit     Int       @default(15)
+  totalDeposited Float @default(0)
+  totalPaidOut Float @default(0)
+  currentBalance Float @default(0)
+  reservedPayouts Float @default(0)
+  openingAdjustment Float @default(0)
+  floatReady Boolean @default(true)
   todayTxCount   Int       @default(0)
   batchCount     Int       @default(0)
   batchSize      Int       @default(2)
@@ -272,4 +284,16 @@ model UpiDailyUsage {
   issuedCount Int @default(0)
   receivedCount Int @default(0)
   @@unique([accountId, day])
+}
+
+// Append-only cash movements. Cached account balances are updated in the same transaction.
+model CashDeskEntry {
+  id String @id @default(uuid())
+  accountId String
+  amount Float
+  kind String // DEPOSIT, PAYOUT, OPENING_ADJUSTMENT
+  sourceKey String @unique
+  actorId String?
+  createdAt DateTime @default(now())
+  @@index([accountId, createdAt])
 }

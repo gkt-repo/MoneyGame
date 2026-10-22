@@ -1,3 +1,4 @@
+import { availableFloat } from '../moderator/cash-desk.service';
 import { prisma } from '../../db';
 import { serializable } from '../../transaction';
 import { walletService, getEffectiveCommissionPercent } from '../wallet/wallet.service';
@@ -19,14 +20,17 @@ export class AdminService {
         players: { select: { id: true, userId: true } },
       },
     });
-    const assignedPayments = await prisma.unmatchedPayment.findMany({ where: { status: 'ASSIGNED' } });
+    const assignedPayments = await prisma.unmatchedPayment.findMany({ where: { status: 'ASSIGNED', assignedDepositId: null } });
     const assignedVolume = assignedPayments.reduce((acc, u) => acc + u.amount, 0);
 
     const completedDeposits = deposits.filter((d) => d.status === 'APPROVED');
     const pendingDeposits = deposits.filter((d) => d.status === 'PENDING');
     const totalDepositVolume = completedDeposits.reduce((acc, d) => acc + d.baseAmount, 0) + assignedVolume;
 
-    const pendingWithdrawals = withdrawals.filter((w) => w.status === 'PENDING');
+    const pendingWithdrawals = withdrawals.filter((w) => ['PENDING', 'PROCESSING'].includes(w.status));
+    const fleet = await prisma.upiAccount.findMany();
+    const totalFleetBalance = fleet.reduce((sum, a) => sum + toPaise(a.currentBalance), 0) / 100;
+    const totalFleetReserved = fleet.reduce((sum, a) => sum + toPaise(a.reservedPayouts), 0) / 100;
     const completedWithdrawals = withdrawals.filter((w) => w.status === 'COMPLETED');
     const totalPayoutVolume = completedWithdrawals.reduce((acc, w) => acc + w.amount, 0);
 
@@ -137,6 +141,9 @@ export class AdminService {
       totalUsersCount: totalUsers,
       totalDepositVolume,
       totalDeposited: totalDepositVolume,
+      totalFleetBalance, totalFleetReserved,
+      totalFleetAvailable: fleet.reduce((sum, a) => sum + toPaise(availableFloat(a)), 0) / 100,
+      unverifiedFloatAccounts: fleet.filter(a => !a.floatReady).length,
       totalPayoutVolume,
       totalWithdrawn: totalPayoutVolume,
       platformProfit,
@@ -742,10 +749,13 @@ export class AdminService {
   /**
    * Fetch all pending and recent deposits
    */
-  async getDepositsList(statusFilter?: string, limit: number = 50, skip: number = 0) {
+  async getDepositsList(statusFilter?: string, limit: number = 50, skip: number = 0, moderatorId?: string) {
+    const account = moderatorId ? await prisma.upiAccount.findUnique({ where: { assignedUserId: moderatorId } }) : null;
+    if (moderatorId && !account) return [];
+    const scope = moderatorId ? { receivingUpi: account!.upiId } : {};
     if (statusFilter && statusFilter !== 'ALL') {
       return prisma.deposit.findMany({
-        where: { status: statusFilter },
+        where: { ...scope, status: statusFilter },
         include: {
           user: { select: { id: true, username: true, phone: true } },
         },
@@ -757,13 +767,13 @@ export class AdminService {
 
     if (skip === 0) {
       const pending = await prisma.deposit.findMany({
-        where: { status: { in: ['PENDING', 'CLAIMED', 'PROCESSING'] } },
+        where: { ...scope, status: { in: ['PENDING', 'CLAIMED', 'PROCESSING'] } },
         include: { user: { select: { id: true, username: true, phone: true } } },
         orderBy: { createdAt: 'asc' },
       });
       const remainingSlots = Math.max(0, limit - pending.length);
       const nonPending = remainingSlots > 0 ? await prisma.deposit.findMany({
-        where: { status: { notIn: ['PENDING', 'CLAIMED', 'PROCESSING'] } },
+        where: { ...scope, status: { notIn: ['PENDING', 'CLAIMED', 'PROCESSING'] } },
         include: { user: { select: { id: true, username: true, phone: true } } },
         orderBy: { createdAt: 'desc' },
         take: remainingSlots,
@@ -772,6 +782,7 @@ export class AdminService {
     }
 
     return prisma.deposit.findMany({
+      where: scope,
       include: {
         user: { select: { id: true, username: true, phone: true } },
       },
@@ -784,10 +795,11 @@ export class AdminService {
   /**
    * Fetch all withdrawals
    */
-  async getWithdrawalsList(statusFilter?: string, limit: number = 50, skip: number = 0) {
+  async getWithdrawalsList(statusFilter?: string, limit: number = 50, skip: number = 0, moderatorId?: string) {
+    const scope = moderatorId ? { assignedModeratorId: moderatorId } : {};
     if (statusFilter && statusFilter !== 'ALL') {
       return prisma.withdrawal.findMany({
-        where: { status: statusFilter },
+        where: { ...scope, status: statusFilter },
         include: {
           user: { select: { id: true, username: true, phone: true } },
         },
@@ -799,13 +811,13 @@ export class AdminService {
 
     if (skip === 0) {
       const pending = await prisma.withdrawal.findMany({
-        where: { status: { in: ['PENDING', 'CLAIMED', 'PROCESSING'] } },
+        where: { ...scope, status: { in: ['PENDING', 'CLAIMED', 'PROCESSING'] } },
         include: { user: { select: { id: true, username: true, phone: true } } },
         orderBy: { createdAt: 'asc' },
       });
       const remainingSlots = Math.max(0, limit - pending.length);
       const nonPending = remainingSlots > 0 ? await prisma.withdrawal.findMany({
-        where: { status: { notIn: ['PENDING', 'CLAIMED', 'PROCESSING'] } },
+        where: { ...scope, status: { notIn: ['PENDING', 'CLAIMED', 'PROCESSING'] } },
         include: { user: { select: { id: true, username: true, phone: true } } },
         orderBy: { createdAt: 'desc' },
         take: remainingSlots,
@@ -814,6 +826,7 @@ export class AdminService {
     }
 
     return prisma.withdrawal.findMany({
+      where: scope,
       include: {
         user: { select: { id: true, username: true, phone: true } },
       },
@@ -1068,7 +1081,7 @@ export class AdminService {
         _sum: { baseAmount: true },
       }),
       prisma.unmatchedPayment.aggregate({
-        where: { status: 'ASSIGNED' },
+        where: { status: 'ASSIGNED', assignedDepositId: null },
         _sum: { amount: true },
       }),
       prisma.withdrawal.aggregate({

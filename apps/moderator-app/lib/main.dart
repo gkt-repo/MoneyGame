@@ -7,8 +7,12 @@ import 'core/services/moderator_listener.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  ModeratorApi.baseUrl =
-      await ModeratorApi.storage.read(key: 'server') ?? ModeratorApi.baseUrl;
+  final saved = await ModeratorApi.storage.read(key: 'server');
+  if (saved != null && saved.isNotEmpty && !saved.contains('10.0.2.2')) {
+    ModeratorApi.baseUrl = saved;
+  } else {
+    ModeratorApi.baseUrl = ModeratorApi.defaultUrl();
+  }
   runApp(const ModeratorApp());
 }
 
@@ -78,14 +82,12 @@ class ModeratorLogin extends StatefulWidget {
 }
 
 class _ModeratorLoginState extends State<ModeratorLogin> {
-  final server = TextEditingController(text: ModeratorApi.baseUrl);
   final username = TextEditingController();
   final password = TextEditingController();
   bool busy = false, obscure = true;
   String? error;
   @override
   void dispose() {
-    server.dispose();
     username.dispose();
     password.dispose();
     super.dispose();
@@ -98,7 +100,6 @@ class _ModeratorLoginState extends State<ModeratorLogin> {
     });
     try {
       final u = await ModeratorApi.login(
-        server.text,
         username.text,
         password.text,
       );
@@ -154,12 +155,6 @@ class _ModeratorLoginState extends State<ModeratorLogin> {
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: server,
-                  decoration: const InputDecoration(labelText: 'Server URL'),
-                  keyboardType: TextInputType.url,
                 ),
                 if (error != null)
                   Padding(
@@ -264,6 +259,7 @@ class _ModeratorHomeState extends State<ModeratorHome>
           await connectSocket();
         }
       });
+      socket!.on('cash_desk_updated', (_) => refresh(quiet: true));
       socket!.connect();
     } catch (_) {
       /* Periodic authenticated refresh remains available offline. */
@@ -555,10 +551,17 @@ class _ModeratorHomeState extends State<ModeratorHome>
                   const Text('Being handled by another operator'),
                 if (tab == 1 && status == 'PROCESSING' && mine) ...[
                   OutlinedButton(
-                    onPressed: () => Clipboard.setData(
-                      ClipboardData(text: '${item['upiId']}'),
-                    ),
-                    child: const Text('Copy UPI'),
+                    onPressed: acting ? null : () async {
+                      // Revalidate ownership before exposing the banking action.
+                      try {
+                        await ModeratorApi.request('/admin/withdrawals/claim', method: 'POST', data: {'withdrawalId': id});
+                        await Clipboard.setData(ClipboardData(text: '${item['upiId']}'));
+                        await ModeratorListener.openPayout('${item['upiId']}', (item['amount'] as num).toDouble());
+                      } catch (e) {
+                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+                      }
+                    },
+                    child: const Text('Copy UPI & Pay'),
                   ),
                   FilledButton(
                     onPressed: acting
@@ -566,7 +569,7 @@ class _ModeratorHomeState extends State<ModeratorHome>
                         : () async {
                             final utr = await input(
                               'Confirm payment sent',
-                              'Actual payout UTR',
+                              'Bank payout UTR',
                               note:
                                   'Send ₹${item['amount']} to ${item['upiId']} using your banking app. Record the real bank reference after success.',
                             );
@@ -667,6 +670,16 @@ class _ModeratorHomeState extends State<ModeratorHome>
             trailing: const Icon(Icons.chevron_right),
           ),
         ),
+        if (account != null)
+          Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(account!['floatReady'] == false ? 'Opening balance needs confirmation' : 'Available float: ₹${(account!['availableBalance'] as num? ?? 0).toStringAsFixed(2)}',
+                style: Theme.of(context).textTheme.titleLarge),
+              Text('Received: ₹${(account!['totalDeposited'] as num? ?? 0).toStringAsFixed(2)} | Paid out: ₹${(account!['totalPaidOut'] as num? ?? 0).toStringAsFixed(2)}'),
+              Text('Current: ₹${(account!['currentBalance'] as num? ?? 0).toStringAsFixed(2)} | Reserved: ₹${(account!['reservedPayouts'] as num? ?? 0).toStringAsFixed(2)}'),
+            ],
+          ))),
         if (error != null)
           Padding(
             padding: const EdgeInsets.all(12),

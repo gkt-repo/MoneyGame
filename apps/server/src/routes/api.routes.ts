@@ -1,3 +1,4 @@
+import { cashDeskService } from '../modules/moderator/cash-desk.service';
 import { moderatorRouter } from './moderator.routes';
 import { moderatorService } from '../modules/moderator/moderator.service';
 import crypto from 'crypto';
@@ -675,12 +676,12 @@ router.post('/admin/upi-settings', authenticateAdmin, async (req: Request, res: 
   }
 });
 
-router.get('/admin/deposits', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get('/admin/deposits', authenticateAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
     const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
     const skip = req.query.skip ? parseInt(String(req.query.skip), 10) : 0;
-    const deposits = await adminService.getDepositsList(status, limit, skip);
+    const deposits = await adminService.getDepositsList(status, limit, skip, req.user!.role === 'MODERATOR' ? req.user!.id : undefined);
     res.json({ success: true, deposits });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -698,7 +699,7 @@ router.post('/admin/deposits/:depositId/approve', authenticateAdmin, async (req:
     const result = await adminService.approveDeposit(depositId, utr, req.user!.id);
     res.json(result);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    res.status(err.statusCode || 400).json({ error: err.message });
   }
 });
 
@@ -709,7 +710,7 @@ router.post('/admin/deposits/:depositId/reject', authenticateAdmin, async (req: 
     const result = await adminService.rejectDeposit(depositId, reason || 'Invalid payment', req.user!.id);
     res.json(result);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    res.status(err.statusCode || 400).json({ error: err.message });
   }
 });
 
@@ -738,13 +739,21 @@ router.post('/admin/unmatched-payments/:id/assign', authenticateAdmin, async (re
   }
 });
 
-router.get('/admin/withdrawals', authenticateAdmin, async (req: Request, res: Response): Promise<void> => {
+router.get('/admin/withdrawals', authenticateAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
     const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
     const skip = req.query.skip ? parseInt(String(req.query.skip), 10) : 0;
-    const withdrawals = await adminService.getWithdrawalsList(status, limit, skip);
-    res.json({ success: true, withdrawals });
+    await cashDeskService.routePending();
+    const withdrawals = await adminService.getWithdrawalsList(status, limit, skip, req.user!.role === 'MODERATOR' ? req.user!.id : undefined);
+    const operatorIds = withdrawals.flatMap(w => [w.assignedModeratorId, w.processingById]).filter((id): id is string => !!id);
+    const operators = await prisma.user.findMany({ where: { id: { in: operatorIds } }, select: { id: true, username: true } });
+    const accounts = await prisma.upiAccount.findMany({ where: { id: { in: withdrawals.flatMap(w => w.payoutAccountId ? [w.payoutAccountId] : []) } }, select: { id: true, upiId: true } });
+    res.json({ success: true, withdrawals: withdrawals.map(w => ({ ...w,
+      assignedModeratorName: operators.find(u => u.id === w.assignedModeratorId)?.username || null,
+      processingByName: operators.find(u => u.id === w.processingById)?.username || null,
+      payoutAccountUpi: accounts.find(a => a.id === w.payoutAccountId)?.upiId || null,
+    })) });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -760,7 +769,7 @@ router.post('/admin/withdrawals/complete', authenticateAdmin, async (req: Authen
     const result = await walletService.completeWithdrawal(withdrawalId, payoutUtr, req.user!.id);
     res.json({ success: true, ...result });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    res.status(err.statusCode || 400).json({ error: err.message });
   }
 });
 
@@ -774,7 +783,7 @@ router.post('/admin/withdrawals/reject', authenticateAdmin, async (req: Authenti
     const result = await walletService.rejectWithdrawal(withdrawalId, reason, req.user!.id);
     res.json({ success: true, ...result });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    res.status(err.statusCode || 400).json({ error: err.message });
   }
 });
 

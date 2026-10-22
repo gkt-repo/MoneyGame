@@ -3,6 +3,10 @@ import { DepositDTO, WithdrawalDTO } from './wallet.types';
 export interface DashboardStatsDTO {
   totalDeposited: number;
   totalWithdrawn: number;
+  totalFleetBalance?: number;
+  totalFleetReserved?: number;
+  totalFleetAvailable?: number;
+  unverifiedFloatAccounts?: number;
   platformProfit: number;
   activeRooms: number;
   pendingWithdrawalsCount: number;

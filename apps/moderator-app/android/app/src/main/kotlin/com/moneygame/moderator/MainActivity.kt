@@ -45,6 +45,22 @@ class MainActivity : FlutterActivity() {
             val prefs = getSharedPreferences(UpiNotificationListenerService.PREFS_NAME, Context.MODE_PRIVATE)
 
             when (call.method) {
+                "openPayout" -> {
+                    val upi = call.argument<String>("upiId")
+                    val amount = call.argument<String>("amount")
+                    if (upi.isNullOrBlank() || amount.isNullOrBlank()) {
+                        result.error("INVALID", "Payment details are missing", null)
+                    } else try {
+                        val uri = Uri.Builder().scheme("upi").authority("pay")
+                            .appendQueryParameter("pa", upi).appendQueryParameter("am", amount)
+                            .appendQueryParameter("cu", "INR").build()
+                        startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW, uri), "Pay with"))
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("NO_BANK_APP", "UPI copied. Open your banking app to pay.", null)
+                    }
+                }
+
                 "isPermissionGranted" -> {
                     val isGranted = NotificationManagerCompat.getEnabledListenerPackages(this)
                         .contains(packageName)

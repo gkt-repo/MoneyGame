@@ -1,3 +1,4 @@
+import '../../core/services/cash_desk_updates.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/constants/colors.dart';
@@ -14,6 +15,8 @@ class WithdrawalsQueueScreen extends StatefulWidget {
 }
 
 class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
+  CashDeskUpdates? _updates;
+  AdminProfileModel? _admin;
   List<AdminWithdrawalModel> _withdrawals = [];
   bool _loading = true;
   String? _error;
@@ -24,10 +27,12 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
   void initState() {
     super.initState();
     _fetchWithdrawals();
+    _updates = CashDeskUpdates(_fetchWithdrawals);
   }
 
   @override
   void dispose() {
+    _updates?.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -43,6 +48,7 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
   Future<void> _fetchWithdrawals() async {
     setState(() => _loading = true);
     try {
+      _admin ??= await AdminApiClient.getMe();
       final list = await AdminApiClient.getWithdrawals();
       if (mounted) {
         setState(() {
@@ -72,7 +78,27 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
     );
   }
 
-  void _showCompleteDialog(AdminWithdrawalModel withdrawal) {
+  Future<void> _showCompleteDialog(AdminWithdrawalModel withdrawal) async {
+    if (withdrawal.status == 'PENDING') {
+      final external = withdrawal.assignedModeratorId == null;
+      final accepted = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+        title: const Text('Claim payout before paying'),
+        content: Text(external
+          ? 'Pay ₹${withdrawal.amount.toStringAsFixed(2)} from external admin funds? This will not debit a moderator account.'
+          : 'You will take this payout from @${withdrawal.assignedModeratorName ?? withdrawal.assignedModeratorId}. Pay using ${withdrawal.payoutAccountUpi}; its reserved float will be deducted.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Claim payout'))],
+      ));
+      if (accepted != true) return;
+    }
+    try {
+      await AdminApiClient.claimWithdrawal(withdrawal.id, external: withdrawal.assignedModeratorId == null);
+      await _fetchWithdrawals();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      return;
+    }
+    if (!mounted) return;
     final utrController = TextEditingController();
     bool submitting = false;
     String? submitError;
@@ -118,7 +144,7 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Bank IMPS / UPI Reference UTR Number:',
+                  'Pay once, then enter the bank IMPS / UPI reference:',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.slate900),
                 ),
                 const SizedBox(height: 6),
@@ -188,6 +214,60 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _reconcile(AdminWithdrawalModel withdrawal) async {
+    final note = TextEditingController();
+    final utr = TextEditingController();
+    bool saving = false;
+    String? error;
+    await showDialog<void>(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, update) {
+      Future<void> resolve(String outcome) async {
+        update(() => saving = true);
+        try {
+          await AdminApiClient.reconcileWithdrawal(withdrawal.id, outcome, note.text, utr.text);
+          if (ctx.mounted) Navigator.pop(ctx);
+          await _fetchWithdrawals();
+          widget.onQueueUpdated();
+        } catch (e) { if (ctx.mounted) update(() { saving = false; error = '$e'; }); }
+      }
+      return AlertDialog(
+        title: const Text('Reconcile locked payout'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Contact the operator and verify the bank transaction first. Do not send another payment. Confirm unpaid only after checking that no transfer succeeded or remains pending.'),
+          TextField(controller: note, decoration: const InputDecoration(labelText: 'Bank evidence / operator confirmation')),
+          TextField(controller: utr, decoration: const InputDecoration(labelText: 'Existing bank UTR (if paid)')),
+          if (error != null) Text(error!, style: const TextStyle(color: Colors.red)),
+        ]),
+        actions: [
+          TextButton(onPressed: saving ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: saving ? null : () => resolve('NOT_PAID'), child: const Text('Confirmed unpaid · Refund')),
+          FilledButton(onPressed: saving ? null : () => resolve('PAID'), child: const Text('Record verified payment')),
+        ],
+      );
+    }));
+  }
+
+  Future<void> _reassign(AdminWithdrawalModel withdrawal) async {
+    try {
+      final moderators = await AdminApiClient.listModerators();
+      if (!mounted) return;
+      final eligible = moderators.where((m) {
+        final a = m['upiAccount'];
+        return m['status'] == 'ACTIVE' && a != null && a['isActive'] == true && a['floatReady'] == true && a['deviceStatus'] == 'ONLINE'
+          && (a['availableBalance'] as num? ?? 0) + (m['id'] == withdrawal.assignedModeratorId ? withdrawal.amount : 0) >= withdrawal.amount;
+      }).toList();
+      final selected = await showDialog<String>(context: context, builder: (ctx) => SimpleDialog(
+        title: const Text('Select payout moderator'),
+        children: eligible.isEmpty ? [const Padding(padding: EdgeInsets.all(24), child: Text('No online moderator has enough available float.'))]
+          : eligible.map((m) => SimpleDialogOption(onPressed: () => Navigator.pop(ctx, m['id']), child: Text('@${m['username']} · ₹${m['upiAccount']['availableBalance']} available'))).toList(),
+      ));
+      if (selected != null) {
+        await AdminApiClient.reassignWithdrawal(withdrawal.id, selected);
+        await _fetchWithdrawals();
+        widget.onQueueUpdated();
+      }
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); }
   }
 
   void _showRejectDialog(AdminWithdrawalModel withdrawal) {
@@ -360,7 +440,7 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
-                        children: ['PENDING', 'COMPLETED', 'REJECTED', 'ALL'].map((filter) {
+                        children: ['PENDING', 'PROCESSING', 'COMPLETED', 'REJECTED', 'ALL'].map((filter) {
                           final isSel = _activeFilter == filter;
                           return Padding(
                             padding: const EdgeInsets.only(right: 8),
@@ -537,6 +617,11 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
           ),
           const SizedBox(height: 6),
 
+          Text(item.assignedModeratorId == null ? 'Unassigned · Admin funds or awaiting liquidity' : 'Assigned to @${item.assignedModeratorName ?? item.assignedModeratorId}'),
+          if (item.payoutAccountUpi != null) Text('Funding account: ${item.payoutAccountUpi}'),
+          if (item.processingById != null) Text('Processing: @${item.processingByName ?? item.processingById}'),
+          if (item.status == 'PENDING' && _admin?.role == 'SUPER_ADMIN')
+            TextButton(onPressed: () => _reassign(item), child: const Text('Assign / reassign moderator')),
           // UPI ID row with 1-tap copy
           Row(
             children: [
@@ -549,7 +634,7 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
                 ),
               ),
               InkWell(
-                onTap: () => _copyToClipboard(item.upiId, 'UPI ID'),
+                onTap: item.status == 'PROCESSING' && item.processingById == _admin?.id ? () => _copyToClipboard(item.upiId, 'UPI ID') : null,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
@@ -612,8 +697,10 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
             style: const TextStyle(fontSize: 10, color: AppColors.slate400),
           ),
 
+          if (item.status == 'PROCESSING' && _admin?.role == 'SUPER_ADMIN' && item.processingById != _admin?.id)
+            TextButton(onPressed: () => _reconcile(item), child: const Text('Reconcile bank outcome')),
           // Pending Action Buttons
-          if (item.status == 'PENDING' || item.status == 'PROCESSING') ...[
+          if (item.status == 'PENDING' || (item.status == 'PROCESSING' && item.processingById == _admin?.id)) ...[
             const SizedBox(height: 12),
             Row(
               children: [
@@ -627,7 +714,7 @@ class _WithdrawalsQueueScreenState extends State<WithdrawalsQueueScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                     ),
                     child: const Text(
-                      'Clear & Input UTR',
+                      'Claim / Pay & Enter UTR',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.white),
                     ),
                   ),

@@ -1,4 +1,4 @@
-import 'dart:async';
+import '../../core/services/cash_desk_updates.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/colors.dart';
 import '../../core/network/admin_api_client.dart';
@@ -12,7 +12,7 @@ class ModeratorsScreen extends StatefulWidget {
 
 class _ModeratorsScreenState extends State<ModeratorsScreen> {
   List<Map<String, dynamic>> _moderators = [];
-  Timer? _timer;
+  CashDeskUpdates? _updates;
   bool _loading = true;
   String? _error;
 
@@ -20,11 +20,11 @@ class _ModeratorsScreenState extends State<ModeratorsScreen> {
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _load());
+    _updates = CashDeskUpdates(_load);
   }
 
   @override
-  void dispose() { _timer?.cancel(); super.dispose(); }
+  void dispose() { _updates?.dispose(); super.dispose(); }
 
   Future<void> _load() async {
     setState(() {
@@ -45,6 +45,33 @@ class _ModeratorsScreenState extends State<ModeratorsScreen> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _confirmOpening(Map<String, dynamic> upi) async {
+    final balance = TextEditingController();
+    final note = TextEditingController();
+    String? error;
+    bool saving = false;
+    await showDialog<void>(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, update) => AlertDialog(
+      title: const Text('Confirm opening bank balance'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Check ${upi['upiId']} after resolving legacy payouts. Enter float from approved MoneyGame payments; exclude uncredited receipts and personal funds.'),
+        TextField(controller: balance, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Current bank float (₹)')),
+        TextField(controller: note, decoration: const InputDecoration(labelText: 'Reconciliation note')),
+        if (error != null) Text(error!, style: const TextStyle(color: Colors.red)),
+      ]),
+      actions: [TextButton(onPressed: saving ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+        FilledButton(onPressed: saving ? null : () async {
+          update(() => saving = true);
+          try {
+            final amount = double.tryParse(balance.text);
+            if (amount == null) throw Exception('Enter a valid amount');
+            await AdminApiClient.confirmOpeningBalance(upi['id'], amount, note.text);
+            if (ctx.mounted) Navigator.pop(ctx);
+            await _load();
+          } catch (e) { if (ctx.mounted) update(() { error = '$e'; saving = false; }); }
+        }, child: const Text('Confirm balance'))],
+    )));
   }
 
   Color _statusColor(String s) =>
@@ -427,6 +454,16 @@ class _ModeratorsScreenState extends State<ModeratorsScreen> {
                                     Text('${upi['deviceStatus']} · ${upi['poolStatus']} · Battery ${upi['batteryLevel'] ?? '—'}%',
                                       style: TextStyle(color: upi['lowBattery'] == true || upi['deviceStatus'] == 'OFFLINE' ? Colors.red : AppColors.emerald700)),
                                     Text('${upi['issuedCount']} slots issued · ${upi['todayTxCount']} received today'),
+                                    const Divider(),
+                                    Text('Deposits received: ₹${(upi['totalDeposited'] as num? ?? 0).toStringAsFixed(2)}'),
+                                    Text('Payouts sent: ₹${(upi['totalPaidOut'] as num? ?? 0).toStringAsFixed(2)}'),
+                                    Text('Current float: ₹${(upi['currentBalance'] as num? ?? 0).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    Text('Reserved: ₹${(upi['reservedPayouts'] as num? ?? 0).toStringAsFixed(2)} · Available: ₹${(upi['availableBalance'] as num? ?? 0).toStringAsFixed(2)}'),
+                                    if ((upi['openingAdjustment'] as num? ?? 0) != 0)
+                                      Text('Opening adjustment: ₹${(upi['openingAdjustment'] as num).toStringAsFixed(2)}'),
+                                    if (upi['floatReady'] == false)
+                                      TextButton(onPressed: () => _confirmOpening(upi), child: const Text('Confirm opening bank balance')),
+                                    const Divider(),
                                     Text('Last seen: ${upi['lastHeartbeatAt'] ?? 'Never'}'),
                                     const SizedBox(height: 10),
                                     Row(children: [

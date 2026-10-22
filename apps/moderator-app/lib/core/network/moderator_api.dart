@@ -4,10 +4,15 @@ import 'authenticated_client.dart';
 
 class ModeratorApi {
   static const storage = FlutterSecureStorage();
-  static String baseUrl = const String.fromEnvironment(
-    'API_URL',
-    defaultValue: 'http://10.0.2.2:4000',
-  );
+  
+  static String defaultUrl() {
+    const custom = String.fromEnvironment('API_URL');
+    if (custom.isNotEmpty) return custom;
+    // Direct connection to Oracle Cloud production VM via secure HTTPS
+    return 'https://game-132-226-186-196.sslip.io';
+  }
+
+  static String baseUrl = defaultUrl();
   static final session = AuthenticatedClient(
     baseUrl: () => '$baseUrl/api',
     refreshPath: '/admin/auth/refresh-token',
@@ -46,11 +51,27 @@ class ModeratorApi {
   }
 
   static Future<Map<String, dynamic>> login(
-    String url,
-    String username,
-    String password,
-  ) async {
-    final uri = Uri.tryParse(url.trim());
+    dynamic first, [
+    String? second,
+    String? third,
+  ]) async {
+    String targetUrl;
+    String username;
+    String password;
+
+    if (third != null) {
+      targetUrl = first as String;
+      username = second!;
+      password = third;
+    } else if (second != null) {
+      targetUrl = baseUrl;
+      username = first as String;
+      password = second;
+    } else {
+      throw ArgumentError('Invalid arguments to login');
+    }
+
+    final uri = Uri.tryParse(targetUrl.trim());
     if (uri == null ||
         !['http', 'https'].contains(uri.scheme) ||
         uri.host.isEmpty ||
@@ -63,7 +84,7 @@ class ModeratorApi {
         !['localhost', '127.0.0.1', '10.0.2.2'].contains(uri.host)) {
       throw Exception('Use HTTPS for a remote server');
     }
-    baseUrl = url
+    baseUrl = targetUrl
         .trim()
         .replaceAll(RegExp(r'/+$'), '')
         .replaceAll(RegExp(r'/api$'), '');

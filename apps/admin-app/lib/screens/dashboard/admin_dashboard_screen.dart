@@ -1,3 +1,4 @@
+import '../../core/services/cash_desk_updates.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/colors.dart';
 import '../../core/network/admin_api_client.dart';
@@ -23,6 +24,7 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  CashDeskUpdates? _updates;
   AdminStatsModel? _stats;
   bool _loading = true;
   String? _error;
@@ -33,8 +35,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   void initState() {
     super.initState();
     _fetchStats();
+    _updates = CashDeskUpdates(_fetchStats);
     _checkListenerStatus();
   }
+
+  @override
+  void dispose() { _updates?.dispose(); super.dispose(); }
 
   Future<void> _checkListenerStatus() async {
     try {
@@ -194,7 +200,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                 ),
               ] else if (_stats != null) ...[
-                // Grid of 6 KPI Cards
+                if (_stats!.unverifiedFloatAccounts > 0)
+                  Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(
+                    '${_stats!.unverifiedFloatAccounts} account(s) need opening balance confirmation in Moderators. Fleet float is provisional.',
+                    style: const TextStyle(color: AppColors.amber800))),
+                // Fleet and platform totals
                 GridView.count(
                   crossAxisCount: 2,
                   shrinkWrap: true,
@@ -225,6 +235,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       iconColor: AppColors.amber600,
                       isMonospace: true,
                       onTap: () => widget.onNavigateTab(2),
+                    ),
+                    _buildKpiCard(
+                      title: 'CURRENT FLEET FLOAT',
+                      value: '₹${_stats!.totalFleetBalance.toStringAsFixed(2)}',
+                      icon: Icons.account_balance_wallet_outlined,
+                      iconColor: AppColors.emerald700,
+                      isMonospace: true,
+                    ),
+                    _buildKpiCard(
+                      title: 'RESERVED PAYOUTS',
+                      value: '₹${_stats!.totalFleetReserved.toStringAsFixed(2)}',
+                      icon: Icons.lock_outline,
+                      iconColor: AppColors.amber600,
+                      isMonospace: true,
                     ),
                     _buildKpiCard(
                       title: 'PLATFORM PROFIT',

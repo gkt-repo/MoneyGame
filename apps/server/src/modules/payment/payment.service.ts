@@ -1,3 +1,4 @@
+import { cashDeskService, checkDepositOwner, creditFloat } from '../moderator/cash-desk.service';
 import crypto from 'crypto';
 import { reserveUpi, istDay } from '../moderator/upi-pool.service';
 import { moveWallet } from '../../wallet-ledger';
@@ -92,6 +93,7 @@ export class PaymentService {
     const deposit = await tx.deposit.findUnique({ where: { id: depositId } });
     const receipt = await tx.unmatchedPayment.findUnique({ where: { id: receiptId } });
     if (!deposit || !receipt?.utr) throw new Error('Deposit or bank reference not found');
+    if (adminId) await checkDepositOwner(tx, adminId, deposit.receivingUpi);
     if (!approvable.includes(deposit.status)) throw new Error(`Deposit is ${deposit.status}`);
     if (receipt.receivingUpi && receipt.receivingUpi !== deposit.receivingUpi) throw new Error('Payment was received by a different UPI account');
     if (receipt.status !== 'UNCLAIMED') throw new Error('Payment has already been assigned');
@@ -109,6 +111,7 @@ export class PaymentService {
       idempotencyKey: `payment:${receipt.utr}`,
       description: `UPI deposit credited: ₹${deposit.baseAmount.toFixed(2)} (UTR: ${receipt.utr})`,
     } });
+    await creditFloat(tx, deposit.receivingUpi, deposit.totalAmount, `deposit:${deposit.id}`);
     const wallet = await moveWallet(tx, deposit.userId, deposit.baseAmount);
     if (adminId) await tx.auditLog.create({ data: {
       actorId: adminId, targetId: deposit.userId, action: 'MANUAL_DEPOSIT_APPROVE',
@@ -121,6 +124,8 @@ export class PaymentService {
   }
 
   private publishApproval(result: { userId: string; wallet: { balance: number; lockedBalance: number }; deposit?: { id: string; baseAmount: number; totalAmount: number; utr: string | null } }) {
+    cashDeskService.changed();
+    cashDeskService.routePending().catch(e => console.error('Payout routing after deposit failed:', e.message));
     if (!this.io) return;
     const event = {
       depositId: result.deposit?.id, amount: result.deposit?.baseAmount,
@@ -244,6 +249,7 @@ export class PaymentService {
     const result = await serializable(async tx => {
       const deposit = await tx.deposit.findUnique({ where: { id: depositId } });
       if (!deposit) throw new Error('Deposit request not found');
+      await checkDepositOwner(tx, adminId, deposit.receivingUpi);
       if (!approvable.includes(deposit.status)) throw new Error(`Deposit is ${deposit.status}`);
       const duplicate = await tx.deposit.findUnique({ where: { utr: cleanUtr } });
       if (duplicate) throw new Error('UTR has already been credited');
@@ -270,6 +276,7 @@ export class PaymentService {
     const result = await serializable(async tx => {
       const deposit = await tx.deposit.findUnique({ where: { id: depositId } });
       if (!deposit || !approvable.includes(deposit.status)) throw new Error('Deposit cannot be rejected');
+      await checkDepositOwner(tx, adminId, deposit.receivingUpi);
       const updated = await tx.deposit.update({ where: { id: depositId }, data: { status: 'REJECTED', claimStatus: 'REJECTED_BY_ADMIN', activeAmountKey: null } });
       await tx.auditLog.create({ data: { actorId: adminId, targetId: deposit.userId, action: 'REJECT_DEPOSIT_CLAIM', details: JSON.stringify({ depositId, reason }) } });
       return { success: true, deposit: updated, message: 'Deposit rejected.', userId: deposit.userId, baseAmount: deposit.baseAmount };
@@ -305,6 +312,7 @@ export class PaymentService {
         userId, amount: receipt.amount, type: 'DEPOSIT', referenceId: `UNMATCHED-${receipt.id}`,
         idempotencyKey: `payment:${receipt.utr}`, description: `Bank payment assigned (UTR: ${receipt.utr})`,
       } });
+      await creditFloat(tx, receipt.receivingUpi, receipt.amount, `receipt:${receipt.id}`);
       const wallet = await moveWallet(tx, userId, receipt.amount);
       await tx.auditLog.create({ data: { actorId: adminId, targetId: userId, action: 'ASSIGN_UNMATCHED_PAYMENT', details: JSON.stringify({ unmatchedId, utr: receipt.utr, amount: receipt.amount }) } });
       return { success: true, userId, unmatched, wallet, message: 'Payment assigned and credited.' };

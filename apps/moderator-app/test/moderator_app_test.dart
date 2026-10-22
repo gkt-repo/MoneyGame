@@ -10,6 +10,8 @@ import 'package:moneygame_moderator/core/network/moderator_api.dart';
 class FakeServer implements HttpClientAdapter {
   final requests = <RequestOptions>[];
   String role = 'MODERATOR';
+  bool claimed = false;
+  bool floatReady = true;
   final access =
       'e30.${base64Url.encode(utf8.encode(jsonEncode({'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 900})))}.signature';
   @override
@@ -19,6 +21,7 @@ class FakeServer implements HttpClientAdapter {
     Future<void>? cancel,
   ) async {
     requests.add(options);
+    if (options.path == '/admin/withdrawals/claim') claimed = true;
     final user = {'id': 'moderator-1', 'username': 'desk_one', 'role': role};
     final bodies = <String, dynamic>{
       '/admin/auth/login': {
@@ -26,7 +29,12 @@ class FakeServer implements HttpClientAdapter {
         'tokens': {'accessToken': access, 'refreshToken': 'refresh'},
       },
       '/admin/auth/me': {'admin': user},
-      '/admin/moderator-status': {'account': null},
+      '/admin/moderator-status': {'account': {
+        'upiId': 'desk@bank', 'floatReady': floatReady, 'poolStatus': 'AVAILABLE',
+        'issuedCount': 2, 'todayTxCount': 2, 'dailyLimit': 15,
+        'currentBalance': 7000, 'reservedPayouts': 2000, 'availableBalance': 5000,
+        'totalDeposited': 25000, 'totalPaidOut': 18000,
+      }},
       '/admin/deposits': {'deposits': []},
       '/admin/withdrawals': {
         'withdrawals': [
@@ -35,7 +43,9 @@ class FakeServer implements HttpClientAdapter {
             'userId': 'player',
             'amount': 100,
             'upiId': 'player@bank',
-            'status': 'PENDING',
+            'status': claimed ? 'PROCESSING' : 'PENDING',
+            'assignedModeratorId': 'moderator-1',
+            'processingById': claimed ? 'moderator-1' : null,
           },
         ],
       },
@@ -115,6 +125,9 @@ void main() {
       expect(find.text('Overview'), findsNothing);
       await tester.tap(find.text('Payouts'));
       await tester.pumpAndSettle();
+      expect(find.text('Available float: ₹5000.00'), findsOneWidget);
+      expect(find.text('Current: ₹7000.00 | Reserved: ₹2000.00'), findsOneWidget);
+      expect(find.text('Copy UPI & Pay'), findsNothing);
       expect(find.text('Take payout'), findsOneWidget);
       expect(find.text('Mark paid'), findsNothing);
       await tester.tap(find.text('Take payout'));
@@ -126,6 +139,8 @@ void main() {
             .data,
         {'withdrawalId': 'payout-1'},
       );
+      expect(find.text('Copy UPI & Pay'), findsOneWidget);
+      expect(find.text('Mark paid'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );

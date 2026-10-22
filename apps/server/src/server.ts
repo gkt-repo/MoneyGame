@@ -1,3 +1,4 @@
+import { cashDeskService } from './modules/moderator/cash-desk.service';
 import { moderatorService } from './modules/moderator/moderator.service';
 import http from 'http';
 import { configureSockets } from './socket';
@@ -110,6 +111,7 @@ walletService.setSocketServer(io);
 notificationService.setSocketServer(io);
 paymentService.setSocketServer(io);
 moderatorService.setSocketServer(io);
+cashDeskService.setSocketServer(io);
 sportsService.setSocketServer(io);
 
 configureSockets(io);
@@ -121,6 +123,7 @@ async function bootstrap() {
 
   // Background daemon: clean up expired deposit reservations every 60 seconds
   const periodicExpiry = setInterval(() => {
+    cashDeskService.routePending().catch((err: any) => console.error('Payout routing error:', err.message));
     paymentService.runPeriodicExpiry().catch((err: any) => {
       console.error('Periodic deposit expiry check error:', err.message);
     });

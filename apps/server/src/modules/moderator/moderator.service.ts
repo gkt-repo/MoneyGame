@@ -1,3 +1,4 @@
+import { availableFloat } from './cash-desk.service';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../db';
@@ -29,7 +30,7 @@ export class ModeratorService {
   async pool() {
     const accounts = await prisma.upiAccount.findMany({ orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       include: { usage: { where: { day: istDay() } }, assignedUser: { select: { username: true, status: true } } } });
-    return accounts.map(({ listenerTokenHash, usage, ...a }) => ({ ...a,
+    return accounts.map(({ listenerTokenHash, usage, ...a }) => ({ ...a, availableBalance: availableFloat(a),
       todayTxCount: usage[0]?.receivedCount || 0, issuedCount: usage[0]?.issuedCount || 0,
       remaining: Math.max(0, a.dailyLimit - (usage[0]?.issuedCount || 0)),
       deviceStatus: listenerTokenHash && online(a) ? 'ONLINE' : 'OFFLINE',
@@ -90,9 +91,13 @@ export class ModeratorService {
       const sortOrder = b.sortOrder ?? previous?.sortOrder ?? await tx.upiAccount.count();
       if (!Number.isInteger(sortOrder) || sortOrder < 0) throw new Error('Invalid rotation order');
       // Preserve a receiving address once issued: outstanding payments must retain their owner.
-      if (previous && previous.upiId !== data.upiId && await tx.deposit.count({ where: { upiAccountId: id! } })) {
+      if (previous && previous.upiId !== data.upiId && (await tx.deposit.count({ where: { upiAccountId: id! } }) || await tx.cashDeskEntry.count({ where: { accountId: id! } }))) {
         throw new Error('This UPI has payment history. Disable it and add the replacement UPI separately.');
       }
+      if (previous && previous.assignedUserId !== assignedUserId && await tx.withdrawal.count({ where: {
+        status: { in: ['PENDING', 'PROCESSING'] }, OR: [{ payoutAccountId: previous.id },
+          ...(previous.assignedUserId ? [{ assignedModeratorId: previous.assignedUserId }] : [])],
+      } })) throw new Error('Resolve or reassign active payouts before changing the account owner');
       const changed = previous && (previous.upiId !== data.upiId || previous.assignedUserId !== assignedUserId || b.isActive === false);
       const values = { ...data, assignedUserId, sortOrder, isActive: b.isActive ?? previous?.isActive ?? true,
         ...(changed ? { listenerTokenHash: null, listenerConnected: false, lastHeartbeatAt: null } : {}) };

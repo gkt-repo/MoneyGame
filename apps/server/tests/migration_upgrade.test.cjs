@@ -103,3 +103,39 @@ print(json.dumps({
   assert.deepEqual(data.usage, [['2026-10-22', 2, 1]]);
   assert(data.foreignKeys.some(key => key[2] === 'User'));
 });
+
+test('float migration backfills bank inflow once and requires reconciliation of legacy cash', () => {
+  const output = run('python3', ['-c', `
+import sqlite3, json
+from pathlib import Path
+c = sqlite3.connect(':memory:')
+for p in sorted(Path('prisma/migrations').glob('*/migration.sql')):
+    if p.parent.name == '20261022020000_moderator_float':
+        c.executescript('''
+INSERT INTO User(id,username,role) VALUES('mod','desk','MODERATOR'),('player','player','USER');
+INSERT INTO UpiAccount(id,upiId,receiverName,assignedUserId,updatedAt) VALUES('upi','desk@bank','Desk','mod',CURRENT_TIMESTAMP);
+INSERT INTO Deposit(id,userId,baseAmount,offsetPaise,totalAmount,receivingUpi,upiAccountId,status,utr,expiresAt)
+VALUES('d1','player',100,25,100.25,'desk@bank','upi','APPROVED','MIGRATE_BANK_123',CURRENT_TIMESTAMP);
+INSERT INTO UnmatchedPayment(id,amount,utr,receivingUpi,status,assignedDepositId,assignedUserId)
+VALUES('r1',100.25,'MIGRATE_BANK_123','desk@bank','ASSIGNED','d1','player');
+INSERT INTO UnmatchedPayment(id,amount,utr,receivingUpi,status,assignedUserId)
+VALUES('r2',50.50,'MIGRATE_BANK_456','desk@bank','ASSIGNED','player');
+INSERT INTO Withdrawal(id,userId,amount,upiId,status,processedById,updatedAt)
+VALUES('w1','player',20,'player@bank','COMPLETED','mod',CURRENT_TIMESTAMP);
+INSERT INTO Withdrawal(id,userId,amount,upiId,status,processingById,updatedAt)
+VALUES('w2','player',10,'player@bank','PROCESSING','mod',CURRENT_TIMESTAMP);
+''')
+    c.executescript(p.read_text())
+print(json.dumps({
+ 'balance': c.execute('SELECT totalDeposited,currentBalance,totalPaidOut,reservedPayouts,floatReady FROM UpiAccount').fetchone(),
+ 'ledger': c.execute('SELECT COUNT(*),SUM(amount) FROM CashDeskEntry').fetchone(),
+ 'processing': c.execute('SELECT assignedModeratorId,processingById,status FROM Withdrawal WHERE id = "w2"').fetchone(),
+ 'completed': c.execute('SELECT payoutAccountId,status FROM Withdrawal WHERE id = "w1"').fetchone()
+}))
+`]);
+  const data = JSON.parse(output);
+  assert.deepEqual(data.balance, [150.75, 150.75, 0, 0, 0]);
+  assert.deepEqual(data.ledger, [2, 150.75]);
+  assert.deepEqual(data.processing, ['mod', 'mod', 'PROCESSING']);
+  assert.deepEqual(data.completed, [null, 'COMPLETED']);
+});

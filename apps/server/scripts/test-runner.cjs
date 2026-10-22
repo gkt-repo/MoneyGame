@@ -11,6 +11,7 @@ const cases = {
   game: 'teen_patti.test.ts', sports: 'sports_pool.test.ts',
   notifications: 'notifications.test.ts',
   moderator: 'moderator.test.ts',
+  float: 'moderator_float.test.ts',
 };
 const generated = spawnSync(process.execPath, [require.resolve('prisma'), 'generate', '--schema', 'prisma/schema.prisma'], { cwd: serverDir, stdio: 'inherit' });
 if (generated.status !== 0) throw new Error('Prisma client generation failed');

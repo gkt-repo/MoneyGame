@@ -77,6 +77,10 @@ export interface DepositItem {
 }
 
 export interface WithdrawalItem {
+  assignedModeratorId?: string | null;
+  assignedModeratorName?: string | null;
+  payoutAccountUpi?: string | null;
+  processingById?: string | null;
   id: string;
   userId: string;
   amount: number;
@@ -404,6 +408,10 @@ class AdminApiService {
   async getWithdrawals(): Promise<WithdrawalItem[]> {
     const res = await this.request<{ success: boolean; withdrawals: WithdrawalItem[] }>('/admin/withdrawals');
     return res.withdrawals;
+  }
+
+  async claimWithdrawal(withdrawalId: string, external: boolean): Promise<any> {
+    return this.request('/admin/withdrawals/claim', { method: 'POST', body: JSON.stringify({ withdrawalId, ...(external ? { fundingSource: 'EXTERNAL' } : {}) }) });
   }
 
   async completeWithdrawal(withdrawalId: string, payoutUtr: string): Promise<any> {

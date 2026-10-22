@@ -22,6 +22,11 @@ class ModeratorListener {
     await channel.invokeMethod('sendHeartbeatNow');
   }
 
+  static Future<void> openPayout(String upi, double amount) async {
+    if (!Platform.isAndroid) return;
+    await channel.invokeMethod('openPayout', {'upiId': upi, 'amount': amount.toStringAsFixed(2)});
+  }
+
   static Future<void> stop() async {
     if (Platform.isAndroid) await channel.invokeMethod('clearConfig');
   }

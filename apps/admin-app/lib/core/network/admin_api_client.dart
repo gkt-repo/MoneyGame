@@ -42,6 +42,9 @@ class AdminStatsModel {
   final int totalUsers;
   final double totalDeposited;
   final double totalWithdrawn;
+  final double totalFleetBalance;
+  final double totalFleetReserved;
+  final int unverifiedFloatAccounts;
   final double platformProfit;
   final int activeRooms;
   final int pendingWithdrawalsCount;
@@ -64,6 +67,9 @@ class AdminStatsModel {
     required this.totalUsers,
     required this.totalDeposited,
     required this.totalWithdrawn,
+    this.totalFleetBalance = 0,
+    this.totalFleetReserved = 0,
+    this.unverifiedFloatAccounts = 0,
     required this.platformProfit,
     required this.activeRooms,
     required this.pendingWithdrawalsCount,
@@ -88,6 +94,9 @@ class AdminStatsModel {
       totalUsers: json['totalUsers'] ?? json['totalUsersCount'] ?? 0,
       totalDeposited: (json['totalDeposited'] ?? json['totalDepositVolume'] as num?)?.toDouble() ?? 0.0,
       totalWithdrawn: (json['totalWithdrawn'] ?? json['totalPayoutVolume'] as num?)?.toDouble() ?? 0.0,
+      totalFleetBalance: (json['totalFleetBalance'] as num?)?.toDouble() ?? 0,
+      totalFleetReserved: (json['totalFleetReserved'] as num?)?.toDouble() ?? 0,
+      unverifiedFloatAccounts: json['unverifiedFloatAccounts'] ?? 0,
       platformProfit: (json['platformProfit'] as num?)?.toDouble() ?? 0.0,
       activeRooms: json['activeRooms'] ?? 0,
       pendingWithdrawalsCount: json['pendingWithdrawalsCount'] ?? 0,
@@ -144,6 +153,12 @@ class AdminWithdrawalModel {
   final double amount;
   final String upiId;
   final String status;
+  final String? assignedModeratorId;
+  final String? assignedModeratorName;
+  final String? payoutAccountUpi;
+  final String? processingById;
+  final String? processingByName;
+  final String? fundingSource;
   final String? payoutUtr;
   final String? rejectionReason;
   final String createdAt;
@@ -156,6 +171,12 @@ class AdminWithdrawalModel {
     required this.amount,
     required this.upiId,
     required this.status,
+    this.assignedModeratorId,
+    this.assignedModeratorName,
+    this.payoutAccountUpi,
+    this.processingById,
+    this.processingByName,
+    this.fundingSource,
     this.payoutUtr,
     this.rejectionReason,
     required this.createdAt,
@@ -170,6 +191,12 @@ class AdminWithdrawalModel {
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
       upiId: json['upiId'] ?? '',
       status: json['status'] ?? 'PENDING',
+      assignedModeratorId: json['assignedModeratorId'],
+      assignedModeratorName: json['assignedModeratorName'],
+      payoutAccountUpi: json['payoutAccountUpi'],
+      processingById: json['processingById'],
+      processingByName: json['processingByName'],
+      fundingSource: json['fundingSource'],
       payoutUtr: json['payoutUtr'],
       rejectionReason: json['reason'] ?? json['rejectionReason'],
       createdAt: json['createdAt'] ?? '',
@@ -732,6 +759,18 @@ class AdminApiClient {
   );
   static final Dio _dio = _session.dio;
   static void init() {}
+  static Future<void> claimWithdrawal(String id, {bool external = false}) async {
+    await _dio.post('/admin/withdrawals/claim', data: {'withdrawalId': id, if (external) 'fundingSource': 'EXTERNAL'});
+  }
+  static Future<void> reconcileWithdrawal(String id, String outcome, String note, String utr) async {
+    await _dio.post('/admin/withdrawals/reconcile', data: {'withdrawalId': id, 'outcome': outcome, 'note': note, 'payoutUtr': utr});
+  }
+  static Future<void> reassignWithdrawal(String id, String moderatorId) async {
+    await _dio.post('/admin/withdrawals/reassign', data: {'withdrawalId': id, 'moderatorId': moderatorId});
+  }
+  static Future<void> confirmOpeningBalance(String id, double balance, String reason) async {
+    await _dio.post('/admin/upi-pool/$id/opening-balance', data: {'balance': balance, 'reason': reason});
+  }
   static Future<String?> getValidAccessToken({bool forceRefresh = false}) =>
       _session.validAccessToken(forceRefresh: forceRefresh);
 

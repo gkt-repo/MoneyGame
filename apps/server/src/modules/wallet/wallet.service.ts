@@ -1,3 +1,4 @@
+import { assignPayout, releaseFloat, cashDeskService, forbidden, operator } from '../moderator/cash-desk.service';
 import { prisma } from '../../db';
 import { moveWallet } from '../../wallet-ledger';
 import { Prisma } from '@prisma/client';
@@ -417,7 +418,7 @@ export class WalletService {
       // Move balance to lockedBalance
       const updatedWallet = await moveWallet(tx, userId, -roundedAmount, roundedAmount);
 
-      const withdrawal = await tx.withdrawal.create({
+      let withdrawal = await tx.withdrawal.create({
         data: {
           userId,
           amount: roundedAmount,
@@ -436,6 +437,7 @@ export class WalletService {
         },
       });
 
+      withdrawal = await assignPayout(tx, withdrawal);
       return { withdrawal, wallet: updatedWallet };
     });
 
@@ -451,6 +453,7 @@ export class WalletService {
       });
     }
 
+    cashDeskService.changed();
     // Trigger in-app notification for the player
     notificationService.create({
       userId,
@@ -471,20 +474,23 @@ export class WalletService {
    * Admin approves & completes withdrawal after sending money via UPI
    * Verifies UTR uniqueness to prevent duplicate settlements
    */
-  async claimWithdrawal(withdrawalId: string, actorId: string) {
-    return serializable(async tx => {
-      const actor = await tx.user.findUnique({ where: { id: actorId } });
-      if (!actor || actor.status !== 'ACTIVE' || !['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(actor.role)) throw new Error('Operator access revoked');
+  async claimWithdrawal(withdrawalId: string, actorId: string, fundingSource?: string) {
+    const result = await serializable(async tx => {
+      const actor = await operator(tx, actorId);
       const w = await tx.withdrawal.findUniqueOrThrow({ where: { id: withdrawalId } });
+      if (actor.role === 'MODERATOR' && w.assignedModeratorId !== actorId) throw forbidden('This payout is assigned to another operator');
       if (w.status === 'PROCESSING' && w.processingById === actorId) return { success: true, withdrawal: w };
       if (w.status !== 'PENDING') throw new Error('Another operator has already taken this payout');
-      const withdrawal = await tx.withdrawal.update({ where: { id: withdrawalId }, data: { status: 'PROCESSING', processingById: actorId } });
+      if (!w.payoutAccountId && fundingSource !== 'EXTERNAL') throw new Error('Select external admin funds for an unassigned payout, or assign a funded moderator');
+      const withdrawal = await tx.withdrawal.update({ where: { id: withdrawalId }, data: { status: 'PROCESSING', processingById: actorId, fundingSource: w.payoutAccountId ? 'ACCOUNT' : 'EXTERNAL' } });
       await tx.auditLog.create({ data: { actorId, targetId: w.userId, action: 'CLAIM_WITHDRAWAL', details: JSON.stringify({ withdrawalId }) } });
       return { success: true, withdrawal };
     });
+    cashDeskService.changed();
+    return result;
   }
 
-  async completeWithdrawal(withdrawalId: string, payoutUtr: string, actorId?: string) {
+  async completeWithdrawal(withdrawalId: string, payoutUtr: string, actorId?: string, reconciliationNote?: string) {
     const cleanUtr = bankReference(payoutUtr);
     if (!cleanUtr) throw new Error('Bank payout UTR is required');
 
@@ -504,9 +510,16 @@ export class WalletService {
       if (!['PENDING', 'PROCESSING'].includes(withdrawal.status)) throw new Error(`Withdrawal is already ${withdrawal.status}`);
       const actor = actorId ? await tx.user.findUnique({ where: { id: actorId } }) : null;
       if (actorId && (!actor || actor.status !== 'ACTIVE' || !['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(actor.role))) throw new Error('Operator access revoked');
-      if (withdrawal.processingById && withdrawal.processingById !== actorId && actor?.role !== 'SUPER_ADMIN') throw new Error('Payout belongs to another operator');
-      if (actor?.role === 'MODERATOR' && withdrawal.processingById !== actorId) throw new Error('Claim the payout before processing it');
-      if (actorId) await tx.auditLog.create({ data: { actorId, targetId: withdrawal.userId, action: 'COMPLETE_WITHDRAWAL', details: JSON.stringify({ withdrawalId, payoutUtr: cleanUtr }) } });
+      const reconciling = reconciliationNote !== undefined;
+      if (reconciling && (actor?.role !== 'SUPER_ADMIN' || withdrawal.status !== 'PROCESSING' || !reconciliationNote || reconciliationNote.trim().length < 10)) {
+        throw forbidden('Super Admin bank reconciliation requires a processing payout and an evidence note of at least 10 characters');
+      }
+      if (withdrawal.assignedModeratorId && (!actor || (actor.role === 'MODERATOR' && withdrawal.assignedModeratorId !== actorId))) throw forbidden('This payout is assigned to another operator');
+      if (withdrawal.processingById && withdrawal.processingById !== actorId && !reconciling) throw forbidden('Payout belongs to another operator');
+      if (actor?.role === 'MODERATOR' && withdrawal.processingById !== actorId) throw forbidden('Claim the payout before processing it');
+      if (actorId && withdrawal.processingById !== actorId && !reconciling) throw new Error('Claim the payout before processing it');
+      await releaseFloat(tx, withdrawal, true, actorId);
+      if (actorId) await tx.auditLog.create({ data: { actorId, targetId: withdrawal.userId, action: 'COMPLETE_WITHDRAWAL', details: JSON.stringify({ withdrawalId, payoutUtr: cleanUtr, reconciliationNote }) } });
 
       // Deduct permanently from lockedBalance
       const wallet = await moveWallet(tx, withdrawal.userId, 0, -withdrawal.amount);
@@ -543,6 +556,7 @@ export class WalletService {
       });
     }
 
+    cashDeskService.changed();
     // Trigger in-app notification for the player
     notificationService.create({
       userId: result.withdrawal.userId,
@@ -563,7 +577,7 @@ export class WalletService {
   /**
    * Admin rejects withdrawal and refunds locked balance back to available balance
    */
-  async rejectWithdrawal(withdrawalId: string, reason?: string, actorId?: string) {
+  async rejectWithdrawal(withdrawalId: string, reason?: string, actorId?: string, reconciliationNote?: string) {
     const result = await serializable(async (tx) => {
       const withdrawal = await tx.withdrawal.findUnique({
         where: { id: withdrawalId },
@@ -573,10 +587,16 @@ export class WalletService {
       if (!['PENDING', 'PROCESSING'].includes(withdrawal.status)) throw new Error(`Withdrawal is already ${withdrawal.status}`);
       const actor = actorId ? await tx.user.findUnique({ where: { id: actorId } }) : null;
       if (actorId && (!actor || actor.status !== 'ACTIVE' || !['MODERATOR', 'ADMIN', 'SUPER_ADMIN'].includes(actor.role))) throw new Error('Operator access revoked');
-      if (withdrawal.processingById && withdrawal.processingById !== actorId && actor?.role !== 'SUPER_ADMIN') throw new Error('Payout belongs to another operator');
-      if (actor?.role === 'MODERATOR' && withdrawal.processingById !== actorId) throw new Error('Claim the payout before processing it');
-      if (actorId) await tx.auditLog.create({ data: { actorId, targetId: withdrawal.userId, action: 'REJECT_WITHDRAWAL', details: JSON.stringify({ withdrawalId, reason }) } });
+      const reconciling = reconciliationNote !== undefined;
+      if (reconciling && (actor?.role !== 'SUPER_ADMIN' || withdrawal.status !== 'PROCESSING' || !reconciliationNote || reconciliationNote.trim().length < 10)) {
+        throw forbidden('Super Admin bank reconciliation requires a processing payout and an evidence note of at least 10 characters');
+      }
+      if (withdrawal.assignedModeratorId && (!actor || (actor.role === 'MODERATOR' && withdrawal.assignedModeratorId !== actorId))) throw forbidden('This payout is assigned to another operator');
+      if (withdrawal.processingById && withdrawal.processingById !== actorId && !reconciling) throw forbidden('Payout belongs to another operator');
+      if (actor?.role === 'MODERATOR' && withdrawal.processingById !== actorId) throw forbidden('Claim the payout before processing it');
+      if (actorId) await tx.auditLog.create({ data: { actorId, targetId: withdrawal.userId, action: 'REJECT_WITHDRAWAL', details: JSON.stringify({ withdrawalId, reason, reconciliationNote }) } });
 
+      await releaseFloat(tx, withdrawal);
       // Refund from lockedBalance to balance
       const wallet = await moveWallet(tx, withdrawal.userId, withdrawal.amount, -withdrawal.amount);
 
@@ -612,6 +632,7 @@ export class WalletService {
       });
     }
 
+    cashDeskService.changed();
     // Trigger in-app notification for the player
     notificationService.create({
       userId: result.withdrawal.userId,

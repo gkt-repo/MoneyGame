@@ -75,6 +75,14 @@ export interface WithdrawalDTO {
   amount: number;
   upiId: string;
   status: WithdrawalStatus;
+  assignedModeratorId?: string | null;
+  assignedModeratorName?: string | null;
+  assignedAt?: string | Date | null;
+  payoutAccountId?: string | null;
+  payoutAccountUpi?: string | null;
+  fundingSource?: 'ACCOUNT' | 'EXTERNAL' | null;
+  processingById?: string | null;
+  processedById?: string | null;
   payoutUtr?: string | null;
   reason?: string | null;
   createdAt: string | Date;
@@ -99,4 +107,14 @@ export interface TransactionDTO {
   referenceId?: string | null;
   description?: string | null;
   createdAt: string | Date;
+}
+
+export interface ModeratorBalanceSheetDTO {
+  totalDeposited: number;
+  totalPaidOut: number;
+  currentBalance: number;
+  reservedPayouts: number;
+  availableBalance: number;
+  openingAdjustment: number;
+  floatReady: boolean;
 }

@@ -80,7 +80,7 @@ async function run() {
     console.log('PASS: receiving-account binding and duplicate deliveries credit/count once');
 
     const withdrawal = await walletService.requestWithdrawal(player2.id, 100, 'player@bank');
-    const claims = await Promise.allSettled(users.slice(0,2).map(u => walletService.claimWithdrawal(withdrawal.withdrawal.id, u.id)));
+    const claims = await Promise.allSettled(users.map(u => walletService.claimWithdrawal(withdrawal.withdrawal.id, u.id)));
     assert.equal(claims.filter(r => r.status === 'fulfilled').length, 1);
     const w = await prisma.withdrawal.findUniqueOrThrow({ where: { id: withdrawal.withdrawal.id } });
     const other = users.find(u => u.id !== w.processingById)!;

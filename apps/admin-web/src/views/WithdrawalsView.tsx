@@ -24,7 +24,7 @@ export const WithdrawalsView: React.FC<WithdrawalsViewProps> = ({
   onRefresh,
   onSelectUser,
 }) => {
-  const [filter, setFilter] = useState<'PENDING' | 'COMPLETED' | 'REJECTED' | 'ALL'>('PENDING');
+  const [filter, setFilter] = useState<'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED' | 'ALL'>('PENDING');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Modals state
@@ -34,6 +34,15 @@ export const WithdrawalsView: React.FC<WithdrawalsViewProps> = ({
   const [rejectReason, setRejectReason] = useState('Invalid UPI ID / Bank rejected transfer');
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const claimPayout = async (w: WithdrawalItem) => {
+    const source = w.assignedModeratorId ? `the reserved account ${w.payoutAccountUpi}` : 'external admin funds (no moderator account will be debited)';
+    if (w.status === 'PENDING' && !window.confirm(`Claim this payout before sending money from ${source}?`)) return;
+    try {
+      await adminApi.claimWithdrawal(w.id, !w.assignedModeratorId);
+      setCompleteItem(w); setPayoutUtr(''); setActionError(null); onRefresh();
+    } catch (error: any) { window.alert(error.message || 'Unable to claim this payout'); }
+  };
 
   const handleCopyUpi = (upiId: string, id: string) => {
     navigator.clipboard.writeText(upiId);
@@ -93,7 +102,7 @@ export const WithdrawalsView: React.FC<WithdrawalsViewProps> = ({
 
         {/* Filter Pills */}
         <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 p-1 rounded-lg self-start sm:self-auto">
-          {(['PENDING', 'COMPLETED', 'REJECTED', 'ALL'] as const).map((tab) => (
+          {(['PENDING', 'PROCESSING', 'COMPLETED', 'REJECTED', 'ALL'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setFilter(tab)}
@@ -156,9 +165,9 @@ export const WithdrawalsView: React.FC<WithdrawalsViewProps> = ({
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs mono-num text-zinc-200">
-                        <span>{w.upiId}</span>
+                        <span>{w.upiId}<small className="block">{w.assignedModeratorId ? `Assigned to @${w.assignedModeratorName || w.assignedModeratorId}` : 'Unassigned'}</small></span>
                         <button
-                          onClick={() => handleCopyUpi(w.upiId, w.id)}
+                          onClick={() => claimPayout(w)}
                           title="Copy UPI Address"
                           className="text-zinc-500 hover:text-emerald-400 transition"
                         >
@@ -198,17 +207,13 @@ export const WithdrawalsView: React.FC<WithdrawalsViewProps> = ({
                       )}
                     </td>
                     <td className="px-5 py-3.5 text-right whitespace-nowrap">
-                      {w.status === 'PENDING' ? (
+                      {['PENDING', 'PROCESSING'].includes(w.status) ? (
                         <div className="inline-flex items-center gap-2">
                           <button
-                            onClick={() => {
-                              setCompleteItem(w);
-                              setPayoutUtr('');
-                              setActionError(null);
-                            }}
+                            onClick={() => claimPayout(w)}
                             className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-medium transition shadow-sm"
                           >
-                            Mark Paid
+                            Claim / Pay
                           </button>
                           <button
                             onClick={() => {
@@ -248,6 +253,8 @@ export const WithdrawalsView: React.FC<WithdrawalsViewProps> = ({
               </div>
             )}
 
+            <button className="text-emerald-400 mb-3" onClick={() => handleCopyUpi(completeItem.upiId, completeItem.id)}>Copy UPI (claimed payout)</button>
+            <p className="text-xs text-zinc-400 mb-3">Funding: {completeItem.payoutAccountUpi || 'External admin funds'}. Send once; retain the UTR if recording fails.</p>
             <form onSubmit={handleCompletePayout} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-zinc-300 mb-1.5">
