@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserTab } from './UserNavbar';
-import { Gamepad2, Trophy, Wallet, HelpCircle } from 'lucide-react';
+import { Gamepad2, Trophy, Wallet, HelpCircle, CandlestickChart } from 'lucide-react';
 
 interface MobileBottomNavProps {
   currentTab: UserTab;
@@ -8,15 +8,20 @@ interface MobileBottomNavProps {
   balance: number;
 }
 
-export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
-  currentTab,
-  onTabChange,
-  balance,
-}) => {
+export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ currentTab, onTabChange, balance }) => {
   return (
-    <nav className="sm:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 shadow-md pb-[env(safe-area-inset-bottom)]">
+    <nav
+      className={`sm:hidden fixed bottom-0 inset-x-0 z-30 border-t shadow-md pb-[env(safe-area-inset-bottom)] ${currentTab === 'trading' ? 'bg-[#0d1117] border-[#26303d]' : 'bg-white border-slate-200'}`}
+    >
       <div className="grid grid-cols-5 h-14">
-        <button type="button" onClick={() => onTabChange('trading')} className={`flex flex-col items-center justify-center text-[10px] font-bold ${currentTab === 'trading' ? 'text-emerald-700' : 'text-slate-500'}`}><span className="text-xl">↗</span>CricTrade</button>
+        <button
+          type="button"
+          onClick={() => onTabChange('trading')}
+          className={`flex flex-col items-center justify-center text-[10px] font-bold ${currentTab === 'trading' ? 'text-emerald-400' : 'text-slate-500'}`}
+        >
+          <CandlestickChart className="w-5 h-5" />
+          CricTrade
+        </button>
         {/* Tables */}
         <button
           type="button"
@@ -73,7 +78,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             )}
           </div>
           <span className="text-[10px] font-mono tabular-nums">
-            ₹{balance.toFixed(0)}
+            {currentTab === 'trading' ? 'Wallet' : `₹${balance.toFixed(0)}`}
           </span>
         </button>
 

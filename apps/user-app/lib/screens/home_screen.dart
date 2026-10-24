@@ -292,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.slate50,
-      appBar: AppBar(
+      appBar: _currentIndex == 2 ? null : AppBar(
         backgroundColor: AppColors.white,
         elevation: 0,
         centerTitle: false,
@@ -423,8 +423,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.white,
+        decoration: BoxDecoration(
+          color: _currentIndex == 2 ? const Color(0xff0d1117) : AppColors.white,
           border: Border(top: BorderSide(color: AppColors.slate200, width: 1)),
         ),
         child: BottomNavigationBar(
@@ -433,8 +433,8 @@ class _HomeScreenState extends State<HomeScreen> {
             setState(() => _currentIndex = index);
             if (index == 1) _refreshProfile();
           },
-          backgroundColor: AppColors.white,
-          selectedItemColor: AppColors.emerald700,
+          backgroundColor: _currentIndex == 2 ? const Color(0xff0d1117) : AppColors.white,
+          selectedItemColor: _currentIndex == 2 ? const Color(0xff34d399) : AppColors.emerald700,
           unselectedItemColor: AppColors.slate400,
           selectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
           unselectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),

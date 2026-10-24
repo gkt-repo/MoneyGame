@@ -2,7 +2,14 @@ import './test-env';
 import assert from 'node:assert/strict';
 import { prisma } from '../src/db';
 import { tradingService as service } from '../src/modules/trading/trading.service';
-import { allocate, candles, parseScore, pollInterval, probability } from '../src/modules/trading/domain';
+import {
+  allocate,
+  automaticCandleInterval,
+  candles,
+  parseScore,
+  pollInterval,
+  probability,
+} from '../src/modules/trading/domain';
 import { normalizeEvent, TradingWorker } from '../src/modules/trading/feed';
 import { CricketState } from '@moneygame/shared-types';
 
@@ -27,6 +34,10 @@ async function quote(id: string, p: number) {
   return q.id;
 }
 async function main() {
+  assert.equal(automaticCandleInterval({ ...state, balls: 101 }), 'over');
+  assert.equal(automaticCandleInterval({ ...state, balls: 102 }), '1m');
+  assert.equal(automaticCandleInterval({ ...state, innings: 1, balls: 102, target: null }), '1m');
+  assert.equal(automaticCandleInterval({ ...state, balls: 120 }), '1m');
   assert.deepEqual(
     allocate([
       { id: 'a', deposit: 100000, balance: 120000 },
@@ -95,6 +106,7 @@ async function main() {
   await assert.rejects(service.fund(market, a.id, 200000, 'fund-a-001'), /already used/);
   await service.fund(market, b.id, 100000, 'fund-b-001');
   const buyQuote = await quote(market, 600);
+  assert.deepEqual(await service.history(market, 0, 'auto'), await service.history(market, 0, '1m'));
   const buy = {
     requestId: 'buy-a-001',
     quoteId: buyQuote,

@@ -14,6 +14,7 @@ import { serializable } from '../../transaction';
 import { moveWallet } from '../../wallet-ledger';
 import {
   allocate,
+  automaticCandleInterval,
   candles,
   integer,
   LIMIT,
@@ -324,7 +325,13 @@ export class TradingService {
           select: { createdAt: true, quantity: true },
         })
       : [];
-    return candles(qs, outcome, interval, executions);
+    const resolvedInterval =
+      interval === 'auto'
+        ? qs.length
+          ? automaticCandleInterval(JSON.parse(qs[qs.length - 1].snapshot))
+          : 'over'
+        : interval;
+    return candles(qs, outcome, resolvedInterval, executions);
   }
   async fund(id: string, userId: string, units: unknown, requestId: unknown) {
     const amount = integer(units, 100, LIMIT, 'Funding amount'),

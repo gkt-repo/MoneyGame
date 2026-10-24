@@ -38,9 +38,9 @@ class _TradingScreenState extends State<TradingScreen> {
   List<TradingCandle> _candles = [];
   TradingSnapshot? _snapshot;
   String? _marketId;
-  String _interval = '1m', _tab = 'Positions', _error = '', _notice = '';
+  String _tab = 'Home', _error = '', _notice = '';
   int _outcome = 0, _epoch = 0;
-  bool _line = false, _loading = true, _fetching = false, _busy = false;
+  bool _loading = true, _fetching = false, _busy = false;
   Timer? _timer, _marketTimer;
   Map<String, dynamic>? _pending;
   final _storage = const FlutterSecureStorage();
@@ -126,9 +126,7 @@ class _TradingScreenState extends State<TradingScreen> {
     try {
       final results = await Future.wait([
         widget.request('/markets/$id'),
-        widget.request(
-          '/markets/$id/candles?outcome=$_outcome&interval=$_interval',
-        ),
+        widget.request('/markets/$id/candles?outcome=$_outcome&interval=auto'),
       ]);
       if (!mounted || epoch != _epoch) return;
       setState(() {
@@ -162,10 +160,9 @@ class _TradingScreenState extends State<TradingScreen> {
     _load();
   }
 
-  void _chartChange({int? outcome, String? interval}) {
+  void _chartChange(int outcome) {
     setState(() {
-      _outcome = outcome ?? _outcome;
-      _interval = interval ?? _interval;
+      _outcome = outcome;
       _candles = [];
       _epoch++;
     });
@@ -189,7 +186,7 @@ class _TradingScreenState extends State<TradingScreen> {
       if (mounted) {
         setState(() {
           _pending = null;
-          _notice = '${pending['label']} completed.';
+          _notice = '${pending['label']}.';
         });
       }
     } catch (e) {
@@ -208,15 +205,19 @@ class _TradingScreenState extends State<TradingScreen> {
     }
   }
 
-  Future<void> _ticket(String side) async {
+  Future<void> _ticket(String side, {int? selectedOutcome}) async {
     final s = _snapshot;
     if (s == null || !s.market.open || _pending != null) return;
     final m = s.market,
-        outcome = _outcome,
-        p = s.positions.where((p) => p.outcome == outcome).firstOrNull;
+        outcome = selectedOutcome ?? _outcome,
+        p = s.positions
+            .where((p) => p.outcome == (selectedOutcome ?? _outcome))
+            .firstOrNull;
     final price = m.price(outcome),
         maximum = side == 'BUY' ? s.balance ~/ max(1, price) : p?.quantity ?? 0;
-    final controller = TextEditingController(text: min(10, maximum).toString());
+    final controller = TextEditingController(
+      text: (side == 'BUY' ? min(10, maximum) : maximum).toString(),
+    );
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -238,7 +239,7 @@ class _TradingScreenState extends State<TradingScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '$side ${m.team(outcome)}',
+                    '${side == 'BUY' ? 'Buy' : 'Exit'} ${m.team(outcome)}',
                     style: const TextStyle(
                       fontSize: 23,
                       fontWeight: FontWeight.bold,
@@ -284,7 +285,7 @@ class _TradingScreenState extends State<TradingScreen> {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'Test credits only. Selling closes your credit result; the final loss pool determines the reward. A changed or expired quote will be rejected.',
+                    'Credit P&L. Final rewards depend on the match loss pool.',
                     style: TextStyle(color: _muted, fontSize: 12),
                   ),
                   const SizedBox(height: 16),
@@ -301,11 +302,13 @@ class _TradingScreenState extends State<TradingScreen> {
                                 'outcome': outcome,
                                 'quantity': quantity,
                               },
-                              'label': '$side $quantity shares',
+                              'label': side == 'BUY'
+                                  ? 'Position opened'
+                                  : 'Position exited',
                             });
                           }
                         : null,
-                    child: Text('Confirm ${side.toLowerCase()}'),
+                    child: Text(side == 'BUY' ? 'Confirm buy' : 'Confirm exit'),
                   ),
                 ],
               ),
@@ -332,7 +335,7 @@ class _TradingScreenState extends State<TradingScreen> {
                   amount >= 1 &&
                   amount <= 100000;
           return AlertDialog(
-            title: const Text('Add test match credits'),
+            title: const Text('Add credits'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -342,14 +345,12 @@ class _TradingScreenState extends State<TradingScreen> {
                     decimal: true,
                   ),
                   onChanged: (_) => update(() {}),
-                  decoration: const InputDecoration(
-                    labelText: 'Nominal rupee amount',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Amount (₹)'),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   valid
-                      ? '${_credits((amount * 100).round())} test credits. Your cash wallet is unchanged.'
+                      ? '${_credits((amount * 100).round())} credits · ₹1 = 10 credits\n${m.mode == 'TEST' ? 'Test market. No wallet deduction.' : 'Funds stay in this match until settlement.'}'
                       : 'Enter an amount from 1 to 100,000.',
                 ),
               ],
@@ -369,11 +370,13 @@ class _TradingScreenState extends State<TradingScreen> {
                             'requestId': _id(),
                             'amount': (amount * 100).round(),
                           },
-                          'label': 'Test funding',
+                          'label': 'Credits added',
                         });
                       }
                     : null,
-                child: const Text('Add credits'),
+                child: Text(
+                  m.mode == 'TEST' ? 'Add test credits' : 'Convert to credits',
+                ),
               ),
             ],
           );
@@ -383,43 +386,147 @@ class _TradingScreenState extends State<TradingScreen> {
     controller.dispose();
   }
 
-  Widget _card(Widget child) => Container(
-    margin: const EdgeInsets.only(bottom: 14),
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: _panel,
-      border: Border.all(color: const Color(0xff27384d)),
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: child,
-  );
-  Widget _row(String title, String value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
+  Color _pnlColor(num n) => n > 0
+      ? _green
+      : n < 0
+      ? const Color(0xfff87171)
+      : Colors.white;
+  String _signed(num n) => '${n > 0 ? '+' : ''}${_credits(n)} cr';
+  Widget _row(String name, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
     child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Expanded(
-          child: Text(title, style: const TextStyle(color: _muted)),
-        ),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+        Text(name, style: const TextStyle(color: _muted, fontSize: 12)),
+        Text(value),
       ],
     ),
   );
-
+  void _details() => showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Market details'),
+      content: SingleChildScrollView(
+        child: Text(
+          '${_snapshot?.market.reason ?? ''}\n\n₹1 = 10 match credits. Remaining principal returns at settlement. Positive net credits share the actual loss pool; profits are not guaranteed. Voided matches and pools without positive participants refund deposits. No fees.\n\nCandles use observed prices: per over, then one minute in the last three overs. Drag the price axis vertically to change candle height; drag the time axis horizontally to change spacing. Double-tap to reset.',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Done'),
+        ),
+      ],
+    ),
+  );
   @override
   Widget build(BuildContext context) {
-    final s = _snapshot, m = s?.market;
-    final position = s?.positions
-        .where((p) => p.outcome == _outcome)
-        .firstOrNull;
+    final s = _snapshot,
+        m = s?.market,
+        positions =
+            s?.positions.where((p) => p.quantity > 0).toList() ??
+            <TradingPosition>[];
+    final position = positions.where((p) => p.outcome == _outcome).firstOrNull;
+    final state = m?.state ?? <String, dynamic>{};
+    final oneMinute =
+        state['balls'] != null &&
+        (state['totalBalls'] as num) - (state['balls'] as num) <= 18;
     return Theme(
       data: ThemeData.dark(useMaterial3: true).copyWith(
         colorScheme: ColorScheme.fromSeed(
           seedColor: _green,
           brightness: Brightness.dark,
         ),
-        scaffoldBackgroundColor: const Color(0xff0b1420),
+        scaffoldBackgroundColor: const Color(0xff0d1117),
       ),
       child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          backgroundColor: const Color(0xff0d1117),
+          surfaceTintColor: Colors.transparent,
+          title: const Text(
+            'CricTrade',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          ),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: OutlinedButton(
+                onPressed: m == null || _busy || _pending != null
+                    ? null
+                    : _fund,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Match credits',
+                          style: TextStyle(fontSize: 9, color: _muted),
+                        ),
+                        Text(
+                          '${_credits(s?.balance ?? 0)} cr',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 12),
+                    const Icon(Icons.add, size: 22, color: _green),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(48),
+            child: Row(
+              children: ['Home', 'My positions']
+                  .map(
+                    (tab) => InkWell(
+                      onTap: () => setState(() => _tab = tab),
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 20),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 14,
+                          horizontal: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: _tab == tab ? _green : Colors.transparent,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        child: Text(
+                          tab,
+                          style: TextStyle(
+                            color: _tab == tab ? _green : _muted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ),
         body: RefreshIndicator(
           onRefresh: () async {
             await _loadMarkets();
@@ -428,358 +535,375 @@ class _TradingScreenState extends State<TradingScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Text(
-                'MONEYGAME / CRICKET MARKETS',
-                style: TextStyle(
-                  fontSize: 10,
-                  letterSpacing: 1.6,
-                  color: _muted,
-                ),
-              ),
-              const Text(
-                'CricTrade',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
-              const Text(
-                'Read the match. Trade the probability.',
-                style: TextStyle(color: _muted),
-              ),
-              const SizedBox(height: 16),
-              _card(
-                const Text(
-                  'TEST CREDITS · No cash wallet deductions. Live snapshots and simulations use an experimental probability model.',
-                  style: TextStyle(color: Color(0xfff3d080), fontSize: 12),
-                ),
-              ),
               if (_error.isNotEmpty)
-                _card(
-                  Text(
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
                     _error,
-                    style: const TextStyle(color: Color(0xfffb8293)),
+                    style: const TextStyle(color: Color(0xfff87171)),
                   ),
                 ),
               if (_notice.isNotEmpty)
-                Text(_notice, style: const TextStyle(color: _green)),
-              if (_pending != null)
-                _card(
-                  Column(
-                    children: [
-                      const Text(
-                        'Request result unknown. Retry the same request to avoid duplicates.',
-                      ),
-                      TextButton(
-                        onPressed: _busy ? null : () => _execute(_pending!),
-                        child: const Text('Retry pending request'),
-                      ),
-                    ],
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _notice,
+                    style: const TextStyle(color: _green, fontSize: 12),
                   ),
+                ),
+              if (_pending != null)
+                TextButton(
+                  onPressed: _busy ? null : () => _execute(_pending!),
+                  child: const Text('Retry unconfirmed request'),
                 ),
               if (_loading) const Center(child: CircularProgressIndicator()),
               if (!_loading && _markets.isEmpty)
-                _card(
-                  const Text(
-                    'No supported matches yet. Pull to refresh. A simulation is created when the server starts.',
-                  ),
+                const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Text('No matches available yet.'),
                 ),
               if (_markets.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _marketId,
-                    key: ValueKey(_marketId),
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Match',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: _markets
-                        .map(
-                          (m) => DropdownMenuItem(
-                            value: m.id,
-                            child: Text(
-                              '${m.title} · ${m.status}',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (id) {
-                      if (id != null) _select(id);
-                    },
-                  ),
-                ),
-              if (s != null && m != null) ...[
-                Text(
-                  m.title,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  '${m.open
-                      ? '● OPEN'
-                      : m.status == 'OPEN'
-                      ? 'QUOTE EXPIRED'
-                      : m.status} · ${m.reason}',
-                  style: TextStyle(
-                    color: m.open ? _green : _muted,
-                    fontSize: 11,
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Text(
-                    '${m.state['description'] ?? ''}',
-                    style: const TextStyle(color: _muted),
-                  ),
-                ),
-                _card(
-                  Column(
-                    children: [
-                      Row(
-                        children: [0, 1]
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButton<String>(
+                        value: _marketId,
+                        isExpanded: true,
+                        underline: const SizedBox.shrink(),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                        items: _markets
                             .map(
-                              (o) => Expanded(
-                                child: Padding(
-                                  padding: EdgeInsets.only(
-                                    right: o == 0 ? 8 : 0,
-                                  ),
-                                  child: OutlinedButton(
-                                    style: OutlinedButton.styleFrom(
-                                      side: BorderSide(
-                                        color: _outcome == o
-                                            ? _green
-                                            : const Color(0xff27384d),
-                                      ),
-                                      padding: const EdgeInsets.all(12),
-                                    ),
-                                    onPressed: () => _chartChange(outcome: o),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(m.team(o)),
-                                        Text(
-                                          '${_credits(m.price(o))} cr',
-                                          style: const TextStyle(
-                                            fontSize: 24,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        Text(
-                                          '${(m.price(o) / 10).toStringAsFixed(1)}% estimated',
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            color: _muted,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                              (market) => DropdownMenuItem(
+                                value: market.id,
+                                child: Text(
+                                  market.title,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             )
                             .toList(),
+                        onChanged: (id) {
+                          if (id != null) _select(id);
+                        },
                       ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 5,
-                        children: [
-                          TextButton(
-                            onPressed: () => setState(() => _line = !_line),
-                            child: Text(_line ? 'Line ↔' : 'Candles ↔'),
-                          ),
-                          ...['1m', '5m', '15m', 'over'].map(
-                            (v) => ChoiceChip(
-                              label: Text(v == 'over' ? 'By over' : v),
-                              selected: _interval == v,
-                              onSelected: (_) => _chartChange(interval: v),
-                            ),
-                          ),
-                        ],
+                    ),
+                    if (m?.mode == 'TEST')
+                      const Padding(
+                        padding: EdgeInsets.only(left: 12),
+                        child: Text(
+                          'Test market',
+                          style: TextStyle(fontSize: 10, color: _muted),
+                        ),
                       ),
-                      const SizedBox(height: 12),
-                      TradingChart(
-                        key: ValueKey('$_marketId:$_outcome:$_interval'),
-                        candles: _candles,
-                        line: _line,
-                        average: (position?.averagePrice ?? 0) / 10,
-                        trades: s.executions
-                            .where((e) => e.outcome == _outcome)
-                            .toList(),
+                    IconButton(
+                      onPressed: _details,
+                      tooltip: 'Market details',
+                      icon: const Icon(
+                        Icons.info_outline,
+                        size: 18,
+                        color: _muted,
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Quote ${_time(m.quote?['publishedAt'] as String?)} · Feed checked ${_time(m.feedReceivedAt)}\n${m.source == 'SIMULATION' ? 'Simulation clock' : 'Checks every ${m.pollingMs ~/ 1000}s · source delay unknown'}',
-                        style: const TextStyle(fontSize: 10, color: _muted),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                _card(
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+              if (s != null && m != null) ...[
+                if (_tab == 'Home') ...[
+                  Row(
                     children: [
-                      _row(
-                        'Available match credits',
-                        '${_credits(s.balance)} cr',
+                      Expanded(
+                        child: Text(
+                          m.open
+                              ? (state['description'] as String? ?? '')
+                              : m.reason,
+                          style: const TextStyle(fontSize: 11, color: _muted),
+                        ),
                       ),
-                      _row('Test funding', _rupees(s.deposit)),
-                      _row('Net trading result', '${_credits(s.net)} cr'),
-                      _row(
-                        'Principal estimate',
-                        _rupees(s.pool['estimatedPrincipal'] as num),
-                      ),
-                      _row(
-                        'Provisional reward',
-                        _rupees(s.pool['estimatedReward'] as num),
-                      ),
-                      OutlinedButton(
-                        onPressed: m.open && !_busy && _pending == null
-                            ? _fund
-                            : null,
-                        child: const Text('Add test credits'),
-                      ),
+                      const SizedBox(width: 12),
+                      if (state['balls'] != null)
+                        Text(
+                          '${state['runs']}/${state['wickets']}  (${(state['balls'] as int) ~/ 6}.${(state['balls'] as int) % 6} ov)',
+                          style: const TextStyle(fontSize: 12),
+                        ),
                     ],
                   ),
-                ),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: ['Positions', 'History', 'Pool', 'Rules']
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [0, 1]
                         .map(
-                          (t) => Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(t),
-                              selected: _tab == t,
-                              onSelected: (_) => setState(() => _tab = t),
+                          (o) => Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                right: o == 0 ? 5 : 0,
+                                left: o == 1 ? 5 : 0,
+                              ),
+                              child: InkWell(
+                                onTap: () => _chartChange(o),
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: o == _outcome
+                                        ? const Color(0xff12241f)
+                                        : _panel,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: o == _outcome
+                                          ? _green
+                                          : const Color(0xff26303d),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        m.team(o),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        '${_credits(m.price(o))} cr',
+                                        style: const TextStyle(
+                                          fontSize: 25,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${(m.price(o) / 10).toStringAsFixed(1)}% win chance',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          color: _muted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         )
                         .toList(),
                   ),
-                ),
-                const SizedBox(height: 12),
-                if (_tab == 'Positions')
-                  _card(
-                    Column(
-                      children: [
-                        if (!s.positions.any((p) => p.quantity > 0))
-                          const Text(
-                            'No open positions. Choose a team and buy shares.',
+                  const SizedBox(height: 22),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        m.team(_outcome),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        '${oneMinute ? '1 min' : 'Over'} candles · Auto',
+                        style: const TextStyle(fontSize: 10, color: _muted),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TradingChart(
+                    key: ValueKey('$_marketId:$_outcome:$oneMinute'),
+                    candles: _candles,
+                    average: (position?.averagePrice ?? 0) / 10,
+                    trades: s.executions
+                        .where((e) => e.outcome == _outcome)
+                        .toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Updated ${_time(m.quote?['publishedAt'] as String?)}',
+                    style: const TextStyle(color: _muted, fontSize: 10),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'My positions',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w600,
                           ),
-                        ...s.positions
-                            .where((p) => p.quantity > 0)
-                            .map(
-                              (p) => Column(
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text(
+                            'Total P&L',
+                            style: TextStyle(fontSize: 10, color: _muted),
+                          ),
+                          Text(
+                            _signed(s.net),
+                            style: TextStyle(
+                              fontSize: 21,
+                              fontWeight: FontWeight.w600,
+                              color: _pnlColor(s.net),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _metric(
+                        'Invested',
+                        '${_credits(positions.fold<int>(0, (n, p) => n + p.cost))} cr',
+                      ),
+                      _metric(
+                        'Current value',
+                        '${_credits(positions.fold<int>(0, (n, p) => n + p.value))} cr',
+                      ),
+                      _metric(
+                        'Realized',
+                        _signed(s.realized),
+                        color: _pnlColor(s.realized),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (positions.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 60),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'No open positions',
+                            style: TextStyle(fontSize: 18),
+                          ),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: () => setState(() => _tab = 'Home'),
+                            child: const Text('Explore match'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ...positions.map(
+                    (p) => Container(
+                      padding: const EdgeInsets.symmetric(vertical: 22),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xff26303d)),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _row(
+                                  Text(
                                     m.team(p.outcome),
-                                    '${p.quantity} shares',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                    ),
                                   ),
-                                  _row(
-                                    'Average entry',
-                                    '${_credits(p.averagePrice)} cr',
-                                  ),
-                                  _row(
-                                    'Unrealized result',
-                                    '${_credits(p.unrealized)} cr',
-                                  ),
-                                  TextButton(
-                                    onPressed:
-                                        m.open && !_busy && _pending == null
-                                        ? () {
-                                            _chartChange(outcome: p.outcome);
-                                            _ticket('SELL');
-                                          }
-                                        : null,
-                                    child: const Text('Sell shares'),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '${p.quantity} shares · Avg. ${_credits(p.averagePrice)} cr',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: _muted,
+                                    ),
                                   ),
                                 ],
                               ),
-                            ),
-                      ],
-                    ),
-                  ),
-                if (_tab == 'History')
-                  _card(
-                    Column(
-                      children: [
-                        if (s.executions.isEmpty) const Text('No trades yet.'),
-                        ...s.executions.map(
-                          (e) => ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(
-                              '${e.side} ${e.quantity} ${m.team(e.outcome)}',
-                            ),
-                            subtitle: Text(
-                              '${_time(e.createdAt)} · ${_credits(e.price)} cr/share',
-                            ),
-                            trailing: Text('${_credits(e.total)} cr'),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    _signed(p.unrealized),
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      color: _pnlColor(p.unrealized),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '${p.cost == 0 ? '0.00' : (p.unrealized / p.cost * 100).toStringAsFixed(2)}%',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: _pnlColor(p.unrealized),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                        ),
-                        const Text(
-                          'Most recent 100 trades.',
-                          style: TextStyle(color: _muted, fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (_tab == 'Pool')
-                  _card(
-                    Column(
-                      children: [
-                        _row('Participants', '${s.pool['participants']}'),
-                        _row(
-                          'Total test funding',
-                          _rupees(s.pool['deposits'] as num),
-                        ),
-                        _row(
-                          'Loss pool (estimated)',
-                          _rupees(s.pool['losses'] as num),
-                        ),
-                        _row(
-                          'Positive credits',
-                          _credits(s.pool['gains'] as num),
-                        ),
-                        const Text(
-                          'Your reward = your positive net credits / all positive net credits × loss pool. The estimate can change until settlement.',
-                          style: TextStyle(color: _muted),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (_tab == 'Rules')
-                  _card(
-                    const Text(
-                      '₹1 equivalent buys 10 match credits. Losses use their full equivalent, capped at your match funding. Remaining principal is refunded at settlement.\n\nPositive net credits share the entire loss pool. If everyone profits, cash profit is zero. If nobody profits, deposits are refunded. Voided matches refund deposits. No fees in this version.\n\nOpen winning shares close at 100 credits and losing shares at zero. This calculates a trading score, not a guaranteed cash payout.\n\nTime pressure follows remaining balls; event sensitivity depends on wickets, runs and target. Prices use an experimental model. Missing feed deliveries are not reconstructed.\n\nThese are test credits: no deposits, losses or rewards affect your cash wallet.',
-                      style: TextStyle(height: 1.6, color: _muted),
-                    ),
-                  ),
-                if (s.receipt != null)
-                  _card(
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Settlement receipt',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
+                          const SizedBox(height: 14),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'LTP ${_credits(m.price(p.outcome))} cr',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: _muted,
+                                ),
+                              ),
+                              OutlinedButton(
+                                onPressed: m.open && !_busy && _pending == null
+                                    ? () => _ticket(
+                                        'SELL',
+                                        selectedOutcome: p.outcome,
+                                      )
+                                    : null,
+                                child: const Text('Exit position'),
+                              ),
+                            ],
                           ),
-                        ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (s.executions.isNotEmpty)
+                    ExpansionTile(
+                      title: const Text(
+                        'Order history',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      tilePadding: EdgeInsets.zero,
+                      children: s.executions
+                          .map(
+                            (e) => ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                '${e.side == 'BUY' ? 'Buy' : 'Exit'} · ${m.team(e.outcome)}',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              subtitle: Text(
+                                '${e.quantity} shares · ${_time(e.createdAt)}',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              trailing: Text('${_credits(e.total)} cr'),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  if (s.receipt != null)
+                    ExpansionTile(
+                      title: const Text(
+                        'Settlement receipt',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      tilePadding: EdgeInsets.zero,
+                      children: [
                         Text('${s.receipt!['reason']}'),
-                        _row('Deposit', _rupees(s.receipt!['deposit'] as num)),
-                        _row(
-                          'Loss contribution',
-                          _rupees(s.receipt!['loss'] as num),
-                        ),
                         _row(
                           'Principal returned',
                           _rupees(s.receipt!['principal'] as num),
@@ -792,55 +916,45 @@ class _TradingScreenState extends State<TradingScreen> {
                           'Total equivalent',
                           _rupees(s.receipt!['payout'] as num),
                         ),
-                        Text(
-                          s.receipt!['mode'] == 'TEST'
-                              ? 'Test result only. Your cash wallet is unchanged.'
-                              : 'Credited to wallet.',
-                          style: const TextStyle(color: _muted),
-                        ),
                       ],
                     ),
-                  ),
-                const SizedBox(height: 20),
+                ],
               ],
             ],
           ),
         ),
-        bottomNavigationBar: m == null
+        bottomNavigationBar: m == null || _tab != 'Home'
             ? null
             : SafeArea(
                 top: false,
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  color: _panel,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: m.open && !_busy && _pending == null
-                              ? () => _ticket('BUY')
-                              : null,
-                          child: Text('Buy ${m.team(_outcome)}'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed:
-                              m.open &&
-                                  !_busy &&
-                                  _pending == null &&
-                                  (position?.quantity ?? 0) > 0
-                              ? () => _ticket('SELL')
-                              : null,
-                          child: Text('Sell ${m.team(_outcome)}'),
-                        ),
-                      ),
-                    ],
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  child: FilledButton(
+                    onPressed: m.open && !_busy && _pending == null
+                        ? () => _ticket('BUY')
+                        : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _green,
+                      foregroundColor: const Color(0xff062e23),
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                    ),
+                    child: Text(
+                      m.open ? 'Buy ${m.team(_outcome)}' : 'Trading paused',
+                    ),
                   ),
                 ),
               ),
       ),
     );
   }
+
+  Widget _metric(String name, String value, {Color color = Colors.white}) =>
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(name, style: const TextStyle(fontSize: 10, color: _muted)),
+          const SizedBox(height: 7),
+          Text(value, style: TextStyle(fontSize: 12, color: color)),
+        ],
+      );
 }

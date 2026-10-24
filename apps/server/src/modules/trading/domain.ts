@@ -66,6 +66,10 @@ export function pollInterval(s: CricketState | null): number {
     : 60000;
 }
 
+export function automaticCandleInterval(s: CricketState): 'over' | '1m' {
+  return s.totalBalls - s.balls <= 18 ? '1m' : 'over';
+}
+
 export function allocate(accounts: { id: string; deposit: number; balance: number }[], voided = false) {
   const rows = accounts.map((a) => {
     integer(a.deposit, 0, LIMIT, 'Deposit');

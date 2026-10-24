@@ -84,7 +84,9 @@ Do not promise a fixed rupee redemption for the terminal winning-team credit pri
 10. At match completion, resolve open shares, calculate each participant's final net credit result, distribute the funded loss pool and unlock wallet payouts.
 11. Show a detailed settlement receipt and permanent trade history.
 
-## 4. Complete trading screen
+## 4. Original trading screen specification
+
+Superseded by the user’s simplified two-page Home / My positions design. See [current runbook](CRICTRADE.md): header credits, automatic over/1m candles, axis-drag zoom and Exit position replace the controls and layout below.
 
 ### Desktop layout
 

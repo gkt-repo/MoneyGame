@@ -1,19 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CandlestickSeries,
-  LineSeries,
   createChart,
   createSeriesMarkers,
   ColorType,
   IChartApi,
   ISeriesApi,
   UTCTimestamp,
+  Time,
 } from 'lightweight-charts';
 import {
   TradingMarketDTO,
   TradingSnapshotDTO,
   TradingCandleDTO,
-  TradingOrderInput,
   TradingExecutionDTO,
 } from '@moneygame/shared-types';
 import { userApi } from '../../services/api';
@@ -28,13 +27,11 @@ const requestId = () => crypto.randomUUID();
 
 function PriceChart({
   data,
-  line,
   average,
   trades,
   outcome,
 }: {
   data: TradingCandleDTO[];
-  line: boolean;
   average: number;
   trades: TradingExecutionDTO[];
   outcome: number;
@@ -48,7 +45,13 @@ function PriceChart({
     if (!host.current) return;
     const c = createChart(host.current, {
       autoSize: true,
-      height: 340,
+      height: 420,
+      handleScale: {
+        axisPressedMouseMove: { time: true, price: true },
+        axisDoubleClickReset: { time: true, price: true },
+        mouseWheel: true,
+        pinch: true,
+      },
       layout: {
         background: { type: ColorType.Solid, color: '#101c2b' },
         textColor: '#9eb1c7',
@@ -56,18 +59,22 @@ function PriceChart({
       },
       grid: { vertLines: { color: '#1d2b3d' }, horzLines: { color: '#1d2b3d' } },
       rightPriceScale: { borderColor: '#28394e' },
-      timeScale: { timeVisible: true, secondsVisible: true, borderColor: '#28394e' },
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+        borderColor: '#28394e',
+        tickMarkFormatter: (time: Time) =>
+          new Date(Number(time) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
       localization: { timeFormatter: (t: any) => new Date(Number(t) * 1000).toLocaleTimeString() },
     });
-    const s = line
-      ? c.addSeries(LineSeries, { color: '#42dfb6', lineWidth: 2 })
-      : c.addSeries(CandlestickSeries, {
-          upColor: '#42dfb6',
-          downColor: '#fb8293',
-          wickUpColor: '#42dfb6',
-          wickDownColor: '#fb8293',
-          borderVisible: false,
-        });
+    const s = c.addSeries(CandlestickSeries, {
+      upColor: '#34d399',
+      downColor: '#f87171',
+      wickUpColor: '#34d399',
+      wickDownColor: '#f87171',
+      borderVisible: false,
+    });
     s.applyOptions({ priceFormat: { type: 'price', precision: 1, minMove: 0.1 } });
     chart.current = c;
     series.current = s;
@@ -83,16 +90,18 @@ function PriceChart({
       chart.current = null;
       series.current = null;
     };
-  }, [line]);
+  }, []);
   useEffect(() => {
     const s = series.current;
     if (!s) return;
     s.setData(
-      data.map((c) =>
-        line
-          ? { time: c.time as UTCTimestamp, value: c.close }
-          : { time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close },
-      ),
+      data.map((c) => ({
+        time: c.time as UTCTimestamp,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      })),
     );
     if (first.current && data.length) {
       chart.current?.timeScale().fitContent();
@@ -118,7 +127,7 @@ function PriceChart({
           position: t.side === 'BUY' ? ('belowBar' as const) : ('aboveBar' as const),
           color: t.side === 'BUY' ? '#42dfb6' : '#fb8293',
           shape: t.side === 'BUY' ? ('arrowUp' as const) : ('arrowDown' as const),
-          text: `${t.side} ${t.quantity}`,
+          text: `${t.side === 'BUY' ? 'Buy' : 'Exit'} ${t.quantity}`,
         }))
         .sort((a, b) => Number(a.time) - Number(b.time)),
     );
@@ -128,49 +137,46 @@ function PriceChart({
         if (priceLine) s.removePriceLine(priceLine);
       }
     };
-  }, [data, line, average, trades, outcome]);
+  }, [data, average, trades, outcome]);
   return (
     <>
       <div className="ct-chart-meta">
         <span>{hover || 'Model price · credits per share'}</span>
-        <button onClick={() => chart.current?.timeScale().fitContent()}>Reset view</button>
       </div>
       <div
         ref={host}
-        style={{ height: 340, minWidth: 0 }}
+        style={{ height: 420, minWidth: 0 }}
         role="img"
         aria-label={`Sampled price chart. ${data.length} candles. Latest price ${data.at(-1)?.close ?? 'unavailable'} credits.`}
       />
       {!data.length && <p className="ct-muted">Waiting for the first price snapshot.</p>}
-      <p className="ct-footnote">
-        Drag to inspect history · scroll to zoom · sampled prices, not guaranteed delivery history. Charts by{' '}
+      <p className="ct-chart-hint">
+        Drag price to scale vertically · drag time to scale horizontally{' '}
         <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">
           TradingView
         </a>
-        .
       </p>
     </>
   );
 }
 
 type Pending = { path: string; body: Record<string, unknown>; label: string };
-export function TradingView({ userId }: { userId: string }) {
+export function TradingView({ userId, onBack }: { userId: string; onBack: () => void }) {
   const [markets, setMarkets] = useState<TradingMarketDTO[]>([]),
     [marketId, setMarketId] = useState('');
   const [snapshot, setSnapshot] = useState<TradingSnapshotDTO | null>(null),
     [bars, setBars] = useState<TradingCandleDTO[]>([]);
   const [outcome, setOutcome] = useState<0 | 1>(0),
-    [interval, setIntervalValue] = useState('1m'),
-    [line, setLine] = useState(false);
+    [page, setPage] = useState<'home' | 'positions'>('home');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY'),
     [quantity, setQuantity] = useState('10'),
     [funding, setFunding] = useState('1000');
-  const [tab, setTab] = useState('Positions'),
+  const [dialog, setDialog] = useState<'fund' | 'order' | 'rules' | null>(null),
+    [orderOutcome, setOrderOutcome] = useState<0 | 1>(0),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<Pending | null>(null),
-    [confirm, setConfirm] = useState<Pending | null>(null);
+  const [pending, setPending] = useState<Pending | null>(null);
   const [now, setNow] = useState(Date.now()),
     [loading, setLoading] = useState(true);
   const epoch = useRef(0),
@@ -201,9 +207,7 @@ export function TradingView({ userId }: { userId: string }) {
     try {
       const [s, c] = await Promise.all([
         userApi.trading<TradingSnapshotDTO>(`/markets/${marketId}`),
-        userApi.trading<TradingCandleDTO[]>(
-          `/markets/${marketId}/candles?outcome=${outcome}&interval=${interval}`,
-        ),
+        userApi.trading<TradingCandleDTO[]>(`/markets/${marketId}/candles?outcome=${outcome}&interval=auto`),
       ]);
       if (current === epoch.current) {
         setSnapshot(s);
@@ -214,7 +218,7 @@ export function TradingView({ userId }: { userId: string }) {
     } finally {
       inflight.current = false;
     }
-  }, [marketId, outcome, interval]);
+  }, [marketId, outcome]);
   useEffect(() => {
     void loadMarkets();
     const timer = window.setInterval(() => void loadMarkets(), 30000);
@@ -222,7 +226,7 @@ export function TradingView({ userId }: { userId: string }) {
   }, [loadMarkets]);
   useEffect(() => {
     epoch.current++;
-    setSnapshot(null);
+    setSnapshot((previous) => (previous?.market.id === marketId ? previous : null));
     setBars([]);
     void refresh();
     const timer = window.setInterval(() => void refresh(), 5000);
@@ -252,12 +256,12 @@ export function TradingView({ userId }: { userId: string }) {
     requestBusy.current = true;
     setBusy(true);
     setError('');
-    setConfirm(null);
+    setDialog(null);
     setPending(p);
     try {
       sessionStorage.setItem(storageKey, JSON.stringify(p));
       await userApi.trading(p.path, p.body);
-      setNotice(`${p.label} completed.`);
+      setNotice(`${p.label}.`);
       setPending(null);
       sessionStorage.removeItem(storageKey);
       await refresh();
@@ -276,459 +280,431 @@ export function TradingView({ userId }: { userId: string }) {
   const m = snapshot?.market,
     q = m?.quote,
     a = snapshot?.account;
-  const selectedPrice = q ? (outcome === 0 ? q.price0 : 1000 - q.price0) : 0;
-  const position = a?.positions.find((p) => p.outcome === outcome);
-  const count = Number(quantity),
-    total = count * selectedPrice;
   const open = m?.status === 'OPEN' && !!q && new Date(q.expiresAt).getTime() > now;
+  const priceFor = (o: number) => (q ? (o === 0 ? q.price0 : 1000 - q.price0) : 0);
+  const position = a?.positions.find((p) => p.outcome === outcome);
+  const orderPosition = a?.positions.find((p) => p.outcome === orderOutcome);
+  const count = Number(quantity),
+    orderPrice = priceFor(orderOutcome),
+    total = count * orderPrice;
   const maximum =
-    side === 'BUY' ? Math.floor((a?.balance ?? 0) / Math.max(selectedPrice, 1)) : (position?.quantity ?? 0);
-  const team = outcome === 0 ? m?.team0 : m?.team1;
+    side === 'BUY' ? Math.floor((a?.balance ?? 0) / Math.max(1, orderPrice)) : (orderPosition?.quantity ?? 0);
   const valid = Number.isSafeInteger(count) && count > 0 && count <= maximum;
-  function previewTrade() {
-    if (!q || !m || !valid) return;
-    const body: TradingOrderInput = { requestId: requestId(), quoteId: q.id, outcome, side, quantity: count };
-    setConfirm({
+  const teamFor = (o: number) => (o === 0 ? m?.team0 : m?.team1);
+  const oneMinute = !!q && q.state.totalBalls - q.state.balls <= 18;
+  const positions = a?.positions.filter((p) => p.quantity > 0) ?? [];
+  const signed = (n: number) => `${n > 0 ? '+' : ''}${credits(n)} cr`;
+  function ticket(o: 0 | 1, exit = false) {
+    setOrderOutcome(o);
+    setSide(exit ? 'SELL' : 'BUY');
+    setQuantity(String(exit ? (a?.positions.find((p) => p.outcome === o)?.quantity ?? 0) : 10));
+    setDialog('order');
+  }
+  function submitOrder() {
+    if (!m || !q || !valid || !open) return;
+    void execute({
       path: `/markets/${m.id}/orders`,
-      body: { ...body },
-      label: `${side} ${count} ${team} shares for ${credits(total)} credits`,
+      body: { requestId: requestId(), quoteId: q.id, outcome: orderOutcome, side, quantity: count },
+      label: side === 'BUY' ? 'Position opened' : 'Position exited',
     });
   }
   return (
     <section className="crictrade">
-      <header className="ct-heading">
-        <div>
-          <span className="ct-eyebrow">MONEYGAME / CRICKET MARKETS</span>
-          <h1>
-            CricTrade<span>●</span>
-          </h1>
-          <p>Read the match. Trade the probability.</p>
-        </div>
-        <button
-          onClick={() => {
-            void loadMarkets();
-            void refresh();
-          }}
-        >
-          ↻ Refresh
-        </button>
-      </header>
-      <div className="ct-mode">
-        TEST CREDITS{' '}
-        <span>Live scores and simulations · no cash wallet deductions · experimental probability model</span>
-      </div>
-      {error && (
-        <div role="alert" className="ct-error">
-          {error}
-          <button aria-label="Dismiss error" onClick={() => setError('')}>
-            ×
-          </button>
-        </div>
-      )}
-      {notice && (
-        <div role="status" className="ct-notice">
-          {notice}
-        </div>
-      )}
-      {pending && (
-        <div className="ct-error">
-          A request has not been confirmed. Retry the same request to avoid a duplicate.{' '}
-          <button disabled={busy} onClick={() => void execute(pending)}>
-            Retry {pending.label}
-          </button>
-        </div>
-      )}
-      <div className="ct-market-list">
-        {markets.map((item) => (
-          <button
-            key={item.id}
-            className={marketId === item.id ? 'selected' : ''}
-            onClick={() => {
-              setMarketId(item.id);
-              setOutcome(0);
-              setError('');
-              setNotice('');
-            }}
-          >
-            <strong>{item.title}</strong>
-            <small>
-              {item.source === 'SIMULATION' ? 'SIMULATION' : 'ESPN SNAPSHOT'} · {item.status}
-            </small>
-          </button>
-        ))}
-      </div>
-      {!markets.length && (
-        <div className="ct-panel">
-          <h2>{loading ? 'Loading matches…' : 'No supported matches yet'}</h2>
-          <p>
-            The server discovers supported T20 scores automatically. A simulation is created on server
-            startup.
-          </p>
-        </div>
-      )}
-      {marketId && !snapshot && <p>Loading market…</p>}
-      {m && a && (
-        <>
-          <div className="ct-score">
-            <div>
-              <span className={open ? 'ct-live' : 'ct-muted'}>
-                {open ? '● OPEN' : m.status === 'OPEN' ? 'QUOTE EXPIRED' : m.status}
-              </span>
-              <h2>{m.title}</h2>
-              <p>{q?.state.description || m.reason}</p>
-            </div>
-            <div className="ct-score-right">
-              {q && (
-                <>
-                  <strong>
-                    {q.state.runs}/{q.state.wickets}{' '}
-                    <small>
-                      {Math.floor(q.state.balls / 6)}.{q.state.balls % 6} overs
-                    </small>
-                  </strong>
-                  <span>
-                    {q.state.target
-                      ? `Need ${Math.max(0, q.state.target - q.state.runs)} from ${q.state.totalBalls - q.state.balls} balls`
-                      : `Innings ${q.state.innings}`}
-                  </span>
-                </>
-              )}
-            </div>
+      <header className="ct-header">
+        <div className="ct-header-inner">
+          <div className="ct-brand">
+            <button aria-label="Back to MoneyGame" onClick={onBack}>
+              ←
+            </button>
+            <strong>
+              CricTrade<span>●</span>
+            </strong>
           </div>
-          <div className="ct-workspace">
-            <div className="ct-panel ct-chart-panel">
-              <div className="ct-team-cards">
-                {[m.team0, m.team1].map((name, i) => (
-                  <button
-                    key={i}
-                    className={outcome === i ? 'selected' : ''}
-                    onClick={() => setOutcome(i as 0 | 1)}
-                  >
-                    <span>{name}</span>
+          <button
+            className="ct-credit-pill"
+            aria-label="Add credits"
+            onClick={() => setDialog('fund')}
+            disabled={!m || busy || !!pending}
+          >
+            <span>
+              <small>Match credits</small>
+              <b>
+                {credits(a?.balance ?? 0)} <em>cr</em>
+              </b>
+            </span>
+            <span className="ct-plus">+</span>
+          </button>
+        </div>
+        <nav className="ct-page-tabs" aria-label="CricTrade pages">
+          <button aria-current={page === 'home' ? 'page' : undefined} onClick={() => setPage('home')}>
+            Home
+          </button>
+          <button
+            aria-current={page === 'positions' ? 'page' : undefined}
+            onClick={() => setPage('positions')}
+          >
+            My positions{positions.length > 0 && <span>{positions.length}</span>}
+          </button>
+        </nav>
+      </header>
+      <div className="ct-content">
+        {error && (
+          <div role="alert" className="ct-message ct-error">
+            {error}
+            <button aria-label="Dismiss error" onClick={() => setError('')}>
+              ×
+            </button>
+          </div>
+        )}
+        {notice && (
+          <div role="status" className="ct-message">
+            {notice}
+            <button aria-label="Dismiss notification" onClick={() => setNotice('')}>
+              ×
+            </button>
+          </div>
+        )}
+        {pending && (
+          <div className="ct-message">
+            Request not confirmed.{' '}
+            <button disabled={busy} onClick={() => void execute(pending)}>
+              Retry request
+            </button>
+          </div>
+        )}
+        <div className="ct-match-row">
+          <label className="ct-match-picker">
+            <span>Match</span>
+            <select
+              aria-label="Match"
+              value={marketId}
+              onChange={(e) => {
+                setMarketId(e.target.value);
+                setOutcome(0);
+                setError('');
+                setNotice('');
+              }}
+            >
+              {markets.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="ct-market-state">
+            <span className={open ? 'ct-live' : ''}>{open ? '● Live' : (m?.status ?? 'Loading')}</span>
+            {m?.mode === 'TEST' && <small>Test market</small>}
+            <button
+              className="ct-info"
+              aria-label="Market details and rules"
+              onClick={() => setDialog('rules')}
+            >
+              ⓘ
+            </button>
+          </div>
+        </div>
+        {!markets.length && (
+          <div className="ct-empty">{loading ? 'Loading matches…' : 'No matches available yet.'}</div>
+        )}
+        {marketId && !snapshot && <div className="ct-empty">Loading market…</div>}
+        {m && a && (
+          <>
+            {page === 'home' ? (
+              <>
+                <div className="ct-score">
+                  <span>{q?.state.description || m.reason}</span>
+                  {q && (
                     <strong>
-                      {q ? credits(i === 0 ? q.price0 : 1000 - q.price0) : '—'} <small>cr</small>
+                      {q.state.runs}/{q.state.wickets}{' '}
+                      <small>
+                        ({Math.floor(q.state.balls / 6)}.{q.state.balls % 6} ov)
+                      </small>
                     </strong>
-                    <small>
-                      {q
-                        ? `${((i === 0 ? q.price0 : 1000 - q.price0) / 10).toFixed(1)}% estimated chance`
-                        : 'Waiting for quote'}
-                    </small>
-                  </button>
-                ))}
-              </div>
-              <div className="ct-chart-controls">
-                <div>
-                  <button className={!line ? 'selected' : ''} onClick={() => setLine(false)}>
-                    Candles
-                  </button>
-                  <button className={line ? 'selected' : ''} onClick={() => setLine(true)}>
-                    Line
-                  </button>
+                  )}
                 </div>
-                <div>
-                  {['1m', '5m', '15m', 'over'].map((v) => (
-                    <button
-                      className={interval === v ? 'selected' : ''}
-                      key={v}
-                      onClick={() => setIntervalValue(v)}
-                    >
-                      {v === 'over' ? 'By over' : v}
+                <div className="ct-team-cards">
+                  {[m.team0, m.team1].map((name, i) => (
+                    <button key={i} aria-pressed={outcome === i} onClick={() => setOutcome(i as 0 | 1)}>
+                      <span>{name}</span>
+                      <strong>
+                        {q ? credits(priceFor(i)) : '—'} <small>cr</small>
+                      </strong>
+                      <small>{q ? `${(priceFor(i) / 10).toFixed(1)}% win chance` : 'Awaiting price'}</small>
                     </button>
                   ))}
                 </div>
-              </div>
-              <PriceChart
-                key={`${marketId}:${outcome}:${interval}`}
-                data={bars}
-                line={line}
-                average={position?.averagePrice ?? 0}
-                trades={snapshot.executions}
-                outcome={outcome}
-              />
-              <div className="ct-feed">
-                <span>Quote {q ? clock(q.publishedAt) : '—'}</span>
-                <span>Feed checked {m.feedReceivedAt ? clock(m.feedReceivedAt) : '—'}</span>
-                <span>
-                  {m.isSimulation
-                    ? 'Simulation clock'
-                    : `Checks every ${m.pollingMs / 1000}s · source delay unknown`}
-                </span>
-              </div>
-            </div>
-            <aside className="ct-panel ct-ticket">
-              <span className="ct-eyebrow">AVAILABLE MATCH CREDITS</span>
-              <h2>
-                {credits(a.balance)} <small>cr</small>
-              </h2>
-              <p className="ct-muted">{rupees(a.deposit)} nominal test funding</p>
-              <label>
-                Add test funding (₹ equivalent)
-                <input
-                  type="number"
-                  min="1"
-                  max="100000"
-                  value={funding}
-                  onChange={(e) => setFunding(e.target.value)}
-                />
-              </label>
-              <button
-                disabled={
-                  !open ||
-                  busy ||
-                  !!pending ||
-                  !Number.isFinite(Number(funding)) ||
-                  Number(funding) < 1 ||
-                  Number(funding) > 100000
-                }
-                onClick={() =>
-                  setConfirm({
-                    path: `/markets/${m.id}/fund`,
-                    body: { requestId: requestId(), amount: Math.round(Number(funding) * 100) },
-                    label: `Add ${credits(Math.round(Number(funding) * 100))} test credits`,
-                  })
-                }
-              >
-                Add test credits
-              </button>
-              <hr />
-              <div className="ct-switch">
-                {(['BUY', 'SELL'] as const).map((v) => (
-                  <button className={side === v ? 'selected' : ''} key={v} onClick={() => setSide(v)}>
-                    {v}
-                  </button>
-                ))}
-              </div>
-              <h3>{team}</h3>
-              <label>
-                Share quantity
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                />
-              </label>
-              <div className="ct-shortcuts">
-                {[0.25, 0.5, 0.75, 1].map((v) => (
-                  <button key={v} onClick={() => setQuantity(String(Math.floor(maximum * v)))}>
-                    {v === 1 ? 'Max' : `${v * 100}%`}
-                  </button>
-                ))}
-              </div>
-              <dl>
-                <dt>Price / share</dt>
-                <dd>{credits(selectedPrice)} cr</dd>
-                <dt>{side === 'BUY' ? 'Cost' : 'Proceeds'}</dt>
-                <dd>{Number.isFinite(total) ? credits(total) : '—'} cr</dd>
-                <dt>Owned shares</dt>
-                <dd>{position?.quantity ?? 0}</dd>
-              </dl>
-              <button
-                className={`ct-submit ${side === 'SELL' ? 'sell' : ''}`}
-                disabled={!open || !valid || busy || !!pending}
-                onClick={previewTrade}
-              >
-                {open ? `${side === 'BUY' ? 'Buy' : 'Sell'} ${team}` : 'Trading paused'}
-              </button>
-              <p className="ct-footnote">
-                Selling fixes your credit result. Cash-equivalent rewards depend on the final loss pool. Test
-                credits cannot be withdrawn.
-              </p>
-            </aside>
-          </div>
-          <div className="ct-stats">
-            <div>
-              <span>Position value</span>
-              <strong>{credits(a.equity - a.balance)} cr</strong>
-            </div>
-            <div>
-              <span>Net trading result</span>
-              <strong className={a.net >= 0 ? 'positive' : 'negative'}>
-                {a.net >= 0 ? '+' : ''}
-                {credits(a.net)} cr
-              </strong>
-            </div>
-            <div>
-              <span>Principal estimate</span>
-              <strong>{rupees(snapshot.pool.estimatedPrincipal)}</strong>
-            </div>
-            <div>
-              <span>Provisional reward</span>
-              <strong>{rupees(snapshot.pool.estimatedReward)}</strong>
-            </div>
-          </div>
-          <div className="ct-panel">
-            <div className="ct-tabs">
-              {['Positions', 'History', 'Pool & payout', 'Rules'].map((t) => (
-                <button className={tab === t ? 'selected' : ''} key={t} onClick={() => setTab(t)}>
-                  {t}
-                </button>
-              ))}
-            </div>
-            {tab === 'Positions' &&
-              (a.positions.some((p) => p.quantity) ? (
-                <div className="ct-table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Team</th>
-                        <th>Shares</th>
-                        <th>Entry / cr</th>
-                        <th>Value / cr</th>
-                        <th>Unrealized / cr</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {a.positions
-                        .filter((p) => p.quantity)
-                        .map((p) => (
-                          <tr key={p.outcome}>
-                            <td>{p.outcome === 0 ? m.team0 : m.team1}</td>
-                            <td>{p.quantity}</td>
-                            <td>{credits(p.averagePrice)}</td>
-                            <td>{credits(p.value)}</td>
-                            <td className={p.unrealized >= 0 ? 'positive' : 'negative'}>
-                              {credits(p.unrealized)}
-                            </td>
-                            <td>
-                              <button
-                                onClick={() => {
-                                  setOutcome(p.outcome);
-                                  setSide('SELL');
-                                  setQuantity(String(p.quantity));
-                                }}
-                              >
-                                Sell
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
+                <div className="ct-chart-panel">
+                  <div className="ct-chart-title">
+                    <div>
+                      <strong>{teamFor(outcome)}</strong>
+                      <span> / credits</span>
+                    </div>
+                    <span>{oneMinute ? '1 min candles' : 'Over candles'} · Auto</span>
+                  </div>
+                  <PriceChart
+                    key={`${marketId}:${outcome}:${oneMinute ? '1m' : 'over'}`}
+                    data={bars}
+                    average={position?.averagePrice ?? 0}
+                    trades={snapshot.executions}
+                    outcome={outcome}
+                  />
+                  <div className="ct-chart-footer">
+                    <small>{q ? `Updated ${clock(q.publishedAt)}` : 'Awaiting update'}</small>
+                    <button
+                      className="ct-primary"
+                      disabled={!open || busy || !!pending}
+                      onClick={() => ticket(outcome)}
+                    >
+                      {open ? `Buy ${teamFor(outcome)}` : 'Trading paused'}
+                    </button>
+                  </div>
                 </div>
-              ) : (
-                <p className="ct-muted">No open positions. Choose a team and buy shares to begin.</p>
-              ))}
-            {tab === 'History' && (
-              <div className="ct-table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Action</th>
-                      <th>Team</th>
-                      <th>Shares</th>
-                      <th>Price / cr</th>
-                      <th>Total / cr</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {snapshot.executions.map((e) => (
-                      <tr key={e.id}>
-                        <td>{clock(e.createdAt)}</td>
-                        <td>{e.side}</td>
-                        <td>{e.outcome === 0 ? m.team0 : m.team1}</td>
-                        <td>{e.quantity}</td>
-                        <td>{credits(e.price)}</td>
-                        <td>{credits(e.total)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!snapshot.executions.length && <p>No trades yet.</p>}
-                <p className="ct-footnote">Most recent 100 trades.</p>
-              </div>
-            )}
-            {tab === 'Pool & payout' && (
+              </>
+            ) : (
               <>
+                <div className="ct-position-heading">
+                  <h1>My positions</h1>
+                  <div>
+                    <small>Total P&L</small>
+                    <strong className={a.net > 0 ? 'ct-profit' : a.net < 0 ? 'ct-loss' : ''}>
+                      {signed(a.net)}
+                    </strong>
+                  </div>
+                </div>
+                <div className="ct-position-summary">
+                  <span>
+                    Invested <b>{credits(positions.reduce((n, p) => n + p.cost, 0))} cr</b>
+                  </span>
+                  <span>
+                    Current value <b>{credits(positions.reduce((n, p) => n + p.value, 0))} cr</b>
+                  </span>
+                  <span>
+                    Realized{' '}
+                    <b className={a.realized > 0 ? 'ct-profit' : a.realized < 0 ? 'ct-loss' : ''}>
+                      {signed(a.realized)}
+                    </b>
+                  </span>
+                </div>
+                <div className="ct-positions">
+                  {positions.length ? (
+                    positions.map((p) => (
+                      <article key={p.outcome} className="ct-position">
+                        <div className="ct-position-main">
+                          <div>
+                            <h2>{teamFor(p.outcome)}</h2>
+                            <small>
+                              {p.quantity} shares · Avg. {credits(p.averagePrice)} cr
+                            </small>
+                          </div>
+                          <div className="ct-position-pnl">
+                            <strong
+                              className={p.unrealized > 0 ? 'ct-profit' : p.unrealized < 0 ? 'ct-loss' : ''}
+                            >
+                              {signed(p.unrealized)}
+                            </strong>
+                            <small
+                              className={p.unrealized > 0 ? 'ct-profit' : p.unrealized < 0 ? 'ct-loss' : ''}
+                            >
+                              {p.cost ? `${((p.unrealized / p.cost) * 100).toFixed(2)}%` : '0.00%'}
+                            </small>
+                          </div>
+                        </div>
+                        <div className="ct-position-bottom">
+                          <span>
+                            LTP <b>{credits(priceFor(p.outcome))} cr</b>
+                          </span>
+                          <button
+                            disabled={!open || busy || !!pending}
+                            onClick={() => ticket(p.outcome, true)}
+                          >
+                            Exit position
+                          </button>
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="ct-empty">
+                      <h2>No open positions</h2>
+                      <p>Your team positions will appear here.</p>
+                      <button onClick={() => setPage('home')}>Explore match</button>
+                    </div>
+                  )}
+                </div>
+                {snapshot.executions.length > 0 && (
+                  <details className="ct-details">
+                    <summary>Order history</summary>
+                    {snapshot.executions.map((e) => (
+                      <div className="ct-history" key={e.id}>
+                        <span>
+                          <b>
+                            {e.side === 'BUY' ? 'Buy' : 'Exit'} · {teamFor(e.outcome)}
+                          </b>
+                          <small>
+                            {e.quantity} shares · {clock(e.createdAt)}
+                          </small>
+                        </span>
+                        <span>{credits(e.total)} cr</span>
+                      </div>
+                    ))}
+                  </details>
+                )}
+                {a.receipt && (
+                  <details className="ct-details">
+                    <summary>Settlement receipt</summary>
+                    <p>{a.receipt.reason}</p>
+                    <dl>
+                      <dt>Principal returned</dt>
+                      <dd>{rupees(a.receipt.principal)}</dd>
+                      <dt>Pool reward</dt>
+                      <dd>{rupees(a.receipt.reward)}</dd>
+                      <dt>Total equivalent</dt>
+                      <dd>{rupees(a.receipt.payout)}</dd>
+                    </dl>
+                  </details>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </div>
+      {dialog && (
+        <div className="ct-modal-backdrop" onClick={() => !busy && setDialog(null)}>
+          <div
+            className="ct-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              dialog === 'fund'
+                ? 'Add credits'
+                : dialog === 'order'
+                  ? side === 'BUY'
+                    ? 'Buy shares'
+                    : 'Exit position'
+                  : 'Market details'
+            }
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button className="ct-close" aria-label="Close dialog" onClick={() => setDialog(null)}>
+              ×
+            </button>
+            {dialog === 'fund' && (
+              <>
+                <h2>Add credits</h2>
+                <p>₹1 = 10 match credits</p>
+                <label>
+                  Amount (₹)
+                  <input
+                    autoFocus
+                    type="number"
+                    min="1"
+                    max="100000"
+                    value={funding}
+                    onChange={(e) => setFunding(e.target.value)}
+                  />
+                </label>
+                <div className="ct-conversion">
+                  {credits(Math.round((Number(funding) || 0) * 100))} <small>credits</small>
+                </div>
+                <p className="ct-subtle">
+                  {m?.mode === 'TEST'
+                    ? 'Test market. No money will be deducted from your wallet.'
+                    : 'Converted funds stay in this match until settlement.'}
+                </p>
+                <button
+                  className="ct-primary"
+                  disabled={
+                    !open ||
+                    busy ||
+                    !!pending ||
+                    !Number.isFinite(Number(funding)) ||
+                    Number(funding) < 1 ||
+                    Number(funding) > 100000
+                  }
+                  onClick={() =>
+                    m &&
+                    void execute({
+                      path: `/markets/${m.id}/fund`,
+                      body: { requestId: requestId(), amount: Math.round(Number(funding) * 100) },
+                      label: 'Credits added',
+                    })
+                  }
+                >
+                  {m?.mode === 'TEST' ? 'Add test credits' : 'Convert to credits'}
+                </button>
+              </>
+            )}
+            {dialog === 'order' && (
+              <>
+                <span className="ct-subtle">{side === 'BUY' ? 'BUY' : 'EXIT POSITION'}</span>
+                <h2>{teamFor(orderOutcome)}</h2>
+                <p>{credits(orderPrice)} cr per share</p>
+                <label>
+                  Quantity
+                  <input
+                    autoFocus
+                    type="number"
+                    min="1"
+                    step="1"
+                    max={maximum}
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                  />
+                </label>
+                <div className="ct-quantity-tools">
+                  <small>
+                    {side === 'BUY' ? `${credits(a?.balance ?? 0)} cr available` : `${maximum} shares owned`}
+                  </small>
+                  <button onClick={() => setQuantity(String(maximum))}>
+                    {side === 'BUY' ? 'Max' : 'Exit all'}
+                  </button>
+                </div>
                 <dl>
-                  <dt>Participants</dt>
-                  <dd>{snapshot.pool.participants}</dd>
-                  <dt>Total test funding</dt>
-                  <dd>{rupees(snapshot.pool.deposits)}</dd>
-                  <dt>Loss pool {snapshot.pool.provisional ? '(estimated)' : ''}</dt>
-                  <dd>{rupees(snapshot.pool.losses)}</dd>
-                  <dt>Positive trading credits</dt>
-                  <dd>{credits(snapshot.pool.gains)}</dd>
+                  <dt>{side === 'BUY' ? 'Order value' : 'Exit value'}</dt>
+                  <dd>{Number.isFinite(total) ? credits(total) : '—'} cr</dd>
+                  {side === 'SELL' && orderPosition && (
+                    <>
+                      <dt>Estimated P&L</dt>
+                      <dd
+                        className={total - count * orderPosition.averagePrice >= 0 ? 'ct-profit' : 'ct-loss'}
+                      >
+                        {signed(total - count * orderPosition.averagePrice)}
+                      </dd>
+                    </>
+                  )}
                 </dl>
+                <button
+                  className="ct-primary"
+                  disabled={!open || !valid || busy || !!pending}
+                  onClick={submitOrder}
+                >
+                  {side === 'BUY' ? 'Confirm buy' : 'Confirm exit'}
+                </button>
+                <p className="ct-subtle">Credit P&L. Final rewards depend on the match loss pool.</p>
+              </>
+            )}
+            {dialog === 'rules' && (
+              <>
+                <h2>Market details</h2>
+                <p>{m?.reason}</p>
                 <p>
-                  Reward = your positive net credits ÷ all positive net credits × loss pool. Values remain
-                  provisional until settlement.
+                  Prices are estimated win chances. Candles use observed prices: per over, then one minute in
+                  the last three overs.
+                </p>
+                <p>
+                  ₹1 = 10 credits. Remaining principal is returned at settlement. Positive net credits share
+                  the actual loss pool. No guaranteed cash profit.
+                </p>
+                <p>
+                  Voided matches and pools with no positive participants refund deposits. No fees.{' '}
+                  {m?.mode === 'TEST' ? 'This market uses test credits only.' : ''}
+                </p>
+                <p className="ct-subtle">
+                  Drag the price axis to change candle height; drag the time axis to change spacing.
+                  Double-click an axis to reset.
                 </p>
               </>
             )}
-            {tab === 'Rules' && (
-              <div className="ct-rules">
-                <p>
-                  ₹1 equivalent = 10 match credits. Your full net loss contributes to the pool, capped at your
-                  match funding. Remaining principal returns at the original conversion.
-                </p>
-                <p>
-                  Winners divide the entire loss pool by positive net credit profit. If everyone profits, cash
-                  profit is zero. If nobody has a positive result, deposits are refunded. Voided matches
-                  refund deposits. No fees in this version.
-                </p>
-                <p>
-                  Open winning shares close at 100 credits; losing shares at zero. This sets your trading
-                  score, not a fixed cash payout. Funds remain locked until the match settles.
-                </p>
-                <p>
-                  Time pressure uses balls remaining; event sensitivity depends on runs, wickets and target.
-                  This experimental model is not a calibrated prediction service. ESPN snapshots can skip
-                  deliveries; the chart never invents missing prices.
-                </p>
-                <p>
-                  Simulation and live snapshot markets currently use test credits only. Rules:{' '}
-                  {m.rulesVersion}.
-                </p>
-              </div>
-            )}
-            {a.receipt && (
-              <div className="ct-receipt">
-                <h3>Settlement receipt · {a.receipt.mode === 'TEST' ? 'test credits' : 'cash'}</h3>
-                <p>{a.receipt.reason}</p>
-                <dl>
-                  <dt>Deposit</dt>
-                  <dd>{rupees(a.receipt.deposit)}</dd>
-                  <dt>Loss contribution</dt>
-                  <dd>{rupees(a.receipt.loss)}</dd>
-                  <dt>Principal returned</dt>
-                  <dd>{rupees(a.receipt.principal)}</dd>
-                  <dt>Pool reward</dt>
-                  <dd>{rupees(a.receipt.reward)}</dd>
-                  <dt>Total payout equivalent</dt>
-                  <dd>{rupees(a.receipt.payout)}</dd>
-                </dl>
-                <small>
-                  {new Date(a.receipt.settledAt).toLocaleString()} ·{' '}
-                  {a.receipt.mode === 'TEST' ? 'No money moved in your wallet.' : 'Credited to wallet.'}
-                </small>
-              </div>
-            )}
-          </div>
-        </>
-      )}
-      {confirm && (
-        <div className="ct-modal-backdrop">
-          <div
-            className="ct-panel ct-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Confirm trading request"
-          >
-            <h2>Confirm request</h2>
-            <p>{confirm.label}</p>
-            <p className="ct-muted">
-              Test credits only. If the quote changes, this trade will be rejected for you to review again.
-            </p>
-            <div>
-              <button onClick={() => setConfirm(null)}>Cancel</button>
-              <button className="ct-submit" disabled={busy} onClick={() => void execute(confirm)}>
-                Confirm
-              </button>
-            </div>
           </div>
         </div>
       )}

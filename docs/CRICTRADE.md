@@ -4,11 +4,11 @@ Implemented 24 October 2026. The backend, React user screen, Flutter user screen
 
 ## What is available
 
-- A CricTrade navigation tab in both user clients and admin web.
+- A CricTrade navigation tab in both user clients and admin web. User clients replace the MoneyGame header with a CricTrade header containing match credits and a + action.
 - Match discovery, a shared simulated IND–NZ chase, supported live T20 snapshots, score/target/overs, quote timestamps and market status.
-- Complementary team prices, candlestick and line charts, 1m/5m/15m/sampled-over intervals, zoom, inspection, entry-price lines and personal trade markers.
-- Test funding, whole-share buys and sells, affordable quantity shortcuts, explicit order confirmation and rejection of expired/changed quotes.
-- Positions, weighted entry price, realized/unrealized results, recent trade history, provisional pool allocation, rules and settlement receipts.
+- Two user pages: Home and My positions. Home has team selection, current prices, a candlestick chart and Buy. Candle intervals switch automatically from sampled overs to one minute at 18 legal balls remaining in either innings. No interval selector, chart-style selector or zoom slider.
+- Funding/conversion opens from the header credit button. Whole-share buys have an order ticket; owned shares are managed through Exit position, including partial exits. There is no standalone sell/short action. Confirmation and changed/expired quote rejection are preserved.
+- My positions shows average entry, last price, invested/current values and green/red credit P&L. Order history and settlement receipts are collapsed. Market rules are behind an information action. Drag the price axis vertically to scale candle height, or the time axis horizontally to scale spacing; double-click/tap resets the axis.
 - Persisted request IDs and retry recovery, authenticated ownership checks, integer accounting and serializable mutations.
 - Admin simulation creation, pause/resume, result confirmation and void/refund with a recorded actor and reason.
 - SQLite and PostgreSQL migrations. Existing card games and sports pools use their existing accounting paths.
@@ -65,7 +65,7 @@ All routes require authenticated users or administrators. `/api/trading/markets/
 | --- | --- | --- |
 | GET | `/trading/markets` | Latest 100 markets |
 | GET | `/trading/markets/:id` | Account and market snapshot |
-| GET | `/trading/markets/:id/candles?outcome=0&interval=1m` | Up to 3,000 observed quotes aggregated as candles; optional `before` in epoch milliseconds |
+| GET | `/trading/markets/:id/candles?outcome=0&interval=auto` | Up to 3,000 observed quotes; `auto` selects over/1m from the latest state; optional `before` in epoch milliseconds |
 | POST | `/trading/markets/:id/fund` | `{amount, requestId}`; amount in stored units |
 | POST | `/trading/markets/:id/orders` | `{quoteId, outcome, side, quantity, requestId}` |
 | GET | `/trading/markets/:id/orders/:requestId` | Recover the caller's persisted operation result |
@@ -121,6 +121,6 @@ Coverage includes 500 randomized conservation cases; exact conversion/rounding; 
 
 SQLite migrations were exercised against fresh and upgraded temporary databases. The PostgreSQL schema validates, but its migration was not executed against a running PostgreSQL instance. Flutter analysis reports two pre-existing informational lint notices in unrelated screens.
 
-Browser checks use mocked API responses against the real local React apps: desktop/mobile chart rendering, line/candle and interval switching, order confirmation, positions/pool/rules, and admin pause/resume/settle. Flutter tests cover the chart and complete funding/buy ticket interaction with a fake API. These complement backend integration tests; they do not establish live-feed accuracy or production performance.
+Browser checks use mocked API responses against the real local React apps: desktop/mobile chart rendering, automatic interval transitions, axis gestures, replacement header, funding, buy/exit confirmation, profit/loss positions, and admin pause/resume/settle. Flutter tests cover independent axis gestures and funding/buy/exit interactions with a fake API. These complement backend integration tests; they do not establish live-feed accuracy or production performance.
 
 Before live cash release: integrate and measure a suitable provider, validate the probability model, finalize the published product rules, implement cash-specific client funding flows, and qualify settlement at the intended pool size. The other lobby/profile/invitation/29 plan remains deferred as requested.

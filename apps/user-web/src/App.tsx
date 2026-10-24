@@ -224,8 +224,8 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
-      <UserNavbar
+    <div className={`min-h-screen text-slate-900 flex flex-col ${currentTab === 'trading' ? 'bg-[#0d1117]' : 'bg-slate-50'}`}>
+      {currentTab !== 'trading' && <UserNavbar
         user={user}
         balance={balance}
         currentTab={currentTab}
@@ -244,7 +244,7 @@ export const App: React.FC = () => {
         isRefreshing={isRefreshing || loadingRooms}
         onOpenNotifications={() => setNotificationsOpen(true)}
         unreadNotificationsCount={unreadNotificationsCount}
-      />
+      />}
 
       <NotificationDrawer
         isOpen={notificationsOpen}
@@ -258,9 +258,9 @@ export const App: React.FC = () => {
         loading={loadingNotifications}
       />
 
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-24 sm:pb-8">
+      <main className={currentTab === 'trading' ? 'flex-1 w-full pb-20 sm:pb-0' : 'flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-24 sm:pb-8'}>
         {/* Sticky Active Game Resumption Bar */}
-        {!activeRoomId && (() => {
+        {currentTab !== 'trading' && !activeRoomId && (() => {
           const activeUserRoom = rooms.find(
             (r) => ['WAITING', 'PLAYING'].includes(r.status) && r.players?.some((p) => p.userId === user.id)
           );
@@ -327,7 +327,7 @@ export const App: React.FC = () => {
                 onRefreshBalance={refreshBalance}
               />
             )}
-        {currentTab === 'trading' && <Suspense fallback={<p>Loading CricTrade…</p>}><TradingView userId={user.id} /></Suspense>}
+        {currentTab === 'trading' && <Suspense fallback={<p>Loading CricTrade…</p>}><TradingView userId={user.id} onBack={() => setCurrentTab('lobby')} /></Suspense>}
             {currentTab === 'support' && (
               <SupportFeedbackView user={user} />
             )}

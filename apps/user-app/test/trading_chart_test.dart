@@ -5,7 +5,7 @@ import 'package:moneygame_user/screens/trading/trading_chart.dart';
 
 void main() {
   testWidgets(
-    'Chart supports empty history, candles, inspection, zoom and line switching',
+    'Chart supports candle inspection and independent price/time axis gestures',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(390, 844));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -27,26 +27,49 @@ void main() {
           'quotes': 3,
         }),
       ];
-      Widget chart(List<TradingCandle> data, bool line) => MaterialApp(
-        home: Scaffold(
-          body: TradingChart(candles: data, line: line, average: 600),
-        ),
+      Widget chart(List<TradingCandle> data) => MaterialApp(
+        home: Scaffold(body: TradingChart(candles: data, average: 60)),
       );
-      await tester.pumpWidget(chart([], false));
+      await tester.pumpWidget(chart([]));
       expect(find.text('Waiting for price snapshots.'), findsOneWidget);
-      await tester.pumpWidget(chart(candles, false));
+      await tester.pumpWidget(chart(candles));
       await tester.tapAt(const Offset(80, 100));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
       expect(
-        find.textContaining('O 60.0 H 65.0 L 58.0 C 62.0'),
+        find.textContaining(RegExp(r'O 60\.0.*H 65\.0.*L 58\.0.*C 62\.0')),
         findsOneWidget,
       );
-      await tester.drag(find.byType(Slider), const Offset(90, 0));
-      await tester.pump();
-      await tester.pumpWidget(chart(candles, true));
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(chart([candles.first], true));
-      expect(tester.takeException(), isNull);
+      final semantics = tester.ensureSemantics();
+      try {
+        expect(find.byType(Slider), findsNothing);
+        await tester.drag(
+          find.byKey(const ValueKey('trading-price-axis')),
+          const Offset(0, -80),
+        );
+        await tester.pump();
+        expect(
+          find.bySemanticsLabel(RegExp(r'Price axis.*Zoom 1\.00')),
+          findsNothing,
+        );
+        expect(
+          find.bySemanticsLabel(RegExp(r'Time axis.*Zoom 1\.00')),
+          findsOneWidget,
+        );
+        await tester.drag(
+          find.byKey(const ValueKey('trading-time-axis')),
+          const Offset(100, 0),
+        );
+        await tester.pump();
+        expect(
+          find.bySemanticsLabel(RegExp(r'Time axis.*Zoom 1\.00')),
+          findsNothing,
+        );
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpWidget(chart([candles.first]));
+        expect(tester.takeException(), isNull);
+      } finally {
+        semantics.dispose();
+      }
     },
   );
 

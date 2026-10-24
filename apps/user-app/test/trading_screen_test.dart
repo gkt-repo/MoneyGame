@@ -62,9 +62,9 @@ void main() {
         }
         if (path.endsWith('/orders')) {
           expect(body!['quoteId'], 'q1');
-          expect(body['side'], 'BUY');
-          shares += body['quantity'] as int;
-          balance -= (body['quantity'] as int) * 600;
+          final exit = body['side'] == 'SELL';
+          shares += (exit ? -1 : 1) * (body['quantity'] as int);
+          balance += (exit ? 1 : -1) * (body['quantity'] as int) * 600;
           orders++;
           requestIds.add(body['requestId'] as String);
           return {'success': true};
@@ -111,16 +111,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Buy India'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.text('Add test credits'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.drag(find.byType(ListView), const Offset(0, -220));
+      await tester.tap(find.widgetWithText(OutlinedButton, '0 cr'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add test credits'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Add credits'));
       await tester.pumpAndSettle();
       expect(deposit, 100000);
       expect(balance, 100000);
@@ -132,6 +125,18 @@ void main() {
       expect(balance, 94000);
       expect(shares, 10);
       expect(requestIds.toSet().length, 2);
+      expect(find.text('Sell India'), findsNothing);
+      expect(find.text('1 min candles · Auto'), findsOneWidget);
+      await tester.tap(find.text('My positions').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Exit position'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm exit'));
+      await tester.pumpAndSettle();
+      expect(orders, 2);
+      expect(shares, 0);
+      expect(balance, 100000);
+      expect(find.text('No open positions'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
