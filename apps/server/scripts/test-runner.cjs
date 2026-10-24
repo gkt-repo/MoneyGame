@@ -9,6 +9,8 @@ const cases = {
   tables: 'admin_table_control.test.ts',
   payment: 'payment_system.test.ts', security: 'security_regression.test.ts',
   game: 'teen_patti.test.ts', sports: 'sports_pool.test.ts',
+  trading: 'trading.test.ts',
+  'trading-http': 'trading_http.test.ts',
   notifications: 'notifications.test.ts',
   moderator: 'moderator.test.ts',
   float: 'moderator_float.test.ts',

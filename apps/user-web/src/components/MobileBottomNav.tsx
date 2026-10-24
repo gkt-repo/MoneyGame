@@ -15,7 +15,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 }) => {
   return (
     <nav className="sm:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 shadow-md pb-[env(safe-area-inset-bottom)]">
-      <div className="grid grid-cols-4 h-14">
+      <div className="grid grid-cols-5 h-14">
+        <button type="button" onClick={() => onTabChange('trading')} className={`flex flex-col items-center justify-center text-[10px] font-bold ${currentTab === 'trading' ? 'text-emerald-700' : 'text-slate-500'}`}><span className="text-xl">↗</span>CricTrade</button>
         {/* Tables */}
         <button
           type="button"

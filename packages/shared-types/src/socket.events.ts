@@ -13,6 +13,8 @@ export interface ClientToServerEvents {
 
 // Events emitted by Server to Client
 export interface ServerToClientEvents {
+  trading_market_updated: (data: { marketId: string }) => void;
+  trading_account_updated: (data: { marketId: string }) => void;
   balance_updated: (data: { balance: number; lockedBalance: number }) => void;
   wallet_updated: (data: { balance: number; lockedBalance: number }) => void;
   deposit_approved: (data: { depositId?: string; amount?: number; totalAmount?: number; utr?: string | null; balance: number }) => void;

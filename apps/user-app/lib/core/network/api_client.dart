@@ -290,6 +290,12 @@ class NotificationItemModel {
 }
 
 class ApiClient {
+  static Future<dynamic> trading(String path, {Map<String, dynamic>? body}) async {
+    final response = body == null
+        ? await _dio.get<dynamic>('/trading$path')
+        : await _dio.post<dynamic>('/trading$path', data: body);
+    return response.data;
+  }
   static final _session = AuthenticatedClient(
     baseUrl: () => ApiConstants.baseUrl,
     refreshPath: '/v1/auth/refresh-token',

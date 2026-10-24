@@ -13,7 +13,7 @@ import {
   RotateCw,
 } from 'lucide-react';
 
-export type AdminTab = 'overview' | 'users' | 'deposits' | 'withdrawals' | 'rooms' | 'feedback' | 'settings';
+export type AdminTab = 'trading' | 'overview' | 'users' | 'deposits' | 'withdrawals' | 'rooms' | 'feedback' | 'settings';
 
 interface AdminNavbarProps {
   currentTab: AdminTab;
@@ -37,6 +37,7 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
   isRefreshing = false,
 }) => {
   const tabs = [
+    { id: 'trading' as AdminTab, label: 'CricTrade', icon: ArrowUpRight },
     { id: 'overview' as AdminTab, label: 'Overview', icon: LayoutDashboard },
     { id: 'users' as AdminTab, label: 'Users', icon: Users },
     { id: 'deposits' as AdminTab, label: 'Deposits', icon: ArrowDownLeft },
@@ -58,7 +59,7 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
 
   return (
     <header className="border-b border-zinc-800 bg-zinc-900 sticky top-0 z-30">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Brand */}
           <div className="flex items-center gap-3">
@@ -74,7 +75,7 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
           </div>
 
           {/* Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden 2xl:flex items-center gap-1 whitespace-nowrap">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const active = currentTab === tab.id;
@@ -131,7 +132,7 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
       </div>
 
       {/* Mobile Tab Bar */}
-      <div className="md:hidden border-t border-zinc-800 px-2 py-2 flex items-center justify-around bg-zinc-900/90">
+      <div className="2xl:hidden border-t border-zinc-800 px-2 py-2 flex items-center gap-1 justify-start sm:justify-around overflow-x-auto bg-zinc-900/90">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const active = currentTab === tab.id;
@@ -139,7 +140,7 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex flex-col items-center py-1 px-2 text-xs font-medium relative ${
+              className={`flex shrink-0 flex-col items-center py-1 px-2 text-xs font-medium relative whitespace-nowrap ${
                 active ? 'text-emerald-400' : 'text-zinc-400'
               }`}
             >

@@ -1,0 +1,1977 @@
+{
+  "description": "Selected public ESPN response fields observed during the requested live IND–NZ test; no independent source-latency measurement.",
+  "endpoint": "https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=cricket",
+  "displayTimezone": "Asia/Kolkata",
+  "matchId": "1539433",
+  "matchName": "New Zealand v India",
+  "fieldInventory": {
+    "event": [
+      "gamecastAvailable",
+      "playByPlayAvailable",
+      "commentaryAvailable",
+      "recent",
+      "id",
+      "competitionId",
+      "uid",
+      "date",
+      "endDate",
+      "timeValid",
+      "name",
+      "shortName",
+      "description",
+      "updatesOnly",
+      "title",
+      "locationAndDate",
+      "class",
+      "location",
+      "season",
+      "seasonStartDate",
+      "preCommentaryAvailable",
+      "seasonEndDate",
+      "seasonType",
+      "seasonTypeHasGroups",
+      "group",
+      "period",
+      "clock",
+      "addedClock",
+      "status",
+      "summary",
+      "eventType",
+      "fullStatus",
+      "notes",
+      "link",
+      "links",
+      "onWatch",
+      "competitors",
+      "appLinks"
+    ],
+    "competitors": [
+      {
+        "name": "New Zealand",
+        "fields": [
+          "id",
+          "uid",
+          "type",
+          "order",
+          "homeAway",
+          "winner",
+          "score",
+          "record",
+          "logo",
+          "links",
+          "place",
+          "displayName",
+          "name",
+          "abbreviation",
+          "location",
+          "color",
+          "isNational",
+          "competitionIdPrevious",
+          "competitionIdNext"
+        ]
+      },
+      {
+        "name": "India",
+        "fields": [
+          "id",
+          "uid",
+          "type",
+          "order",
+          "homeAway",
+          "winner",
+          "score",
+          "record",
+          "logo",
+          "links",
+          "place",
+          "displayName",
+          "name",
+          "abbreviation",
+          "location",
+          "color",
+          "isNational",
+          "competitionIdPrevious",
+          "competitionIdNext"
+        ]
+      }
+    ]
+  },
+  "runSummary": [
+    {
+      "run": 1,
+      "startedAt": "2026-10-24T07:38:50.026Z",
+      "finishedAt": "2026-10-24T07:41:52.282Z",
+      "requestedIntervalMs": 10000,
+      "requestedSamples": 19,
+      "successfulSamples": 19,
+      "matchPresentSamples": 19,
+      "limitations": [
+        "Measures observed scoreboard snapshots, not independently verified delivery completeness or source latency.",
+        "HTTP response time and cache headers do not establish the time elapsed since a real delivery.",
+        "Provider availability flags are not delivery records in this response.",
+        "Bypasses MoneyGame's 45-second cache to inspect the upstream feed directly."
+      ]
+    },
+    {
+      "run": 2,
+      "startedAt": "2026-10-24T07:41:40.945Z",
+      "finishedAt": "2026-10-24T07:42:41.556Z",
+      "requestedIntervalMs": 5000,
+      "requestedSamples": 13,
+      "successfulSamples": 13,
+      "matchPresentSamples": 13,
+      "limitations": [
+        "Measures observed scoreboard snapshots, not independently verified delivery completeness or source latency.",
+        "HTTP response time and cache headers do not establish the time elapsed since a real delivery.",
+        "Provider availability flags are not delivery records in this response.",
+        "Bypasses MoneyGame's 45-second cache to inspect the upstream feed directly."
+      ]
+    }
+  ],
+  "otherCompletedMatchExample": [
+    {
+      "id": "1544852",
+      "name": "Tasmania v Victoria",
+      "status": "post",
+      "summary": "Result",
+      "teams": [
+        {
+          "name": "Tasmania",
+          "score": "137 (25.2/35 ov, target 276)",
+          "winner": false
+        },
+        {
+          "name": "Victoria",
+          "score": "304/7 (50 ov)",
+          "winner": true
+        }
+      ]
+    }
+  ],
+  "samples": [
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:38:50.038Z",
+      "receivedAt": "2026-10-24T07:38:52.121Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2080,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:38:51 GMT",
+        "age": null,
+        "cacheControl": "max-age=9",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:38",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "50/3 (6.6/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:39:00.053Z",
+      "receivedAt": "2026-10-24T07:39:02.115Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2062,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:39:01 GMT",
+        "age": null,
+        "cacheControl": "max-age=10",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:38",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "50/3 (6.6/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:39:10.067Z",
+      "receivedAt": "2026-10-24T07:39:12.270Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2202,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:39:11 GMT",
+        "age": null,
+        "cacheControl": "max-age=1",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:38",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "50/3 (6.6/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:39:20.081Z",
+      "receivedAt": "2026-10-24T07:39:22.362Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2281,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:39:21 GMT",
+        "age": null,
+        "cacheControl": "max-age=1",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:38",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "50/3 (6.6/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:39:30.090Z",
+      "receivedAt": "2026-10-24T07:39:32.138Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2047,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:39:31 GMT",
+        "age": null,
+        "cacheControl": "max-age=1",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:38",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "50/3 (7/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:39:40.104Z",
+      "receivedAt": "2026-10-24T07:39:42.763Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2658,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:39:41 GMT",
+        "age": null,
+        "cacheControl": "max-age=9",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:38",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "50/3 (7/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:39:50.116Z",
+      "receivedAt": "2026-10-24T07:39:52.092Z",
+      "httpStatus": 200,
+      "responseTimeMs": 1975,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:39:51 GMT",
+        "age": null,
+        "cacheControl": "max-age=9",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:38",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "50/3 (7/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:40:00.130Z",
+      "receivedAt": "2026-10-24T07:40:02.231Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2101,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:40:01 GMT",
+        "age": null,
+        "cacheControl": "max-age=9",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:39",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "50/3 (7/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:40:10.135Z",
+      "receivedAt": "2026-10-24T07:40:12.476Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2340,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:40:11 GMT",
+        "age": null,
+        "cacheControl": "max-age=10",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:39",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "50/3 (7/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:40:20.149Z",
+      "receivedAt": "2026-10-24T07:40:23.476Z",
+      "httpStatus": 200,
+      "responseTimeMs": 3326,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:40:22 GMT",
+        "age": null,
+        "cacheControl": "max-age=1",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:39",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "50/3 (7/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:40:30.157Z",
+      "receivedAt": "2026-10-24T07:40:32.455Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2297,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:40:31 GMT",
+        "age": null,
+        "cacheControl": "max-age=2",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:39",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "50/3 (7/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:40:40.170Z",
+      "receivedAt": "2026-10-24T07:40:43.152Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2982,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:40:41 GMT",
+        "age": null,
+        "cacheControl": "max-age=3",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:40",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "52/3 (7.2/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:40:50.173Z",
+      "receivedAt": "2026-10-24T07:40:52.115Z",
+      "httpStatus": 200,
+      "responseTimeMs": 1941,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:40:51 GMT",
+        "age": null,
+        "cacheControl": "max-age=9",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:40",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "52/3 (7.2/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:41:00.187Z",
+      "receivedAt": "2026-10-24T07:41:02.346Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2159,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:41:01 GMT",
+        "age": null,
+        "cacheControl": "max-age=9",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:40",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "52/3 (7.2/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:41:10.201Z",
+      "receivedAt": "2026-10-24T07:41:12.293Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2091,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:41:11 GMT",
+        "age": null,
+        "cacheControl": "max-age=10",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:40",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "52/3 (7.2/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:41:20.215Z",
+      "receivedAt": "2026-10-24T07:41:23.041Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2825,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:41:22 GMT",
+        "age": null,
+        "cacheControl": "max-age=1",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:40",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "52/3 (7.2/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:41:30.215Z",
+      "receivedAt": "2026-10-24T07:41:32.443Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2228,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:41:31 GMT",
+        "age": null,
+        "cacheControl": "max-age=1",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:40",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "53/3 (7.4/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:41:40.225Z",
+      "receivedAt": "2026-10-24T07:41:42.337Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2111,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:41:41 GMT",
+        "age": null,
+        "cacheControl": "max-age=3",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:40",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "53/3 (7.4/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:41:40.946Z",
+      "receivedAt": "2026-10-24T07:41:43.020Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2072,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:41:42 GMT",
+        "age": null,
+        "cacheControl": "max-age=2",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:40",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "53/3 (7.4/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:41:45.961Z",
+      "receivedAt": "2026-10-24T07:41:46.318Z",
+      "httpStatus": 200,
+      "responseTimeMs": 357,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:41:46 GMT",
+        "age": null,
+        "cacheControl": "max-age=1",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:40",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "53/3 (7.4/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:41:50.984Z",
+      "receivedAt": "2026-10-24T07:41:51.334Z",
+      "httpStatus": 200,
+      "responseTimeMs": 350,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:41:51 GMT",
+        "age": null,
+        "cacheControl": "max-age=5",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:41",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "54/3 (8/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 1,
+      "requestedAt": "2026-10-24T07:41:50.240Z",
+      "receivedAt": "2026-10-24T07:41:52.281Z",
+      "httpStatus": 200,
+      "responseTimeMs": 2041,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:41:51 GMT",
+        "age": null,
+        "cacheControl": "max-age=5",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:41",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "54/3 (8/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:41:56.006Z",
+      "receivedAt": "2026-10-24T07:41:56.361Z",
+      "httpStatus": 200,
+      "responseTimeMs": 355,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:41:56 GMT",
+        "age": null,
+        "cacheControl": "max-age=1",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:41",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "54/3 (8/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:42:01.028Z",
+      "receivedAt": "2026-10-24T07:42:01.420Z",
+      "httpStatus": 200,
+      "responseTimeMs": 392,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:42:01 GMT",
+        "age": null,
+        "cacheControl": "max-age=6",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:41",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "54/3 (8/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:42:06.050Z",
+      "receivedAt": "2026-10-24T07:42:06.459Z",
+      "httpStatus": 200,
+      "responseTimeMs": 408,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:42:06 GMT",
+        "age": null,
+        "cacheControl": "max-age=1",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:41",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "54/3 (8/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:42:11.072Z",
+      "receivedAt": "2026-10-24T07:42:11.408Z",
+      "httpStatus": 200,
+      "responseTimeMs": 336,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:42:11 GMT",
+        "age": null,
+        "cacheControl": "max-age=6",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:41",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "54/3 (8/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:42:16.095Z",
+      "receivedAt": "2026-10-24T07:42:16.436Z",
+      "httpStatus": 200,
+      "responseTimeMs": 341,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:42:16 GMT",
+        "age": null,
+        "cacheControl": "max-age=1",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:41",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "54/3 (8/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:42:21.103Z",
+      "receivedAt": "2026-10-24T07:42:21.614Z",
+      "httpStatus": 200,
+      "responseTimeMs": 511,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:42:21 GMT",
+        "age": null,
+        "cacheControl": "max-age=5",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:41",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "54/3 (8/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:42:26.125Z",
+      "receivedAt": "2026-10-24T07:42:26.482Z",
+      "httpStatus": 200,
+      "responseTimeMs": 357,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:42:26 GMT",
+        "age": null,
+        "cacheControl": "max-age=1",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:41",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "54/3 (8/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:42:31.143Z",
+      "receivedAt": "2026-10-24T07:42:31.479Z",
+      "httpStatus": 200,
+      "responseTimeMs": 335,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:42:31 GMT",
+        "age": null,
+        "cacheControl": "max-age=6",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:41",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "54/3 (8/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:42:36.146Z",
+      "receivedAt": "2026-10-24T07:42:36.480Z",
+      "httpStatus": 200,
+      "responseTimeMs": 333,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:42:36 GMT",
+        "age": null,
+        "cacheControl": "max-age=1",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:41",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "54/3 (8/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    },
+    {
+      "run": 2,
+      "requestedAt": "2026-10-24T07:42:41.168Z",
+      "receivedAt": "2026-10-24T07:42:41.555Z",
+      "httpStatus": 200,
+      "responseTimeMs": 386,
+      "headers": {
+        "date": "Sat, 24 Oct 2026 07:42:41 GMT",
+        "age": null,
+        "cacheControl": "max-age=6",
+        "lastModified": null
+      },
+      "match": {
+        "id": "1539433",
+        "status": "in",
+        "summary": "Live",
+        "period": 1,
+        "capabilities": {
+          "playByPlayAvailable": false,
+          "commentaryAvailable": false,
+          "updatesOnly": false
+        },
+        "fullStatus": {
+          "clock": 0,
+          "addedClock": 0,
+          "displayClock": "0'",
+          "presentLocalTime": "20:41",
+          "period": 1,
+          "session": "",
+          "battingTeamId": 5,
+          "dayNumber": 1,
+          "longSummary": "India won the toss and elected to field",
+          "summary": "India won toss & fielded",
+          "type": {
+            "id": "0",
+            "description": "Live",
+            "detail": "Live",
+            "shortDetail": "Live",
+            "state": "in"
+          }
+        },
+        "teams": [
+          {
+            "id": "5",
+            "name": "New Zealand",
+            "score": "54/3 (8/20 ov)",
+            "winner": false
+          },
+          {
+            "id": "6",
+            "name": "India",
+            "score": "",
+            "winner": false
+          }
+        ]
+      }
+    }
+  ]
+}

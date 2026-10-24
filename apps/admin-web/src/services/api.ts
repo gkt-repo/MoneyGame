@@ -255,6 +255,9 @@ export interface UserProfileDetail {
 
 
 class AdminApiService {
+  async trading<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(`/admin/trading${path}`, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) });
+  }
   private token: string | null = null;
 
   constructor() {

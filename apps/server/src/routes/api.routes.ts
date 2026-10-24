@@ -1,4 +1,5 @@
 import { cashDeskService } from '../modules/moderator/cash-desk.service';
+import { tradingRouter, tradingAdminRouter } from './trading.routes';
 import { moderatorRouter } from './moderator.routes';
 import { moderatorService } from '../modules/moderator/moderator.service';
 import crypto from 'crypto';
@@ -20,6 +21,8 @@ import rateLimit from 'express-rate-limit';
 import { prisma } from '../db';
 
 export const router = Router();
+router.use('/trading', tradingRouter);
+router.use('/admin/trading', tradingAdminRouter);
 
 const isTest = process.env.NODE_ENV === 'test';
 

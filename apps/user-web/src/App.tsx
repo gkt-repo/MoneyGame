@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, lazy, Suspense } from 'react';
 import { userApi, UserProfile, RoomItem, NotificationItem } from './services/api';
 import { AuthModal } from './components/AuthModal';
 import { UserNavbar, UserTab } from './components/UserNavbar';
@@ -11,6 +11,8 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { Loader2, Bell, X } from 'lucide-react';
 import { connectSocket } from './services/socket';
 import { playNotificationSound } from './utils/audio';
+
+const TradingView = lazy(() => import('./views/trading/TradingView').then(module => ({ default: module.TradingView })));
 
 export const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -325,6 +327,7 @@ export const App: React.FC = () => {
                 onRefreshBalance={refreshBalance}
               />
             )}
+        {currentTab === 'trading' && <Suspense fallback={<p>Loading CricTrade…</p>}><TradingView userId={user.id} /></Suspense>}
             {currentTab === 'support' && (
               <SupportFeedbackView user={user} />
             )}

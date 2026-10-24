@@ -10,6 +10,7 @@ datasource db {
 }
 
 model User {
+  tradingAccounts TradingAccount[]
   id                String             @id @default(uuid())
   username          String             @unique
   phone             String?            @unique
@@ -296,4 +297,97 @@ model CashDeskEntry {
   actorId String?
   createdAt DateTime @default(now())
   @@index([accountId, createdAt])
+}
+
+
+model TradingMarket {
+  id String @id @default(uuid())
+  source String
+  mode String @default("TEST")
+  title String
+  team0 String
+  team1 String
+  status String @default("SUSPENDED")
+  reason String @default("")
+  rulesVersion String @default("pooled-v1")
+  modelVersion String @default("cricket-baseline-v1")
+  sequence Int @default(0)
+  revision Int @default(0)
+  fingerprint String @default("")
+  snapshot String @default("{}")
+  feedReceivedAt DateTime?
+  snapshotChangedAt DateTime?
+  winner Int?
+  adminPaused Boolean @default(false)
+  replayStep Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  quotes TradingQuote[]
+  accounts TradingAccount[]
+  operations TradingOperation[]
+}
+model TradingQuote {
+  id String @id @default(uuid())
+  marketId String
+  market TradingMarket @relation(fields: [marketId], references: [id], onDelete: Restrict)
+  sequence Int
+  price0 Int
+  snapshot String
+  publishedAt DateTime @default(now())
+  expiresAt DateTime
+  @@unique([marketId, sequence])
+  @@index([marketId, publishedAt])
+}
+model TradingAccount {
+  id String @id @default(uuid())
+  marketId String
+  market TradingMarket @relation(fields: [marketId], references: [id], onDelete: Restrict)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  deposit Int @default(0)
+  balance Int @default(0)
+  realized Int @default(0)
+  receipt String?
+  positions TradingPosition[]
+  executions TradingExecution[]
+  @@unique([marketId, userId])
+}
+model TradingPosition {
+  id String @id @default(uuid())
+  accountId String
+  account TradingAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  outcome Int
+  quantity Int @default(0)
+  cost Int @default(0)
+  @@unique([accountId, outcome])
+}
+model TradingExecution {
+  id String @id @default(uuid())
+  accountId String
+  account TradingAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  quoteId String
+  side String
+  outcome Int
+  quantity Int
+  price Int
+  total Int
+  createdAt DateTime @default(now())
+  @@index([accountId, createdAt])
+}
+model TradingOperation {
+  id String @id @default(uuid())
+  marketId String
+  market TradingMarket @relation(fields: [marketId], references: [id], onDelete: Restrict)
+  userId String
+  requestId String
+  payload String
+  result String
+  createdAt DateTime @default(now())
+  @@unique([marketId, userId, requestId])
+}
+model TradingLease {
+  id String @id
+  owner String
+  expiresAt DateTime
+  nextPollAt DateTime
 }

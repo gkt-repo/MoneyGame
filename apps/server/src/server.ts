@@ -1,6 +1,8 @@
 import { cashDeskService } from './modules/moderator/cash-desk.service';
 import { moderatorService } from './modules/moderator/moderator.service';
 import http from 'http';
+import { tradingService } from './modules/trading/trading.service';
+import { tradingWorker } from './modules/trading/feed';
 import { configureSockets } from './socket';
 import path from 'path';
 import express from 'express';
@@ -115,11 +117,13 @@ cashDeskService.setSocketServer(io);
 sportsService.setSocketServer(io);
 
 configureSockets(io);
+tradingService.setSocketServer(io);
 
 // Start server
 async function bootstrap() {
   await initDbDefaults();
   await gameManager.recoverInterruptedRooms();
+  await tradingWorker.start();
 
   // Background daemon: clean up expired deposit reservations every 60 seconds
   const periodicExpiry = setInterval(() => {
@@ -143,6 +147,7 @@ async function bootstrap() {
     clearInterval(periodicExpiry);
     gameManager.stopTimers();
     sportsService.stopAutoSync();
+    tradingWorker.stop();
 
     runningServer.close(async () => {
       try {

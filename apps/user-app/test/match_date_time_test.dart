@@ -23,7 +23,7 @@ void main() {
 
     test('handles day rollover between UTC and local timezone correctly', () {
       final nowLocal = DateTime.now();
-      final futureDateLocal = DateTime(nowLocal.year, 10, 24, 3, 0);
+      final futureDateLocal = DateTime(nowLocal.year + 1, 10, 24, 3, 0);
       final futureDateUtc = futureDateLocal.toUtc();
       final isoString = futureDateUtc.toIso8601String();
 

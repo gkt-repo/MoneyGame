@@ -2,7 +2,7 @@ import React from 'react';
 import { UserProfile } from '../services/api';
 import { Wallet, Gamepad2, LogOut, HelpCircle, Trophy, RotateCw, Bell } from 'lucide-react';
 
-export type UserTab = 'lobby' | 'sports' | 'wallet' | 'support';
+export type UserTab = 'lobby' | 'sports' | 'wallet' | 'support' | 'trading';
 
 interface UserNavbarProps {
   user: UserProfile;
@@ -29,12 +29,12 @@ export const UserNavbar: React.FC<UserNavbarProps> = ({
 }) => {
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-16">
           {/* Brand */}
-          <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => onTabChange('lobby')}>
+          <div className="flex shrink-0 items-center gap-2.5 cursor-pointer" onClick={() => onTabChange('lobby')}>
             <img src="/logo.png" alt="MoneyGame" className="w-8 h-8 rounded-lg object-contain shadow-2xs border border-slate-200" />
-            <div>
+            <div className="hidden sm:block">
               <span className="font-extrabold text-slate-900 tracking-wider text-sm sm:text-base uppercase">
                 MoneyGame
               </span>
@@ -42,7 +42,8 @@ export const UserNavbar: React.FC<UserNavbarProps> = ({
           </div>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden sm:flex items-center gap-1.5">
+          <nav className="hidden xl:flex items-center gap-1.5 whitespace-nowrap">
+            <button type="button" onClick={() => onTabChange('trading')} className={`px-3 py-2 rounded-lg text-xs font-bold ${currentTab === 'trading' ? 'bg-emerald-100 text-emerald-900' : 'text-slate-600'}`}>CricTrade</button>
             <button
               onClick={() => onTabChange('lobby')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition ${
@@ -145,8 +146,9 @@ export const UserNavbar: React.FC<UserNavbarProps> = ({
         </div>
       </div>
 
-      {/* Mobile Bottom Navigation (Streamlined 4 tabs) */}
-      <div className="sm:hidden border-t border-slate-200 bg-white px-2 py-2 flex items-center justify-around">
+      {/* Compact navigation for mobile and tablet widths. */}
+      <div className="xl:hidden border-t border-slate-200 bg-white px-2 py-2 flex items-center justify-around">
+        <button type="button" onClick={() => onTabChange('trading')} className={`py-1 px-2 text-xs font-semibold rounded-lg ${currentTab === 'trading' ? 'bg-emerald-100 text-emerald-900' : 'text-slate-500'}`}>CricTrade</button>
         <button
           onClick={() => onTabChange('lobby')}
           className={`flex items-center gap-1 py-1 px-2 text-xs font-semibold rounded-lg ${

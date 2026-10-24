@@ -6,6 +6,7 @@ import '../core/network/socket_service.dart';
 import '../core/storage/secure_storage_service.dart';
 import '../core/services/notification_sound_service.dart';
 import 'lobby/lobby_screen.dart';
+import 'trading/trading_screen.dart';
 import 'wallet/add_cash_screen.dart';
 import 'wallet/withdraw_screen.dart';
 
@@ -418,6 +419,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onBalanceRefresh: _refreshProfile,
           ),
           _buildWalletTab(),
+          _currentIndex == 2 ? TradingScreen(userId: _user.id) : const SizedBox.shrink(),
         ],
       ),
       bottomNavigationBar: Container(
@@ -438,6 +440,7 @@ class _HomeScreenState extends State<HomeScreen> {
           unselectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
           elevation: 0,
           items: const [
+            // Keep the existing lobby/wallet indices stable.
             BottomNavigationBarItem(
               icon: Icon(Icons.casino_outlined),
               activeIcon: Icon(Icons.casino),
@@ -448,6 +451,7 @@ class _HomeScreenState extends State<HomeScreen> {
               activeIcon: Icon(Icons.account_balance_wallet),
               label: 'My Wallet',
             ),
+            BottomNavigationBarItem(icon: Icon(Icons.candlestick_chart_outlined), activeIcon: Icon(Icons.candlestick_chart), label: 'CricTrade'),
           ],
         ),
       ),

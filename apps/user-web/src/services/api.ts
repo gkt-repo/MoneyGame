@@ -128,6 +128,9 @@ export interface NotificationItem {
 
 
 class UserApiService {
+  async trading<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(`/trading${path}`, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) });
+  }
   private token: string | null = null;
 
   constructor() {
@@ -200,7 +203,7 @@ class UserApiService {
         this.setToken(null);
         window.location.reload();
       }
-      throw new Error(data.error || `HTTP error ${response.status}`);
+      throw Object.assign(new Error(data.error || `HTTP error ${response.status}`), { code: data.code, status: response.status });
     }
 
     if (!isJson && response.status !== 204) {

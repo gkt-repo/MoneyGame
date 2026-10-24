@@ -14,6 +14,7 @@
     "test:payment": "node scripts/test-runner.cjs payment",
     "test": "node scripts/test-runner.cjs",
     "test:game": "node scripts/test-runner.cjs game",
+    "probe:cricket-feed": "node scripts/probe-cricket-feed.cjs",
     "test:security": "node scripts/test-runner.cjs security"
   },
   "keywords": [],

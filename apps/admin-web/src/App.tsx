@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { TradingAdminView } from './views/TradingAdminView';
 import { adminApi, AdminUser, DashboardStats, DepositItem, WithdrawalItem } from './services/api';
 import { AdminLogin } from './components/AdminLogin';
 import { AdminNavbar, AdminTab } from './components/AdminNavbar';
@@ -139,6 +140,7 @@ export const App: React.FC = () => {
         )}
         {currentTab === 'feedback' && <FeedbackView />}
         {currentTab === 'settings' && <SettingsView />}
+        {currentTab === 'trading' && <TradingAdminView />}
       </main>
 
       {/* Global User Profile Modal */}
