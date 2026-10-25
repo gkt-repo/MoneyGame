@@ -29,6 +29,8 @@ export interface TradingMarketDTO {
   source: string;
   mode: 'TEST' | 'CASH';
   status: TradingStatus;
+  // Either team's quoted probability is above 90%; exits still require a fresh OPEN quote.
+  entryClosed: boolean;
   reason: string;
   rulesVersion: string;
   modelVersion: string;

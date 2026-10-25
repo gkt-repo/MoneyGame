@@ -14,8 +14,10 @@ import { serializable } from '../../transaction';
 import { moveWallet } from '../../wallet-ledger';
 import {
   allocate,
+  assertEntryAllowed,
   automaticCandleInterval,
   candles,
+  entryClosed,
   integer,
   LIMIT,
   MODEL,
@@ -198,6 +200,7 @@ export class TradingService {
       source: m.source,
       mode: m.mode,
       status: expired ? 'SUSPENDED' : m.status,
+      entryClosed: q ? entryClosed(q.price0) : false,
       reason: expired ? 'Waiting for a changed score; last quote expired' : m.reason,
       rulesVersion: m.rulesVersion,
       modelVersion: m.modelVersion,
@@ -219,13 +222,29 @@ export class TradingService {
         : null,
     };
   }
-  async list() {
+  async list(where: Prisma.TradingMarketWhereInput = {}) {
     const ms = await prisma.tradingMarket.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       take: 100,
       include: { quotes: { orderBy: { sequence: 'desc' }, take: 1 } },
     });
     return ms.map((m) => this.marketDTO(m));
+  }
+  async listForUser(userId: string, positions = false) {
+    const realSources = { source: { in: ['ESPN', 'VERIFIED'] } };
+    if (positions) {
+      return this.list({ ...realSources, accounts: { some: { userId, deposit: { gt: 0 } } } });
+    }
+    const now = new Date();
+    const markets = await this.list({
+      ...realSources,
+      status: 'OPEN',
+      adminPaused: false,
+      feedReceivedAt: { gte: new Date(now.getTime() - 120000) },
+      quotes: { some: { expiresAt: { gt: now } } },
+    });
+    return markets.filter((m) => m.status === 'OPEN');
   }
   async snapshot(id: string, userId: string): Promise<TradingSnapshotDTO> {
     return serializable(async (tx) => {
@@ -349,6 +368,7 @@ export class TradingService {
       });
       if (!liveQuote || liveQuote.expiresAt.getTime() <= Date.now())
         throw new TradingError('PRICE_CHANGED', 'Wait for a fresh quote before funding', 409);
+      assertEntryAllowed(liveQuote.price0);
       this.assertCash(m);
       const a = await tx.tradingAccount.upsert({
         where: { marketId_userId: { marketId: id, userId } },
@@ -419,6 +439,7 @@ export class TradingService {
           'Quote changed or expired. Refresh and confirm the new price.',
           409,
         );
+      if (input.side === 'BUY') assertEntryAllowed(q.price0);
       const a = await tx.tradingAccount.findUnique({ where: { marketId_userId: { marketId: id, userId } } });
       if (!a || a.receipt) throw new TradingError('NO_ACCOUNT', 'Add match credits before trading');
       const p = await tx.tradingPosition.upsert({

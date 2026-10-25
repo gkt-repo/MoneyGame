@@ -210,6 +210,7 @@ export function TradingView({
   const [now, setNow] = useState(Date.now()),
     [loading, setLoading] = useState(true);
   const epoch = useRef(0),
+    listEpoch = useRef(0),
     inflight = useRef(false),
     requestBusy = useRef(false);
   const storageKey = `crictrade-pending:${userId}`;
@@ -220,16 +221,26 @@ export function TradingView({
     } catch {}
   }, [storageKey]);
   const loadMarkets = useCallback(async () => {
+    const current = ++listEpoch.current;
     try {
-      const list = await userApi.trading<TradingMarketDTO[]>('/markets');
+      const response = await userApi.trading<TradingMarketDTO[]>(
+        page === 'positions' ? '/markets?view=positions' : '/markets',
+      );
+      if (current !== listEpoch.current) return;
+      const list = response.filter(
+        (m) =>
+          ['ESPN', 'VERIFIED'].includes(m.source) &&
+          (page === 'positions' ||
+            (m.status === 'OPEN' && !!m.quote && new Date(m.quote.expiresAt).getTime() > Date.now())),
+      );
       setMarkets(list);
       setMarketId((id) => (list.some((m) => m.id === id) ? id : ''));
     } catch (e: any) {
-      setError(e.message);
+      if (current === listEpoch.current) setError(e.message);
     } finally {
-      setLoading(false);
+      if (current === listEpoch.current) setLoading(false);
     }
-  }, []);
+  }, [page]);
   const refresh = useCallback(async () => {
     if (!marketId || inflight.current) return;
     inflight.current = true;
@@ -250,9 +261,14 @@ export function TradingView({
     }
   }, [marketId, outcome]);
   useEffect(() => {
+    setMarkets([]);
+    setLoading(true);
     void loadMarkets();
     const timer = window.setInterval(() => void loadMarkets(), 30000);
-    return () => clearInterval(timer);
+    return () => {
+      listEpoch.current++;
+      clearInterval(timer);
+    };
   }, [loadMarkets]);
   useEffect(() => {
     epoch.current++;
@@ -313,6 +329,8 @@ export function TradingView({
     q = m?.quote,
     a = activeSnapshot?.account;
   const open = m?.status === 'OPEN' && !!q && new Date(q.expiresAt).getTime() > now;
+  const entryClosed = !!m?.entryClosed || (!!q && Math.max(q.price0, 1000 - q.price0) > 900);
+  const canEnter = open && !entryClosed;
   const priceFor = (o: number) => (q ? (o === 0 ? q.price0 : 1000 - q.price0) : 0);
   const position = a?.positions.find((p) => p.outcome === outcome);
   const orderPosition = a?.positions.find((p) => p.outcome === orderOutcome);
@@ -327,13 +345,14 @@ export function TradingView({
   const positions = a?.positions.filter((p) => p.quantity > 0) ?? [];
   const signed = (n: number) => `${n > 0 ? '+' : ''}${credits(n)} cr`;
   function ticket(o: 0 | 1, exit = false) {
+    if (!open || (!exit && !canEnter)) return;
     setOrderOutcome(o);
     setSide(exit ? 'SELL' : 'BUY');
     setQuantity(String(exit ? (a?.positions.find((p) => p.outcome === o)?.quantity ?? 0) : 10));
     setDialog('order');
   }
   function submitOrder() {
-    if (!m || !q || !valid || !open) return;
+    if (!m || !q || !valid || !open || (side === 'BUY' && !canEnter)) return;
     void execute({
       path: `/markets/${m.id}/orders`,
       body: { requestId: requestId(), quoteId: q.id, outcome: orderOutcome, side, quantity: count },
@@ -367,7 +386,7 @@ export function TradingView({
               className="ct-credit-pill"
               aria-label="Add credits"
               onClick={() => setDialog('fund')}
-              disabled={!open || busy || !!pending}
+              disabled={!canEnter || busy || !!pending}
             >
               <span>
                 <small>Match credits</small>
@@ -444,7 +463,7 @@ export function TradingView({
             <span className={open ? 'ct-live' : ''}>
               {open ? '● Live' : (m?.status ?? (marketId ? 'Loading' : ''))}
             </span>
-            {m?.mode === 'TEST' && <small>Test market</small>}
+            {m?.mode === 'TEST' && <small>Test credits</small>}
             <button
               className="ct-info"
               aria-label="Market details and rules"
@@ -455,14 +474,27 @@ export function TradingView({
           </div>
         </div>
         {!markets.length && (
-          <div className="ct-empty">{loading ? 'Loading matches…' : 'No matches available yet.'}</div>
+          <div className="ct-empty">
+            {loading
+              ? 'Loading matches…'
+              : page === 'positions'
+                ? 'No real-match positions yet.'
+                : 'No live T20 matches available for trading right now. This list updates automatically.'}
+          </div>
         )}
         {!!markets.length && !marketId && (
           <div className="ct-empty">
-            Choose a match to add credits and trade. Credits belong only to that match.
+            {page === 'positions'
+              ? 'Choose a match to view your positions and settlement.'
+              : 'Choose a live match to add credits and trade. Credits belong only to that match.'}
           </div>
         )}
         {marketId && !snapshot && <div className="ct-empty">Loading market…</div>}
+        {entryClosed && m?.status !== 'SETTLED' && m?.status !== 'VOIDED' && (
+          <p className="ct-entry-note">
+            Win probability above 90% · New buys and funding paused. Exits require a valid quote.
+          </p>
+        )}
         {m && a && activeSnapshot && (
           <>
             {page === 'home' ? (
@@ -505,10 +537,10 @@ export function TradingView({
                     <small>{q ? `Updated ${clock(q.publishedAt)}` : 'Awaiting update'}</small>
                     <button
                       className="ct-primary"
-                      disabled={!open || busy || !!pending}
+                      disabled={!canEnter || busy || !!pending}
                       onClick={() => ticket(outcome)}
                     >
-                      {open ? `Buy ${teamFor(outcome)}` : 'Trading paused'}
+                      {!open ? 'Trading paused' : entryClosed ? 'New buys paused' : `Buy ${teamFor(outcome)}`}
                     </button>
                   </div>
                 </div>
@@ -672,6 +704,7 @@ export function TradingView({
               <>
                 <h2>Add credits</h2>
                 <p>{m?.title} · Credits for this match only</p>
+                <p>New buys and funding pause whenever either team’s win probability exceeds 90%.</p>
                 <p>₹1 = 10 match credits</p>
                 <label>
                   Amount (₹)
@@ -695,7 +728,7 @@ export function TradingView({
                 <button
                   className="ct-primary"
                   disabled={
-                    !open ||
+                    !canEnter ||
                     busy ||
                     !!pending ||
                     !Number.isFinite(Number(funding)) ||
@@ -756,7 +789,7 @@ export function TradingView({
                 </dl>
                 <button
                   className="ct-primary"
-                  disabled={!open || !valid || busy || !!pending}
+                  disabled={!open || (side === 'BUY' && !canEnter) || !valid || busy || !!pending}
                   onClick={submitOrder}
                 >
                   {side === 'BUY' ? 'Confirm buy' : 'Confirm exit'}
@@ -767,6 +800,11 @@ export function TradingView({
             {dialog === 'rules' && (
               <>
                 <h2>Market details</h2>
+                <p>
+                  New buys and funding pause for both teams when either team’s quoted win probability exceeds
+                  90%. Entry resumes when both return to 90% or below. Existing positions can still exit at a
+                  valid quote.
+                </p>
                 <p>{m?.reason}</p>
                 <p>
                   Prices are estimated win chances. Candles use observed prices: per over, then one minute in

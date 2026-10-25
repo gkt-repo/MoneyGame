@@ -114,13 +114,26 @@ class _TradingScreenState extends State<TradingScreen> {
       ? '${e.response!.data['error']}'
       : 'Unable to reach CricTrade. Please retry.';
   Future<void> _loadMarkets() async {
+    final tab = _tab;
     try {
-      final list = (await widget.request('/markets') as List)
-          .map(
-            (m) => TradingMarket.fromJson(Map<String, dynamic>.from(m as Map)),
-          )
-          .toList();
-      if (!mounted) return;
+      final list =
+          (await widget.request(
+                    tab == 'My positions'
+                        ? '/markets?view=positions'
+                        : '/markets',
+                  )
+                  as List)
+              .map(
+                (m) =>
+                    TradingMarket.fromJson(Map<String, dynamic>.from(m as Map)),
+              )
+              .where(
+                (m) =>
+                    ['ESPN', 'VERIFIED'].contains(m.source) &&
+                    (tab == 'My positions' || m.open),
+              )
+              .toList();
+      if (!mounted || tab != _tab) return;
       setState(() {
         _markets = list;
         if (!list.any((m) => m.id == _marketId)) {
@@ -132,7 +145,7 @@ class _TradingScreenState extends State<TradingScreen> {
       });
       if (_snapshot == null) _load();
     } catch (e) {
-      if (mounted) {
+      if (mounted && tab == _tab) {
         setState(() {
           _error = _message(e);
           _loading = false;
@@ -230,7 +243,12 @@ class _TradingScreenState extends State<TradingScreen> {
 
   Future<void> _ticket(String side, {int? selectedOutcome}) async {
     final s = _snapshot;
-    if (s == null || !s.market.open || _pending != null) return;
+    if (s == null ||
+        !s.market.open ||
+        (side == 'BUY' && !s.market.canEnter) ||
+        _pending != null) {
+      return;
+    }
     final m = s.market,
         outcome = selectedOutcome ?? _outcome,
         p = s.positions
@@ -345,7 +363,7 @@ class _TradingScreenState extends State<TradingScreen> {
 
   Future<void> _fund() async {
     final m = _snapshot?.market;
-    if (m == null || !m.open) return;
+    if (m == null || !m.canEnter) return;
     final controller = TextEditingController(text: '1000');
     await showDialog<void>(
       context: context,
@@ -363,6 +381,9 @@ class _TradingScreenState extends State<TradingScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text('${m.title} · Credits for this match only'),
+                const Text(
+                  'New buys and funding pause whenever either team’s win probability exceeds 90%.',
+                ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: controller,
@@ -469,7 +490,7 @@ class _TradingScreenState extends State<TradingScreen> {
       title: const Text('Market details'),
       content: SingleChildScrollView(
         child: Text(
-          '${_snapshot?.market.reason ?? ''}\n\n₹1 = 10 match credits. Remaining principal returns at settlement. Positive net credits share the actual loss pool; profits are not guaranteed. Voided matches and pools without positive participants refund deposits. No fees.\n\nCandles use observed prices: per over, then one minute in the last three overs. Drag the price axis vertically to change candle height; drag the time axis horizontally to change spacing. Double-tap to reset.',
+          '${_snapshot?.market.reason ?? ''}\n\n₹1 = 10 match credits. Remaining principal returns at settlement. Positive net credits share the actual loss pool; profits are not guaranteed. Voided matches and pools without positive participants refund deposits. No fees.\n\nNew buys and funding pause for both teams when either team’s quoted win probability exceeds 90%. Entry resumes when both return to 90% or below. Existing positions can still exit at a valid quote.\n\nCandles use observed prices: per over, then one minute in the last three overs. Drag the price axis vertically to change candle height; drag the time axis horizontally to change spacing. Double-tap to reset.',
         ),
       ),
       actions: [
@@ -520,7 +541,7 @@ class _TradingScreenState extends State<TradingScreen> {
             Padding(
               padding: const EdgeInsets.only(right: 16),
               child: OutlinedButton(
-                onPressed: m == null || !m.open || _busy || _pending != null
+                onPressed: m == null || !m.canEnter || _busy || _pending != null
                     ? null
                     : _fund,
                 style: OutlinedButton.styleFrom(
@@ -566,7 +587,15 @@ class _TradingScreenState extends State<TradingScreen> {
               children: ['Home', 'My positions']
                   .map(
                     (tab) => InkWell(
-                      onTap: () => setState(() => _tab = tab),
+                      onTap: () {
+                        if (_tab == tab) return;
+                        setState(() {
+                          _tab = tab;
+                          _markets = [];
+                          _loading = true;
+                        });
+                        _loadMarkets();
+                      },
                       child: Container(
                         margin: const EdgeInsets.only(left: 20),
                         padding: const EdgeInsets.symmetric(
@@ -626,9 +655,13 @@ class _TradingScreenState extends State<TradingScreen> {
                 ),
               if (_loading) const Center(child: CircularProgressIndicator()),
               if (!_loading && _markets.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(40),
-                  child: Text('No matches available yet.'),
+                Padding(
+                  padding: const EdgeInsets.all(40),
+                  child: Text(
+                    _tab == 'My positions'
+                        ? 'No real-match positions yet.'
+                        : 'No live T20 matches available for trading right now. This list updates automatically.',
+                  ),
                 ),
               if (_markets.isNotEmpty)
                 Row(
@@ -669,7 +702,7 @@ class _TradingScreenState extends State<TradingScreen> {
                       const Padding(
                         padding: EdgeInsets.only(left: 12),
                         child: Text(
-                          'Test market',
+                          'Test credits',
                           style: TextStyle(fontSize: 10, color: _muted),
                         ),
                       ),
@@ -685,15 +718,28 @@ class _TradingScreenState extends State<TradingScreen> {
                   ],
                 ),
               if (!_loading && _markets.isNotEmpty && _marketId == null)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 40),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 40),
                   child: Text(
-                    'Choose a match to add credits and trade. Credits belong only to that match.',
-                    style: TextStyle(color: _muted),
+                    _tab == 'My positions'
+                        ? 'Choose a match to view your positions and settlement.'
+                        : 'Choose a live match to add credits and trade. Credits belong only to that match.',
+                    style: const TextStyle(color: _muted),
                   ),
                 ),
               if (_marketId != null && s == null)
                 const Center(child: CircularProgressIndicator()),
+              if (m != null &&
+                  m.entryClosed &&
+                  m.status != 'SETTLED' &&
+                  m.status != 'VOIDED')
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 18),
+                  child: Text(
+                    'Win probability above 90% · New buys and funding paused. Exits require a valid quote.',
+                    style: TextStyle(color: _muted, fontSize: 11),
+                  ),
+                ),
               if (s != null && m != null) ...[
                 if (_tab == 'Home') ...[
                   Row(
@@ -1029,7 +1075,7 @@ class _TradingScreenState extends State<TradingScreen> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                   child: FilledButton(
-                    onPressed: m.open && !_busy && _pending == null
+                    onPressed: m.canEnter && !_busy && _pending == null
                         ? () => _ticket('BUY')
                         : null,
                     style: FilledButton.styleFrom(
@@ -1038,7 +1084,11 @@ class _TradingScreenState extends State<TradingScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 15),
                     ),
                     child: Text(
-                      m.open ? 'Buy ${m.team(_outcome)}' : 'Trading paused',
+                      !m.open
+                          ? 'Trading paused'
+                          : m.entryClosed
+                          ? 'New buys paused'
+                          : 'Buy ${m.team(_outcome)}',
                     ),
                   ),
                 ),

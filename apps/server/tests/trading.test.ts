@@ -6,6 +6,7 @@ import {
   allocate,
   automaticCandleInterval,
   candles,
+  entryClosed,
   parseScore,
   pollInterval,
   probability,
@@ -34,6 +35,15 @@ async function quote(id: string, p: number) {
   return q.id;
 }
 async function main() {
+  const startupWorker = new TradingWorker(async () => ({ sports: [] }));
+  await startupWorker.start();
+  startupWorker.stop();
+  assert.equal(await prisma.tradingMarket.count({ where: { source: 'SIMULATION' } }), 0,
+    'Worker startup must not seed a simulation into an empty database');
+  assert.equal(entryClosed(900), false, 'Exactly 90% permits entry');
+  assert.equal(entryClosed(100), false, 'Exactly 90% for the other team permits entry');
+  assert.equal(entryClosed(901), true);
+  assert.equal(entryClosed(99), true);
   assert.equal(automaticCandleInterval({ ...state, balls: 101 }), 'over');
   assert.equal(automaticCandleInterval({ ...state, balls: 102 }), '1m');
   assert.equal(automaticCandleInterval({ ...state, innings: 1, balls: 102, target: null }), '1m');
@@ -173,6 +183,82 @@ async function main() {
   await service.fund(voided, a.id, 10000, 'fund-void');
   await service.settle(voided, null, 'Abandoned');
   assert.equal((await service.snapshot(voided, a.id)).account.receipt!.payout, 10000);
+  // The cutoff uses the latest published price, independent of overs, and resumes
+  // as soon as neither team exceeds 90%. It must not block recovery or valid exits.
+  const cutoff = await service.createSimulation();
+  await service.fund(cutoff, a.id, 10000, 'cutoff-initial-fund');
+  const earlyOrder = {
+    ...buy,
+    quoteId: await quote(cutoff, 600),
+    quantity: 2,
+    requestId: 'cutoff-initial-buy',
+  };
+  await service.trade(cutoff, a.id, earlyOrder);
+  const entryError = (e: any) => e.code === 'ENTRY_CLOSED' && e.status === 409;
+  for (const rate of [900, 901, 100, 99, 500]) {
+    const quoteId = await quote(cutoff, rate);
+    const before = await service.snapshot(cutoff, a.id);
+    const closed = rate > 900 || rate < 100;
+    assert.equal(before.market.entryClosed, closed);
+    assert.equal(before.market.status, 'OPEN', 'An entry cutoff does not pause exits');
+    if (closed) {
+      await service.fund(cutoff, a.id, 10000, 'cutoff-initial-fund');
+      await service.trade(cutoff, a.id, earlyOrder);
+      await assert.rejects(service.fund(cutoff, a.id, 1000, `cutoff-fund-${rate}`), entryError);
+      await assert.rejects(service.fund(cutoff, b.id, 1000, `cutoff-new-${rate}`), entryError);
+      for (const outcome of [0, 1] as const) {
+        await assert.rejects(
+          service.trade(cutoff, a.id, {
+            ...earlyOrder,
+            quoteId,
+            outcome,
+            requestId: `cutoff-buy-${rate}-${outcome}`,
+          }),
+          entryError,
+        );
+      }
+      const after = await service.snapshot(cutoff, a.id);
+      assert.deepEqual(
+        after.account,
+        before.account,
+        'Rejected orders/retries cannot change credit balances',
+      );
+      assert.equal(after.executions.length, before.executions.length);
+      assert.equal((await service.snapshot(cutoff, b.id)).account.deposit, 0);
+      await service.trade(cutoff, a.id, {
+        ...earlyOrder,
+        quoteId,
+        side: 'SELL',
+        quantity: 1,
+        requestId: `cutoff-exit-${rate}`,
+      });
+    } else {
+      await service.fund(cutoff, a.id, 1000, `cutoff-fund-${rate}`);
+      await service.trade(cutoff, a.id, {
+        ...earlyOrder,
+        quoteId,
+        quantity: 1,
+        requestId: `cutoff-buy-${rate}`,
+      });
+    }
+  }
+  const staleExitQuote = await quote(cutoff, 950);
+  await prisma.tradingQuote.update({ where: { id: staleExitQuote }, data: { expiresAt: new Date(0) } });
+  await assert.rejects(
+    service.trade(cutoff, a.id, {
+      ...earlyOrder,
+      side: 'SELL',
+      quantity: 1,
+      quoteId: staleExitQuote,
+      requestId: 'cutoff-stale-exit',
+    }),
+    /expired/,
+  );
+  await service.publish(cutoff, { ...state, runs: state.target! });
+  await assert.rejects(
+    service.trade(cutoff, a.id, { ...earlyOrder, side: 'SELL', quantity: 1, requestId: 'cutoff-ended-exit' }),
+    /paused/,
+  );
   const race = await service.createSimulation();
   await service.fund(race, a.id, 1000, 'fund-race');
   const rq = await quote(race, 600);
@@ -216,7 +302,19 @@ async function main() {
     requests++;
     return feed;
   });
+  const originalLive = feed.sports[0].leagues[0].events[0];
+  feed.sports[0].leagues[0].events.push({
+    ...originalLive,
+    id: 'old-result',
+    status: 'post',
+    summary: 'Result',
+  });
   await worker.tick();
+  assert.equal(
+    await prisma.tradingMarket.count({ where: { id: 'espn-old-result' } }),
+    0,
+    'Completed feed events are not discovered as new trading matches',
+  );
   assert.equal(requests, 1);
   await worker.tick();
   assert.equal(requests, 1, 'Poller reuses cached schedule');
@@ -273,6 +371,10 @@ async function main() {
   const eq = await quote(escrow, 600);
   await service.trade(escrow, a.id, { ...buy, quoteId: eq, requestId: 'cash-buy-a' });
   await service.trade(escrow, b.id, { ...buy, quoteId: eq, outcome: 1, requestId: 'cash-buy-b' });
+  await quote(escrow, 901);
+  const cashBeforeCutoff = await prisma.wallet.findUniqueOrThrow({ where: { userId: a.id } });
+  await assert.rejects(service.fund(escrow, a.id, 1000, 'cash-cutoff-fund'), entryError);
+  assert.deepEqual(await prisma.wallet.findUniqueOrThrow({ where: { userId: a.id } }), cashBeforeCutoff);
   assert.equal((await prisma.wallet.findUniqueOrThrow({ where: { userId: a.id } })).lockedBalance, 1000);
   await prisma.$executeRawUnsafe(
     `CREATE TRIGGER reject_trading_payout BEFORE UPDATE OF balance ON Wallet WHEN NEW.userId = '${b.id}' BEGIN SELECT RAISE(ABORT, 'fixture payout failure'); END`,

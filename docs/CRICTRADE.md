@@ -5,10 +5,11 @@ Implemented 24 October 2026. The backend, React user screen, Flutter user screen
 ## What is available
 
 - A CricTrade navigation tab in both user clients and admin web. User clients replace the MoneyGame header with match credits, Withdraw and a + action. Withdraw sits to the left of the credit button.
-- Match discovery, a shared simulated IND–NZ chase, supported live T20 snapshots, score/target/overs, quote timestamps and market status.
+- The Home match picker shows supported real T20 matches currently available for trading, with fresh quotes and a recently observed feed. Simulations, finished matches, paused matches and stale quotes are excluded. If none are available, it shows an empty state and refreshes automatically. My positions lists only the caller's funded real matches, retaining paused/finished matches and their settlement receipts.
 - Two user pages: Home and My positions. Home has team selection, current prices, a candlestick chart and Buy. Candle intervals switch automatically from sampled overs to one minute at 18 legal balls remaining in either innings. No interval selector, chart-style selector or zoom slider.
 - Players explicitly choose a match before funding or trading. Funding/conversion opens from the header credit button and names the selected match; switching matches loads that match's separate balance and positions. Team selection is a compact horizontal rate row (`IND 60.00 | NZ 40.00`), with no duplicate win-percentage label. Prices retain the existing 0.1-credit precision, displayed with two decimal places.
 - Whole-share buys have an order ticket; owned shares are managed through Exit position, including partial exits. There is no standalone sell/short action. Confirmation and changed/expired quote rejection are preserved.
+- New buys and additional funding pause for **both teams whenever either team's published win probability exceeds 90%**, in either innings. Exactly 90% permits entry; entry resumes when both teams return to 90% or below. The server checks the latest quote inside the funding/order transaction, before changing any balances. Existing positions can still exit at valid quotes. There is no over-based entry cutoff or artificial time-decay charge.
 - My positions shows average entry, last price, invested/current values and green/red credit P&L. Order history and settlement receipts are collapsed. Market rules are behind an information action. Drag the price axis vertically to scale candle height, or the time axis horizontally to scale spacing; double-click/tap resets the axis.
 - Persisted request IDs and retry recovery, authenticated ownership checks, integer accounting and serializable mutations.
 - Admin simulation creation, pause/resume, result confirmation and void/refund with a recorded actor and reason.
@@ -40,6 +41,8 @@ Funding is capped at ₹100,000 equivalent per account per match; orders and eac
 
 The worker requests the existing ESPN cricket scoreboard once per shared polling cycle, regardless of viewer count. A database lease elects one polling process. Normal cadence is 60 seconds, accelerating to 5 seconds when a supported innings has 1–18 legal balls remaining. Failures use exponential backoff and respect longer provider `Retry-After` values. `CRICTRADE_ESPN_ENABLED=false` disables external polling while simulations continue.
 
+Prices recalculate on changed score snapshots, including changes within an over; per-over candles group those observed prices rather than limiting price updates to over ends. Simulation advances one delivery approximately every ten seconds. The probability cutoff does not change polling, chart intervals or pricing. Because it uses the published quote (0.1-percentage-point precision), it cannot detect a threshold crossing before the feed/model reports it.
+
 For a four-hour match with 30 minutes in fast cadence, the estimate is `210 + 360 = 570` upstream calls, plus discovery/retries. This is a budget estimate, not a verified free allowance. Existing sports-score polling elsewhere in MoneyGame has its own requests. Client refreshes use this backend's persisted data rather than making ESPN calls themselves.
 
 The adapter requires supported 20-over states and an explicit chase target. It suspends unsupported/reduced-overs inputs, interruptions, terminal innings, score regressions and revised targets. Corrections require operator review. A unique provider winner must appear twice before automatic test settlement; ambiguous results require admin resolution. Super Over execution and DLS pricing are not implemented.
@@ -66,7 +69,8 @@ All routes require authenticated users or administrators. `/api/trading/markets/
 
 | Method | Route below `/api` | Purpose |
 | --- | --- | --- |
-| GET | `/trading/markets` | Latest 100 markets |
+| GET | `/trading/markets` | Up to 100 real-feed markets with OPEN status, a valid quote and feed observation within two minutes |
+| GET | `/trading/markets?view=positions` | Caller's funded real matches, including paused/settled matches; simulations excluded |
 | GET | `/trading/markets/:id` | Account and market snapshot |
 | GET | `/trading/markets/:id/candles?outcome=0&interval=auto` | Up to 3,000 observed quotes; `auto` selects over/1m from the latest state; optional `before` in epoch milliseconds |
 | POST | `/trading/markets/:id/fund` | `{amount, requestId}`; amount in stored units |
@@ -104,7 +108,9 @@ cd ../..
 npm run dev:server
 ```
 
-In separate terminals, run `npm run dev:user-web` and `npm run dev:admin-web`, or `flutter run` from `apps/user-app`. Sign in with existing accounts and open CricTrade. Startup creates a simulation if none is active; admin web can create another after it finishes. Simulated deliveries advance every ten seconds without bots or user price discovery.
+In separate terminals, run `npm run dev:user-web` and `npm run dev:admin-web`, or `flutter run` from `apps/user-app`. Sign in with existing accounts and open CricTrade. Startup discovers supported live real matches without creating a simulation. Real matches still use test credits. Admin simulation fixtures remain available for development and existing records are preserved, but they are hidden from both user pickers. Existing simulations continue their ten-second replay so their accounts can settle.
+
+A read-only feed check on 25 October 2026 at 10:18 IST found no supported live T20 match. New Zealand A v India A was live but was a multi-innings match, outside the current adapter/model. Availability changes with the provider feed; that check does not establish a deployed backend's state.
 
 The new migration is `20261024000000_crictrade` in both migration directories. PostgreSQL deployments must use the repository's PostgreSQL schema/migration selection in `docker-entrypoint.sh`; do not apply SQLite migrations to PostgreSQL. Database changes during development verification were restricted to disposable test databases.
 
@@ -127,5 +133,7 @@ SQLite migrations were exercised against fresh and upgraded temporary databases.
 Browser checks use mocked API responses against the real local React apps: desktop/mobile chart rendering, automatic interval transitions, axis gestures, replacement header, funding, buy/exit confirmation, profit/loss positions, and admin pause/resume/settle. Flutter tests cover independent axis gestures and funding/buy/exit interactions with a fake API. These complement backend integration tests; they do not establish live-feed accuracy or production performance.
 
 The 25 October match-selection update additionally checks compact rates, disabled funding before choosing a match, independent balances when switching matches, locked running-match withdrawals, blocked test-credit cash-outs, and settled-cash navigation to the existing wallet withdrawal screen. This navigation does not create another settlement transaction.
+
+Probability-cutoff checks cover both teams, exact 90% boundaries, reopening, existing and new account funding rejection, both BUY outcomes, recovery of successful pre-cutoff requests, unchanged cash balances on rejection, valid exits and expired/finished-market exit rejection. The API exposes `entryClosed` separately from market status so a cutoff does not imply that exits are paused.
 
 Before live cash release: integrate and measure a suitable provider, validate the probability model, finalize the published product rules, implement cash-specific client funding flows, and qualify settlement at the intended pool size. The other lobby/profile/invitation/29 plan remains deferred as requested.

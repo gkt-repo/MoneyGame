@@ -173,6 +173,11 @@
 .ct-live {
   color: var(--ct-green);
 }
+.ct-entry-note {
+  margin: 0 0 18px;
+  color: var(--ct-muted);
+  font-size: 12px;
+}
 .crictrade .ct-info {
   border: 0;
   padding: 4px;

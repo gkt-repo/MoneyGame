@@ -16,7 +16,7 @@ void main() {
         'title': 'IND vs NZ',
         'team0': 'India',
         'team1': 'NZ',
-        'source': 'SIMULATION',
+        'source': 'ESPN',
         'status': 'OPEN',
         'mode': 'TEST',
         'reason': 'Fixture match',
@@ -41,7 +41,17 @@ void main() {
       var balance = 0, deposit = 0, shares = 0, orders = 0, withdrawals = 0;
       final requestIds = <String>[];
       Future<dynamic> request(String path, {Map<String, dynamic>? body}) async {
-        if (path == '/markets') return [market];
+        if (path == '/markets' || path == '/markets?view=positions') {
+          return [
+            market,
+            {
+              ...market,
+              'id': 'simulation',
+              'title': 'Hidden simulation',
+              'source': 'SIMULATION',
+            },
+          ];
+        }
         if (path.contains('/candles')) {
           return [
             {
@@ -64,7 +74,10 @@ void main() {
           expect(body!['quoteId'], 'q1');
           final exit = body['side'] == 'SELL';
           shares += (exit ? -1 : 1) * (body['quantity'] as int);
-          balance += (exit ? 1 : -1) * (body['quantity'] as int) * 600;
+          balance +=
+              (exit ? 1 : -1) *
+              (body['quantity'] as int) *
+              ((market['quote'] as Map)['price0'] as int);
           orders++;
           requestIds.add(body['requestId'] as String);
           return {'success': true};
@@ -122,6 +135,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Buy India'), findsNothing);
+      expect(find.text('Hidden simulation'), findsNothing);
       expect(
         tester
             .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '0 cr'))
@@ -130,6 +144,7 @@ void main() {
       );
       await tester.tap(find.byType(DropdownButton<String>));
       await tester.pumpAndSettle();
+      expect(find.text('Hidden simulation'), findsNothing);
       await tester.tap(find.text('IND vs NZ').last);
       await tester.pumpAndSettle();
       expect(find.text('Buy India'), findsOneWidget);
@@ -159,6 +174,29 @@ void main() {
       expect(requestIds.toSet().length, 2);
       expect(find.text('Sell India'), findsNothing);
       expect(find.text('1 min candles · Auto'), findsOneWidget);
+      for (final price in [901, 900, 99, 100, 901]) {
+        (market['quote'] as Map)['price0'] = price;
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pumpAndSettle();
+        final closed = price > 900 || price < 100;
+        final buyButton = find.widgetWithText(
+          FilledButton,
+          closed ? 'New buys paused' : 'Buy India',
+        );
+        expect(
+          tester.widget<FilledButton>(buyButton).onPressed == null,
+          closed,
+        );
+        expect(
+          tester
+                  .widget<OutlinedButton>(
+                    find.widgetWithText(OutlinedButton, '9,400 cr'),
+                  )
+                  .onPressed ==
+              null,
+          closed,
+        );
+      }
       await tester.tap(find.text('My positions').first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Exit position'));
@@ -167,7 +205,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(orders, 2);
       expect(shares, 0);
-      expect(balance, 100000);
+      expect(balance, 103010);
       expect(find.text('No open positions'), findsOneWidget);
       market['status'] = 'SETTLED';
       // Even after a result, test funds must never offer cash withdrawal.

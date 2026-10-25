@@ -3,6 +3,18 @@ import { CricketState, TradingCandleDTO } from '@moneygame/shared-types';
 export const RULES = 'pooled-v1';
 export const MODEL = 'cricket-baseline-v1';
 export const LIMIT = 10_000_000; // credit tenths / nominal paise per account
+export const ENTRY_PROBABILITY_LIMIT = 900; // 90.0% on the published 0..1000 price scale
+export function entryClosed(price0: number): boolean {
+  return Math.max(price0, 1000 - price0) > ENTRY_PROBABILITY_LIMIT;
+}
+export function assertEntryAllowed(price0: number): void {
+  if (entryClosed(price0))
+    throw new TradingError(
+      'ENTRY_CLOSED',
+      'New buys and funding are paused while either team is above 90% win probability. Existing positions can still exit at a valid quote.',
+      409,
+    );
+}
 export class TradingError extends Error {
   constructor(
     public code: string,

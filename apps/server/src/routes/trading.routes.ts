@@ -27,7 +27,9 @@ tradingRouter.use(
 );
 tradingRouter.get(
   '/markets',
-  wrap(async (_req, res) => res.json(await tradingService.list())),
+  wrap(async (req, res) =>
+    res.json(await tradingService.listForUser(req.user!.id, req.query.view === 'positions')),
+  ),
 );
 tradingRouter.get(
   '/markets/:id',

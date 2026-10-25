@@ -3,6 +3,7 @@ class TradingMarket {
   final Map<String, dynamic>? quote;
   final String? feedReceivedAt;
   final int pollingMs;
+  final bool _serverEntryClosed;
   TradingMarket.fromJson(Map<String, dynamic> j)
     : id = j['id'] as String,
       title = j['title'] as String,
@@ -12,6 +13,7 @@ class TradingMarket {
       status = j['status'] as String,
       reason = j['reason'] as String,
       mode = j['mode'] as String,
+      _serverEntryClosed = j['entryClosed'] == true,
       quote = j['quote'] == null
           ? null
           : Map<String, dynamic>.from(j['quote'] as Map),
@@ -27,6 +29,10 @@ class TradingMarket {
       status == 'OPEN' &&
       quote != null &&
       DateTime.parse(quote!['expiresAt'] as String).isAfter(DateTime.now());
+  bool get entryClosed =>
+      _serverEntryClosed ||
+      (quote != null && (price(0) > 900 || price(1) > 900));
+  bool get canEnter => open && !entryClosed;
 }
 
 class TradingCandle {

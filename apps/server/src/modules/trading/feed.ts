@@ -80,12 +80,6 @@ export class TradingWorker {
   private nextReplay = 0;
   async start() {
     this.stopped = false;
-    if (
-      !(await prisma.tradingMarket.findFirst({
-        where: { source: 'SIMULATION', status: { in: ['OPEN', 'SUSPENDED'] } },
-      }))
-    )
-      await tradingService.createSimulation();
     this.schedule();
   }
   stop() {
@@ -133,7 +127,11 @@ export class TradingWorker {
           if (!event.id || !Array.isArray(event.competitors) || event.competitors.length !== 2) continue;
           const state = normalizeEvent(event);
           let existing = await prisma.tradingMarket.findUnique({ where: { id } });
-          if (!existing && !state) continue;
+          if (
+            !existing &&
+            (!state || event.status !== 'in' || !/^(Live|In Progress)$/i.test(event.summary || ''))
+          )
+            continue;
           if (!existing) {
             existing = await prisma.tradingMarket.create({
               data: {

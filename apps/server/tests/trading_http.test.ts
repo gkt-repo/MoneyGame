@@ -44,6 +44,14 @@ async function main() {
     const created = await request('/admin/trading/simulation', token(admin.id, 'ADMIN'), {});
     assert.equal(created.status, 200);
     const id = created.body.id;
+    assert.equal(
+      (await request('/trading/markets', token(a.id))).body.length,
+      0,
+      'Simulations are never advertised in the user picker',
+    );
+    assert(
+      (await request('/admin/trading/markets', token(admin.id, 'ADMIN'))).body.some((m: any) => m.id === id),
+    );
     const path = `/trading/markets/${id}`;
     assert.equal(
       (await request(path + '/fund', token(a.id), { amount: 10000, requestId: 'fund-http', userId: b.id }))
@@ -56,6 +64,7 @@ async function main() {
       'Body user ID cannot impersonate another account',
     );
     const snapshot = (await request(path, token(a.id))).body;
+    assert.equal(snapshot.market.entryClosed, false);
     assert.equal(snapshot.account.deposit, 10000);
     const order = {
       requestId: 'order-http',
@@ -76,6 +85,28 @@ async function main() {
     const bars = await request(path + '/candles?outcome=1&interval=over', token(a.id));
     assert.equal(bars.status, 200);
     assert(bars.body.length > 0);
+    await prisma.tradingQuote.update({ where: { id: order.quoteId }, data: { price0: 901 } });
+    assert.equal((await request(path, token(a.id))).body.market.entryClosed, true);
+    const lateFund = await request(path + '/fund', token(a.id), {
+      amount: 1000,
+      requestId: 'late-http-fund',
+    });
+    assert.equal(lateFund.status, 409);
+    assert.equal(lateFund.body.code, 'ENTRY_CLOSED');
+    const lateBuy = await request(path + '/orders', token(a.id), { ...order, requestId: 'late-http-buy' });
+    assert.equal(lateBuy.status, 409);
+    assert.equal(lateBuy.body.code, 'ENTRY_CLOSED');
+    assert.equal(
+      (
+        await request(path + '/orders', token(a.id), {
+          ...order,
+          side: 'SELL',
+          quantity: 1,
+          requestId: 'late-http-exit',
+        })
+      ).status,
+      200,
+    );
     const pausePath = `/admin/trading/markets/${id}/pause`;
     assert.equal(
       (await request(pausePath, token(admin.id, 'ADMIN'), { paused: true, reason: 'HTTP test pause' }))
@@ -96,6 +127,42 @@ async function main() {
     assert.equal(settled.account.receipt.payout, 10000);
     assert.equal(settled.account.receipt.mode, 'TEST');
     assert.equal((await prisma.wallet.findUniqueOrThrow({ where: { userId: a.id } })).balance, 1000);
+    const fixtures: Record<string, string> = {};
+    for (const kind of ['live', 'stale', 'expired', 'paused', 'settled']) {
+      const marketId = await tradingService.createSimulation();
+      fixtures[kind] = marketId;
+      await prisma.tradingMarket.update({
+        where: { id: marketId },
+        data: {
+          source: 'ESPN',
+          ...(kind === 'stale' ? { feedReceivedAt: new Date(0) } : {}),
+          ...(kind === 'paused' ? { status: 'SUSPENDED' } : {}),
+          ...(kind === 'settled' ? { status: 'SETTLED' } : {}),
+        },
+      });
+      if (kind === 'expired')
+        await prisma.tradingQuote.updateMany({ where: { marketId }, data: { expiresAt: new Date(0) } });
+    }
+    const liveList = (await request('/trading/markets', token(a.id))).body;
+    assert.deepEqual(
+      liveList.map((m: any) => m.id),
+      [fixtures.live],
+    );
+    assert.equal(liveList[0].mode, 'TEST', 'Real-feed markets remain test-credit markets');
+    await tradingService.fund(fixtures.live, a.id, 1000, 'fund-live-fixture');
+    await tradingService.settle(fixtures.live, null, 'Live fixture ended');
+    assert.equal((await request('/trading/markets', token(a.id))).body.length, 0);
+    const history = (await request('/trading/markets?view=positions', token(a.id))).body;
+    assert.deepEqual(
+      history.map((m: any) => m.id),
+      [fixtures.live],
+      'Own finished real matches remain accessible',
+    );
+    assert.equal(
+      (await request('/trading/markets?view=positions', token(b.id))).body.length,
+      0,
+      'Position history is scoped to the authenticated user',
+    );
     await prisma.user.update({ where: { id: b.id }, data: { status: 'BANNED' } });
     assert.equal((await request('/trading/markets', token(b.id))).status, 403);
     const paused = await tradingService.snapshot(id, a.id);
