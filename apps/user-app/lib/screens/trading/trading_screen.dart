@@ -13,6 +13,28 @@ import 'trading_chart.dart';
 const _green = Color(0xff42dfb6),
     _muted = Color(0xffa4b5cb),
     _panel = Color(0xff101c2b);
+String _teamCode(String name) =>
+    {
+      'India': 'IND',
+      'New Zealand': 'NZ',
+      'Australia': 'AUS',
+      'England': 'ENG',
+      'Pakistan': 'PAK',
+      'South Africa': 'SA',
+      'Sri Lanka': 'SL',
+      'Bangladesh': 'BAN',
+      'Afghanistan': 'AFG',
+      'West Indies': 'WI',
+    }[name] ??
+    (name.length <= 4
+        ? name.toUpperCase()
+        : name
+              .split(RegExp(r'\s+'))
+              .where((s) => s.isNotEmpty)
+              .map((s) => s[0])
+              .take(4)
+              .join()
+              .toUpperCase());
 String _credits(num n) => NumberFormat('#,##0.#').format(n / 10);
 String _rupees(num n) => '₹${NumberFormat('#,##0.00').format(n / 100)}';
 String _id() =>
@@ -23,10 +45,12 @@ String _time(String? value) => value == null
 
 class TradingScreen extends StatefulWidget {
   final String userId;
+  final VoidCallback? onWithdraw;
   final Future<dynamic> Function(String, {Map<String, dynamic>? body}) request;
   const TradingScreen({
     super.key,
     required this.userId,
+    this.onWithdraw,
     this.request = ApiClient.trading,
   });
   @override
@@ -100,9 +124,7 @@ class _TradingScreenState extends State<TradingScreen> {
       setState(() {
         _markets = list;
         if (!list.any((m) => m.id == _marketId)) {
-          _marketId =
-              list.where((m) => m.status == 'OPEN').firstOrNull?.id ??
-              list.firstOrNull?.id;
+          _marketId = null;
           _snapshot = null;
           _epoch++;
         }
@@ -175,6 +197,7 @@ class _TradingScreenState extends State<TradingScreen> {
       _busy = true;
       _pending = pending;
       _error = '';
+      _notice = '';
     });
     try {
       await _storage.write(key: _pendingKey, value: jsonEncode(pending));
@@ -339,6 +362,8 @@ class _TradingScreenState extends State<TradingScreen> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Text('${m.title} · Credits for this match only'),
+                const SizedBox(height: 12),
                 TextField(
                   controller: controller,
                   keyboardType: const TextInputType.numberWithOptions(
@@ -392,6 +417,42 @@ class _TradingScreenState extends State<TradingScreen> {
       ? const Color(0xfff87171)
       : Colors.white;
   String _signed(num n) => '${n > 0 ? '+' : ''}${_credits(n)} cr';
+  void _withdraw() {
+    final s = _snapshot;
+    if (s == null) return;
+    final receipt = s.receipt;
+    final cashSettled = receipt != null && s.market.mode == 'CASH';
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Withdraw'),
+        content: SingleChildScrollView(
+          child: Text(
+            '${s.market.title}\n\n${receipt == null
+                ? (s.market.status == 'SETTLED' || s.market.status == 'VOIDED' ? 'You have no settlement payout for this match.' : 'Credits stay locked until this match settles. After the result is confirmed, remaining principal and your share of this match’s loss pool return automatically to your wallet.')
+                : !cashSettled
+                ? 'This match used test credits. Its settlement cannot be withdrawn as money.'
+                : '${_rupees(receipt['payout'] as num)} returned to your wallet when this match settled. Your wallet shows the amount still available to withdraw.'}',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          if (cashSettled && widget.onWithdraw != null)
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                widget.onWithdraw!();
+              },
+              child: const Text('Continue to withdrawal'),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _row(String name, String value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
     child: Row(
@@ -449,10 +510,17 @@ class _TradingScreenState extends State<TradingScreen> {
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
           ),
           actions: [
+            IconButton(
+              tooltip: 'Withdraw',
+              onPressed: m == null || _busy || _pending != null
+                  ? null
+                  : _withdraw,
+              icon: const Icon(Icons.north_east, size: 20),
+            ),
             Padding(
               padding: const EdgeInsets.only(right: 16),
               child: OutlinedButton(
-                onPressed: m == null || _busy || _pending != null
+                onPressed: m == null || !m.open || _busy || _pending != null
                     ? null
                     : _fund,
                 style: OutlinedButton.styleFrom(
@@ -476,7 +544,7 @@ class _TradingScreenState extends State<TradingScreen> {
                           style: TextStyle(fontSize: 9, color: _muted),
                         ),
                         Text(
-                          '${_credits(s?.balance ?? 0)} cr',
+                          '${_credits(s?.receipt != null ? 0 : s?.balance ?? 0)} cr',
                           style: const TextStyle(
                             fontSize: 14,
                             color: Colors.white,
@@ -568,6 +636,10 @@ class _TradingScreenState extends State<TradingScreen> {
                     Expanded(
                       child: DropdownButton<String>(
                         value: _marketId,
+                        hint: const Text(
+                          'Choose a match',
+                          style: TextStyle(color: _muted),
+                        ),
                         isExpanded: true,
                         underline: const SizedBox.shrink(),
                         style: const TextStyle(
@@ -586,9 +658,11 @@ class _TradingScreenState extends State<TradingScreen> {
                               ),
                             )
                             .toList(),
-                        onChanged: (id) {
-                          if (id != null) _select(id);
-                        },
+                        onChanged: _busy || _pending != null
+                            ? null
+                            : (id) {
+                                if (id != null) _select(id);
+                              },
                       ),
                     ),
                     if (m?.mode == 'TEST')
@@ -610,6 +684,16 @@ class _TradingScreenState extends State<TradingScreen> {
                     ),
                   ],
                 ),
+              if (!_loading && _markets.isNotEmpty && _marketId == null)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: Text(
+                    'Choose a match to add credits and trade. Credits belong only to that match.',
+                    style: TextStyle(color: _muted),
+                  ),
+                ),
+              if (_marketId != null && s == null)
+                const Center(child: CircularProgressIndicator()),
               if (s != null && m != null) ...[
                 if (_tab == 'Home') ...[
                   Row(
@@ -631,65 +715,80 @@ class _TradingScreenState extends State<TradingScreen> {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  Row(
-                    children: [0, 1]
-                        .map(
-                          (o) => Expanded(
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                right: o == 0 ? 5 : 0,
-                                left: o == 1 ? 5 : 0,
-                              ),
-                              child: InkWell(
-                                onTap: () => _chartChange(o),
-                                borderRadius: BorderRadius.circular(10),
-                                child: Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: o == _outcome
-                                        ? const Color(0xff12241f)
-                                        : _panel,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: o == _outcome
-                                          ? _green
-                                          : const Color(0xff26303d),
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xff26303d)),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Row(
+                      children: [0, 1]
+                          .map(
+                            (o) => Expanded(
+                              child: Semantics(
+                                label:
+                                    '${m.team(o)}, ${_credits(m.price(o))} credits',
+                                selected: o == _outcome,
+                                button: true,
+                                child: InkWell(
+                                  onTap: () => _chartChange(o),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 11,
                                     ),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        m.team(o),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
+                                    decoration: BoxDecoration(
+                                      color: o == _outcome
+                                          ? const Color(0xff122b22)
+                                          : _panel,
+                                      border: Border(
+                                        left: BorderSide(
+                                          color: o == 1
+                                              ? const Color(0xff26303d)
+                                              : Colors.transparent,
+                                        ),
+                                        bottom: BorderSide(
+                                          color: o == _outcome
+                                              ? _green
+                                              : Colors.transparent,
+                                          width: 2,
                                         ),
                                       ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        '${_credits(m.price(o))} cr',
-                                        style: const TextStyle(
-                                          fontSize: 25,
-                                          fontWeight: FontWeight.w600,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          _teamCode(m.team(o)),
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: o == _outcome
+                                                ? _green
+                                                : Colors.white,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${(m.price(o) / 10).toStringAsFixed(1)}% win chance',
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          color: _muted,
+                                        const SizedBox(width: 12),
+                                        Text(
+                                          (m.price(o) / 10).toStringAsFixed(2),
+                                          style: TextStyle(
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.w600,
+                                            color: o == _outcome
+                                                ? _green
+                                                : Colors.white,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        )
-                        .toList(),
+                          )
+                          .toList(),
+                    ),
                   ),
                   const SizedBox(height: 22),
                   Row(

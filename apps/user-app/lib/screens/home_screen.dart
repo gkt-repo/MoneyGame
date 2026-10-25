@@ -419,7 +419,15 @@ class _HomeScreenState extends State<HomeScreen> {
             onBalanceRefresh: _refreshProfile,
           ),
           _buildWalletTab(),
-          _currentIndex == 2 ? TradingScreen(userId: _user.id) : const SizedBox.shrink(),
+          _currentIndex == 2
+              ? TradingScreen(
+                  userId: _user.id,
+                  onWithdraw: () async {
+                    await _refreshProfile();
+                    if (mounted) _openWithdraw();
+                  },
+                )
+              : const SizedBox.shrink(),
         ],
       ),
       bottomNavigationBar: Container(

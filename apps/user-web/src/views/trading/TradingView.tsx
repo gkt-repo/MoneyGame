@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowUpRight } from 'lucide-react';
 import {
   CandlestickSeries,
   createChart,
@@ -19,6 +20,27 @@ import { userApi } from '../../services/api';
 import { connectSocket } from '../../services/socket';
 import './trading.css';
 
+const teamCode = (name: string) =>
+  ({
+    India: 'IND',
+    'New Zealand': 'NZ',
+    Australia: 'AUS',
+    England: 'ENG',
+    Pakistan: 'PAK',
+    'South Africa': 'SA',
+    'Sri Lanka': 'SL',
+    Bangladesh: 'BAN',
+    Afghanistan: 'AFG',
+    'West Indies': 'WI',
+  })[name] ||
+  (name.length <= 4
+    ? name.toUpperCase()
+    : name
+        .split(/\s+/)
+        .map((word) => word[0])
+        .join('')
+        .slice(0, 4)
+        .toUpperCase());
 const credits = (n: number) => (n / 10).toLocaleString(undefined, { maximumFractionDigits: 1 });
 const rupees = (n: number) =>
   `₹${(n / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -161,7 +183,15 @@ function PriceChart({
 }
 
 type Pending = { path: string; body: Record<string, unknown>; label: string };
-export function TradingView({ userId, onBack }: { userId: string; onBack: () => void }) {
+export function TradingView({
+  userId,
+  onBack,
+  onWithdraw,
+}: {
+  userId: string;
+  onBack: () => void;
+  onWithdraw: () => void;
+}) {
   const [markets, setMarkets] = useState<TradingMarketDTO[]>([]),
     [marketId, setMarketId] = useState('');
   const [snapshot, setSnapshot] = useState<TradingSnapshotDTO | null>(null),
@@ -171,7 +201,7 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY'),
     [quantity, setQuantity] = useState('10'),
     [funding, setFunding] = useState('1000');
-  const [dialog, setDialog] = useState<'fund' | 'order' | 'rules' | null>(null),
+  const [dialog, setDialog] = useState<'fund' | 'order' | 'rules' | 'withdraw' | null>(null),
     [orderOutcome, setOrderOutcome] = useState<0 | 1>(0),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
@@ -193,7 +223,7 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
     try {
       const list = await userApi.trading<TradingMarketDTO[]>('/markets');
       setMarkets(list);
-      setMarketId((id) => id || list.find((m) => m.status === 'OPEN')?.id || list[0]?.id || '');
+      setMarketId((id) => (list.some((m) => m.id === id) ? id : ''));
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -256,6 +286,7 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
     requestBusy.current = true;
     setBusy(true);
     setError('');
+    setNotice('');
     setDialog(null);
     setPending(p);
     try {
@@ -277,9 +308,10 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
       requestBusy.current = false;
     }
   }
-  const m = snapshot?.market,
+  const activeSnapshot = snapshot?.market.id === marketId ? snapshot : null;
+  const m = activeSnapshot?.market,
     q = m?.quote,
-    a = snapshot?.account;
+    a = activeSnapshot?.account;
   const open = m?.status === 'OPEN' && !!q && new Date(q.expiresAt).getTime() > now;
   const priceFor = (o: number) => (q ? (o === 0 ? q.price0 : 1000 - q.price0) : 0);
   const position = a?.positions.find((p) => p.outcome === outcome);
@@ -320,20 +352,32 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
               CricTrade<span>●</span>
             </strong>
           </div>
-          <button
-            className="ct-credit-pill"
-            aria-label="Add credits"
-            onClick={() => setDialog('fund')}
-            disabled={!m || busy || !!pending}
-          >
-            <span>
-              <small>Match credits</small>
-              <b>
-                {credits(a?.balance ?? 0)} <em>cr</em>
-              </b>
-            </span>
-            <span className="ct-plus">+</span>
-          </button>
+          <div className="ct-header-actions">
+            <button
+              className="ct-withdraw"
+              aria-label="Withdraw"
+              title="Withdraw"
+              disabled={!m || busy || !!pending}
+              onClick={() => setDialog('withdraw')}
+            >
+              <ArrowUpRight size={18} aria-hidden="true" />
+              <span className="ct-withdraw-label">Withdraw</span>
+            </button>
+            <button
+              className="ct-credit-pill"
+              aria-label="Add credits"
+              onClick={() => setDialog('fund')}
+              disabled={!open || busy || !!pending}
+            >
+              <span>
+                <small>Match credits</small>
+                <b>
+                  {credits(a?.receipt ? 0 : (a?.balance ?? 0))} <em>cr</em>
+                </b>
+              </span>
+              <span className="ct-plus">+</span>
+            </button>
+          </div>
         </div>
         <nav className="ct-page-tabs" aria-label="CricTrade pages">
           <button aria-current={page === 'home' ? 'page' : undefined} onClick={() => setPage('home')}>
@@ -378,6 +422,7 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
             <select
               aria-label="Match"
               value={marketId}
+              disabled={busy || !!pending}
               onChange={(e) => {
                 setMarketId(e.target.value);
                 setOutcome(0);
@@ -385,6 +430,9 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
                 setNotice('');
               }}
             >
+              <option value="" disabled>
+                Choose a match
+              </option>
               {markets.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.title}
@@ -393,7 +441,9 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
             </select>
           </label>
           <div className="ct-market-state">
-            <span className={open ? 'ct-live' : ''}>{open ? '● Live' : (m?.status ?? 'Loading')}</span>
+            <span className={open ? 'ct-live' : ''}>
+              {open ? '● Live' : (m?.status ?? (marketId ? 'Loading' : ''))}
+            </span>
             {m?.mode === 'TEST' && <small>Test market</small>}
             <button
               className="ct-info"
@@ -407,8 +457,13 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
         {!markets.length && (
           <div className="ct-empty">{loading ? 'Loading matches…' : 'No matches available yet.'}</div>
         )}
+        {!!markets.length && !marketId && (
+          <div className="ct-empty">
+            Choose a match to add credits and trade. Credits belong only to that match.
+          </div>
+        )}
         {marketId && !snapshot && <div className="ct-empty">Loading market…</div>}
-        {m && a && (
+        {m && a && activeSnapshot && (
           <>
             {page === 'home' ? (
               <>
@@ -426,11 +481,8 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
                 <div className="ct-team-cards">
                   {[m.team0, m.team1].map((name, i) => (
                     <button key={i} aria-pressed={outcome === i} onClick={() => setOutcome(i as 0 | 1)}>
-                      <span>{name}</span>
-                      <strong>
-                        {q ? credits(priceFor(i)) : '—'} <small>cr</small>
-                      </strong>
-                      <small>{q ? `${(priceFor(i) / 10).toFixed(1)}% win chance` : 'Awaiting price'}</small>
+                      <span title={name}>{teamCode(name)}</span>
+                      <strong>{q ? (priceFor(i) / 10).toFixed(2) : '—'}</strong>
                     </button>
                   ))}
                 </div>
@@ -446,7 +498,7 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
                     key={`${marketId}:${outcome}:${oneMinute ? '1m' : 'over'}`}
                     data={bars}
                     average={position?.averagePrice ?? 0}
-                    trades={snapshot.executions}
+                    trades={activeSnapshot.executions}
                     outcome={outcome}
                   />
                   <div className="ct-chart-footer">
@@ -531,10 +583,10 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
                     </div>
                   )}
                 </div>
-                {snapshot.executions.length > 0 && (
+                {activeSnapshot.executions.length > 0 && (
                   <details className="ct-details">
                     <summary>Order history</summary>
-                    {snapshot.executions.map((e) => (
+                    {activeSnapshot.executions.map((e) => (
                       <div className="ct-history" key={e.id}>
                         <span>
                           <b>
@@ -575,22 +627,51 @@ export function TradingView({ userId, onBack }: { userId: string; onBack: () => 
             role="dialog"
             aria-modal="true"
             aria-label={
-              dialog === 'fund'
-                ? 'Add credits'
-                : dialog === 'order'
-                  ? side === 'BUY'
-                    ? 'Buy shares'
-                    : 'Exit position'
-                  : 'Market details'
+              dialog === 'withdraw'
+                ? 'Withdraw'
+                : dialog === 'fund'
+                  ? 'Add credits'
+                  : dialog === 'order'
+                    ? side === 'BUY'
+                      ? 'Buy shares'
+                      : 'Exit position'
+                    : 'Market details'
             }
             onClick={(e) => e.stopPropagation()}
           >
             <button className="ct-close" aria-label="Close dialog" onClick={() => setDialog(null)}>
               ×
             </button>
+            {dialog === 'withdraw' && (
+              <>
+                <h2>Withdraw</h2>
+                <p>{m?.title}</p>
+                {!a?.receipt ? (
+                  <p>
+                    {m?.status === 'SETTLED' || m?.status === 'VOIDED'
+                      ? 'You have no settlement payout for this match.'
+                      : 'Credits stay locked until this match settles. After the result is confirmed, remaining principal and your share of this match’s loss pool return automatically to your wallet.'}
+                  </p>
+                ) : m?.mode === 'TEST' ? (
+                  <p>This match used test credits. Its settlement cannot be withdrawn as money.</p>
+                ) : (
+                  <>
+                    <div className="ct-conversion">{rupees(a.receipt.payout)}</div>
+                    <p>
+                      Returned to your wallet when this match settled. Your wallet shows the amount still
+                      available to withdraw.
+                    </p>
+                    <button className="ct-primary" onClick={onWithdraw}>
+                      Continue to withdrawal
+                    </button>
+                  </>
+                )}
+              </>
+            )}
             {dialog === 'fund' && (
               <>
                 <h2>Add credits</h2>
+                <p>{m?.title} · Credits for this match only</p>
                 <p>₹1 = 10 match credits</p>
                 <label>
                   Amount (₹)

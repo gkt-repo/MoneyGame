@@ -133,7 +133,23 @@ async function main() {
     service.trade(market, a.id, { ...buy, quoteId: sellQuote, requestId: 'paused-001' }),
     /paused/,
   );
+  const runningMatch = await service.createSimulation();
+  assert.equal(
+    (await service.snapshot(runningMatch, a.id)).account.balance,
+    0,
+    'Credits from the first match are not available in another match',
+  );
+  await service.fund(runningMatch, a.id, 30000, 'fund-other-match');
+  const runningBefore = await service.snapshot(runningMatch, a.id);
   await service.settle(market, 0, 'India win');
+  const runningAfter = await service.snapshot(runningMatch, a.id);
+  assert.deepEqual(
+    runningAfter.account,
+    runningBefore.account,
+    'Settling one match leaves a running match account untouched',
+  );
+  assert.equal(runningAfter.market.status, 'OPEN');
+  assert.equal(runningAfter.account.receipt, null);
   await service.settle(market, 0, 'Duplicate notification');
   const endA = (await service.snapshot(market, a.id)).account.receipt!;
   assert.equal(

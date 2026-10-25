@@ -4,10 +4,11 @@ Implemented 24 October 2026. The backend, React user screen, Flutter user screen
 
 ## What is available
 
-- A CricTrade navigation tab in both user clients and admin web. User clients replace the MoneyGame header with a CricTrade header containing match credits and a + action.
+- A CricTrade navigation tab in both user clients and admin web. User clients replace the MoneyGame header with match credits, Withdraw and a + action. Withdraw sits to the left of the credit button.
 - Match discovery, a shared simulated IND–NZ chase, supported live T20 snapshots, score/target/overs, quote timestamps and market status.
 - Two user pages: Home and My positions. Home has team selection, current prices, a candlestick chart and Buy. Candle intervals switch automatically from sampled overs to one minute at 18 legal balls remaining in either innings. No interval selector, chart-style selector or zoom slider.
-- Funding/conversion opens from the header credit button. Whole-share buys have an order ticket; owned shares are managed through Exit position, including partial exits. There is no standalone sell/short action. Confirmation and changed/expired quote rejection are preserved.
+- Players explicitly choose a match before funding or trading. Funding/conversion opens from the header credit button and names the selected match; switching matches loads that match's separate balance and positions. Team selection is a compact horizontal rate row (`IND 60.00 | NZ 40.00`), with no duplicate win-percentage label. Prices retain the existing 0.1-credit precision, displayed with two decimal places.
+- Whole-share buys have an order ticket; owned shares are managed through Exit position, including partial exits. There is no standalone sell/short action. Confirmation and changed/expired quote rejection are preserved.
 - My positions shows average entry, last price, invested/current values and green/red credit P&L. Order history and settlement receipts are collapsed. Market rules are behind an information action. Drag the price axis vertically to scale candle height, or the time axis horizontally to scale spacing; double-click/tap resets the axis.
 - Persisted request IDs and retry recovery, authenticated ownership checks, integer accounting and serializable mutations.
 - Admin simulation creation, pause/resume, result confirmation and void/refund with a recorded actor and reason.
@@ -28,6 +29,8 @@ payout    = principal + reward
 ```
 
 Largest-remainder allocation distributes residual paise deterministically. Total payouts equal total deposits. No fees are charged. A void, or a pool without any positive participants, refunds all deposits. Positive participants with no loss pool receive no reward. All unused principal returns at settlement; there is no early withdrawal. Both clients display these exceptions.
+
+Settlement remains automatic **per match after its result is confirmed**, not a daily 5 PM batch. Every deposit, position and profit/loss allocation belongs to one match; another running match's credits cannot fund its payout. In cash mode, settlement already returns the final payout to the wallet atomically. The header Withdraw action explains locks before settlement, then opens the existing wallet withdrawal flow after cash settlement without issuing another payout. Test credits cannot be withdrawn as money. The header shows zero spendable match credits after settlement; the final accounting remains in the receipt.
 
 Example: deposit 10,000 credits, buy 100 India shares at 60 and sell at 80 → 12,000 final credits. Principal is ₹1,000; 2,000 positive credits determine the share of the loss pool. They do not guarantee ₹200 profit. Test-mode receipts express the equivalent amounts but never change the wallet.
 
@@ -117,10 +120,12 @@ flutter analyze
 flutter test
 ```
 
-Coverage includes 500 randomized conservation cases; exact conversion/rounding; ownership; quote expiry; concurrent overspending; duplicate operations/results; void refunds; corrected/duplicate feed states; shared polling ownership; fast cadence; provider backoff; cash-boundary escrow/payout rollback; HTTP permissions and private-operation isolation. Existing security/payment and sports-pool regressions pass.
+Coverage includes 500 randomized conservation cases; exact conversion/rounding; ownership; quote expiry; concurrent overspending; duplicate operations/results; void refunds; separate match balances and unchanged running-match accounts during settlement; corrected/duplicate feed states; shared polling ownership; fast cadence; provider backoff; cash-boundary escrow/payout rollback; HTTP permissions and private-operation isolation. Existing security/payment and sports-pool regressions pass.
 
 SQLite migrations were exercised against fresh and upgraded temporary databases. The PostgreSQL schema validates, but its migration was not executed against a running PostgreSQL instance. Flutter analysis reports two pre-existing informational lint notices in unrelated screens.
 
 Browser checks use mocked API responses against the real local React apps: desktop/mobile chart rendering, automatic interval transitions, axis gestures, replacement header, funding, buy/exit confirmation, profit/loss positions, and admin pause/resume/settle. Flutter tests cover independent axis gestures and funding/buy/exit interactions with a fake API. These complement backend integration tests; they do not establish live-feed accuracy or production performance.
+
+The 25 October match-selection update additionally checks compact rates, disabled funding before choosing a match, independent balances when switching matches, locked running-match withdrawals, blocked test-credit cash-outs, and settled-cash navigation to the existing wallet withdrawal screen. This navigation does not create another settlement transaction.
 
 Before live cash release: integrate and measure a suitable provider, validate the probability model, finalize the published product rules, implement cash-specific client funding flows, and qualify settlement at the intended pool size. The other lobby/profile/invitation/29 plan remains deferred as requested.

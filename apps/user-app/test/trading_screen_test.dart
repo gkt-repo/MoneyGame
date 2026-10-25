@@ -38,7 +38,7 @@ void main() {
           },
         },
       };
-      var balance = 0, deposit = 0, shares = 0, orders = 0;
+      var balance = 0, deposit = 0, shares = 0, orders = 0, withdrawals = 0;
       final requestIds = <String>[];
       Future<dynamic> request(String path, {Map<String, dynamic>? body}) async {
         if (path == '/markets') return [market];
@@ -89,7 +89,14 @@ void main() {
                       'unrealized': 0,
                     },
                   ],
-            'receipt': null,
+            'receipt': market['status'] == 'SETTLED'
+                ? {
+                    'payout': 100000,
+                    'principal': 100000,
+                    'reward': 0,
+                    'reason': 'Match ended',
+                  }
+                : null,
           },
           'executions': [],
           'pool': {
@@ -106,11 +113,36 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: TradingScreen(userId: 'fixture-user', request: request),
+          home: TradingScreen(
+            userId: 'fixture-user',
+            request: request,
+            onWithdraw: () => withdrawals++,
+          ),
         ),
       );
       await tester.pumpAndSettle();
+      expect(find.text('Buy India'), findsNothing);
+      expect(
+        tester
+            .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '0 cr'))
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.byType(DropdownButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('IND vs NZ').last);
+      await tester.pumpAndSettle();
       expect(find.text('Buy India'), findsOneWidget);
+      expect(find.text('IND'), findsOneWidget);
+      expect(find.text('NZ'), findsOneWidget);
+      expect(find.text('60.00'), findsOneWidget);
+      expect(find.text('40.00'), findsOneWidget);
+      await tester.tap(find.byTooltip('Withdraw'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Credits stay locked'), findsOneWidget);
+      expect(find.text('Continue to withdrawal'), findsNothing);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(OutlinedButton, '0 cr'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add test credits'));
@@ -137,6 +169,42 @@ void main() {
       expect(shares, 0);
       expect(balance, 100000);
       expect(find.text('No open positions'), findsOneWidget);
+      market['status'] = 'SETTLED';
+      // Even after a result, test funds must never offer cash withdrawal.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '0 cr'))
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.byTooltip('Withdraw'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('cannot be withdrawn as money'),
+        findsOneWidget,
+      );
+      expect(find.text('Continue to withdrawal'), findsNothing);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      market['mode'] = 'CASH';
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Withdraw'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('₹1,000.00 returned to your wallet'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Continue to withdrawal'));
+      await tester.pumpAndSettle();
+      expect(withdrawals, 1);
+      expect(
+        orders,
+        2,
+        reason: 'Withdrawal navigation cannot create another trade or payout',
+      );
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();

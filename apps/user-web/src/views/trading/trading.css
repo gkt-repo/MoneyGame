@@ -198,43 +198,6 @@
   font-size: 12px;
   color: var(--ct-muted);
 }
-.ct-team-cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-bottom: 22px;
-}
-.crictrade .ct-team-cards button {
-  text-align: left;
-  padding: 18px 22px;
-  background: var(--ct-panel);
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 6px;
-}
-.ct-team-cards button[aria-pressed='true'] {
-  border-color: var(--ct-green);
-  background: #12241f;
-}
-.ct-team-cards button > span {
-  font-weight: 600;
-  align-self: center;
-}
-.ct-team-cards strong {
-  font-size: 25px;
-  letter-spacing: -0.5px;
-  font-weight: 600;
-}
-.ct-team-cards strong small {
-  font-size: 12px;
-  color: var(--ct-muted);
-  font-weight: 400;
-}
-.ct-team-cards button > small {
-  font-size: 11px;
-  color: var(--ct-muted);
-  grid-column: 1 / -1;
-}
 .ct-chart-panel {
   border: 1px solid var(--ct-line);
   border-radius: 10px;
@@ -584,25 +547,6 @@
     align-items: flex-start;
     line-height: 1.6;
   }
-  .ct-team-cards {
-    gap: 10px;
-    margin-bottom: 16px;
-  }
-  .crictrade .ct-team-cards button {
-    display: block;
-    padding: 14px;
-  }
-  .ct-team-cards strong {
-    display: block;
-    font-size: 24px;
-    margin: 5px 0;
-  }
-  .ct-team-cards button > span {
-    font-size: 13px;
-  }
-  .ct-team-cards button > small {
-    font-size: 10px;
-  }
   .ct-chart-panel {
     padding: 12px 8px;
   }
@@ -646,5 +590,79 @@
   .ct-modal-backdrop {
     align-items: flex-end;
     padding: 12px;
+  }
+}
+
+.ct-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.crictrade .ct-withdraw {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ct-team-cards {
+  display: flex;
+  border: 1px solid var(--ct-line);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.crictrade .ct-team-cards button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: 0;
+  min-width: 0;
+  background: var(--ct-panel);
+}
+.crictrade .ct-team-cards button + button {
+  border-left: 1px solid var(--ct-line);
+}
+.crictrade .ct-team-cards button[aria-pressed='true'] {
+  background: #122b22;
+  box-shadow: inset 0 -2px var(--ct-green);
+  color: var(--ct-green);
+}
+.ct-team-cards strong {
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 600;
+}
+.ct-team-cards button > span {
+  font-size: 13px;
+  line-height: 22px;
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  .ct-header-actions {
+    gap: 6px;
+  }
+  .ct-withdraw-label {
+    display: none;
+  }
+  .crictrade .ct-withdraw {
+    padding: 9px;
+  }
+}
+@media (max-width: 380px) {
+  .ct-header-inner {
+    padding: 0 8px;
+  }
+  .ct-brand > strong {
+    font-size: 18px;
+  }
+  .ct-brand > button {
+    padding: 4px;
+  }
+  .crictrade .ct-credit-pill {
+    gap: 6px;
+    padding: 6px;
   }
 }

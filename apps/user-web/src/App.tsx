@@ -18,6 +18,10 @@ export const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [currentTab, setCurrentTab] = useState<UserTab>('lobby');
+  const [walletEntry, setWalletEntry] = useState<'overview' | 'withdraw'>('overview');
+  useEffect(() => {
+    if (currentTab !== 'wallet') setWalletEntry('overview');
+  }, [currentTab]);
 
   const [balance, setBalance] = useState(0.0);
   const [lockedBalance, setLockedBalance] = useState(0.0);
@@ -321,13 +325,26 @@ export const App: React.FC = () => {
             )}
             {currentTab === 'wallet' && (
               <WalletView
+                initialSubView={walletEntry}
                 user={user}
                 balance={balance}
                 lockedBalance={lockedBalance}
                 onRefreshBalance={refreshBalance}
               />
             )}
-        {currentTab === 'trading' && <Suspense fallback={<p>Loading CricTrade…</p>}><TradingView userId={user.id} onBack={() => setCurrentTab('lobby')} /></Suspense>}
+            {currentTab === 'trading' && (
+              <Suspense fallback={<p>Loading CricTrade…</p>}>
+                <TradingView
+                  userId={user.id}
+                  onBack={() => setCurrentTab('lobby')}
+                  onWithdraw={() => {
+                    setWalletEntry('withdraw');
+                    setCurrentTab('wallet');
+                    void refreshBalance();
+                  }}
+                />
+              </Suspense>
+            )}
             {currentTab === 'support' && (
               <SupportFeedbackView user={user} />
             )}
