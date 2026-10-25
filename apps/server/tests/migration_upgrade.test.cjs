@@ -66,6 +66,34 @@ test('fresh SQLite startup creates its database and never truncates an existing 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('Draw migration preserves existing two-outcome quotes and balances', () => {
+  const output = run('python3', ['-c', `
+import sqlite3, json
+from pathlib import Path
+c = sqlite3.connect(':memory:')
+for p in sorted(Path('prisma/migrations').glob('*/migration.sql')):
+    if p.parent.name == '20261025000000_crictrade_draw':
+        c.executescript('''
+INSERT INTO User(id,username) VALUES('trader','trader');
+INSERT INTO TradingMarket(id,source,title,team0,team1) VALUES('match','ESPN','Legacy T20','India','NZ');
+INSERT INTO TradingQuote(id,marketId,sequence,price0,snapshot,expiresAt)
+VALUES('quote','match',1,600,'{"innings":2,"totalBalls":120}',CURRENT_TIMESTAMP);
+INSERT INTO TradingAccount(id,marketId,userId,deposit,balance) VALUES('account','match','trader',100000,94000);
+INSERT INTO TradingPosition(id,accountId,outcome,quantity,cost) VALUES('position','account',0,10,6000);
+''')
+    c.executescript(p.read_text())
+print(json.dumps({
+ 'quote': c.execute('SELECT price0,priceDraw FROM TradingQuote').fetchone(),
+ 'account': c.execute('SELECT deposit,balance FROM TradingAccount').fetchone(),
+ 'position': c.execute('SELECT outcome,quantity,cost FROM TradingPosition').fetchone()
+}))
+`]);
+  const data = JSON.parse(output);
+  assert.deepEqual(data.quote, [600, 0]);
+  assert.deepEqual(data.account, [100000, 94000]);
+  assert.deepEqual(data.position, [0, 10, 6000]);
+});
+
 test('production rejects default secrets and accepts deployment-specific secrets', () => {
   const env = { ...process.env, NODE_ENV: 'production', JWT_SECRET: 'moneygame-super-secret-jwt-key', WEBHOOK_SECRET: 'moneygame-secret-key-1234' };
   const rejected = spawnSync(process.execPath, ['-r', 'ts-node/register', '-e', "require('./src/config')"], { cwd: serverDir, env, encoding: 'utf8' });

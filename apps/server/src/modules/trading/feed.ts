@@ -1,9 +1,9 @@
 import https from 'https';
 import crypto from 'crypto';
-import { CricketState } from '@moneygame/shared-types';
+import { CricketFormat, CricketState } from '@moneygame/shared-types';
 import { prisma } from '../../db';
 import { serializable } from '../../transaction';
-import { parseScore, pollInterval } from './domain';
+import { formatOf, parseScore, pollInterval, validateState } from './domain';
 import { tradingService } from './trading.service';
 
 const ENDPOINT = 'https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=cricket';
@@ -47,28 +47,136 @@ export function fetchScoreboard(): Promise<any> {
 }
 export function normalizeEvent(event: any): CricketState | null {
   if (!Array.isArray(event.competitors) || event.competitors.length !== 2) return null;
-  const scores = event.competitors.map((t: any) => parseScore(t.score));
+  const teams = event.competitors;
+  const scores = teams.map((t: any) => parseScore(t.score));
+  const classification = [
+    event.eventType,
+    event.class?.eventType,
+    event.class?.name,
+    event.class?.generalClassCard,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  let format: CricketFormat | null = /\btest\b|first[ -]class/i.test(classification)
+    ? 'TEST'
+    : /\bodi\b|one[ -]day|list[ -]a/i.test(classification)
+      ? 'ODI'
+      : /\bt20\b|twenty20/i.test(classification)
+        ? 'T20'
+        : null;
+  if (!format)
+    format = scores.some((s: any) => s?.totalBalls === 300)
+      ? 'ODI'
+      : scores.some((s: any) => s?.totalBalls === 120)
+        ? 'T20'
+        : null;
+  if (!format) return null;
   const innings = Number(event.period);
-  if (innings !== 1 && innings !== 2) return null;
-  let batting =
-    innings === 1
-      ? scores.findIndex((s: any) => s?.totalBalls === 120)
-      : scores.findIndex((s: any) => s?.totalBalls === 120 && s?.target);
-  if (batting < 0) return null;
-  const s = scores[batting];
-  if (!s || s.balls > 120 || s.wickets > 10) return null;
-  // Missing/revised targets and reduced-overs fixtures remain observational.
-  if (innings === 2 && !s.target) return null;
-  return {
-    innings,
-    batting: batting as 0 | 1,
-    runs: s.runs,
-    wickets: s.wickets,
-    balls: s.balls,
-    totalBalls: 120,
-    target: innings === 2 ? s.target : null,
-    description: `${event.competitors[batting].displayName || event.competitors[batting].name} ${event.competitors[batting].score}`,
-  };
+  const battingId = event.fullStatus?.battingTeamId;
+  let batting = battingId ? teams.findIndex((t: any) => String(t.id) === String(battingId)) : -1;
+  try {
+    if (format === 'TEST') {
+      if (batting < 0 || ![1, 2, 3, 4].includes(innings)) return null;
+      const history = teams.map((t: any) => parseTestScores(t.score));
+      if (history.some((h: any) => h === null)) return null;
+      const current = history[batting]!.at(-1);
+      if (!current || current.balls === null || current.totalBalls !== null) return null;
+      const teamRuns = history.map((h: any[]) => h.reduce((sum, s) => sum + s.runs, 0)) as [number, number];
+      const inningsPlayed = history.map((h: any[]) => h.length) as [number, number];
+      const target = innings === 4 ? teamRuns[1 - batting] - (teamRuns[batting] - current.runs) + 1 : null;
+      if (current.target !== null && current.target !== target) return null;
+      const scheduledDays = Number(
+        (event.notes || []).find((n: any) => n.type === 'matchdays')?.text?.match(/(\d+)[ -]day match/i)?.[1],
+      );
+      const session = Number(String(event.fullStatus?.session || '').match(/session\s*(\d)/i)?.[1]);
+      return validateState({
+        format,
+        innings: innings as 1 | 2 | 3 | 4,
+        batting: batting as 0 | 1,
+        runs: current.runs,
+        wickets: current.wickets,
+        balls: current.balls,
+        totalBalls: null,
+        target,
+        declared: current.declared,
+        teamRuns,
+        inningsPlayed,
+        day: Number(event.fullStatus?.dayNumber),
+        scheduledDays,
+        session,
+        description: `${teams[batting].displayName || teams[batting].name} ${teams[batting].score} · ${event.fullStatus?.session || ''}`,
+      });
+    }
+    if (innings !== 1 && innings !== 2) return null; // Super Overs need separate market rules.
+    const totalBalls = format === 'ODI' ? 300 : 120;
+    if (batting < 0) {
+      const candidates = scores
+        .map((s: any, i: number) => (s?.totalBalls === totalBalls && (innings === 1 || s.target) ? i : -1))
+        .filter((i: number) => i >= 0);
+      if (candidates.length !== 1) return null;
+      batting = candidates[0];
+    }
+    const s = scores[batting];
+    if (!s || s.totalBalls !== totalBalls || (innings === 2 && !s.target)) return null;
+    return validateState({
+      format,
+      innings,
+      batting: batting as 0 | 1,
+      runs: s.runs,
+      wickets: s.wickets,
+      balls: s.balls,
+      totalBalls,
+      target: innings === 2 ? s.target : null,
+      description: `${teams[batting].displayName || teams[batting].name} ${teams[batting].score}`,
+    });
+  } catch {
+    return null;
+  }
+}
+
+// Test scoreboards concatenate innings, e.g. "113 & 92/2 (29.1 ov)".
+// Do not infer batting order: follow-ons use the provider's battingTeamId.
+function parseTestScores(value: unknown) {
+  if (typeof value !== 'string') return null;
+  if (!value.trim()) return [];
+  const result = [];
+  for (const part of value.split('&')) {
+    const m =
+      /^(\d+)(?:\/(\d+))?\s*(d|dec)?\s*(?:\((\d+)(?:\.(\d))?(?:\/(\d+))?\s*ov(?:,\s*target\s+(\d+))?\))?$/i.exec(
+        part.trim(),
+      );
+    if (!m || Number(m[5] || 0) > 6 || Number(m[2] || 10) > 10) return null;
+    result.push({
+      runs: Number(m[1]),
+      wickets: m[2] === undefined ? 10 : Number(m[2]),
+      declared: !!m[3],
+      balls: m[4] === undefined ? null : Number(m[4]) * 6 + Number(m[5] || 0),
+      totalBalls: m[6] ? Number(m[6]) * 6 : null,
+      target: m[7] ? Number(m[7]) : null,
+    });
+  }
+  return result.length <= 2 ? result : null;
+}
+
+export function confirmedResult(
+  event: any,
+  state: CricketState,
+): { winner: number | null; label: string } | null {
+  if (event.status !== 'post' || !Array.isArray(event.competitors)) return null;
+  const winners = event.competitors
+    .map((t: any, i: number) => (t.winner === true ? i : -1))
+    .filter((i: number) => i >= 0);
+  const text = [event.fullStatus?.longSummary, event.fullStatus?.summary, event.summary]
+    .filter(Boolean)
+    .join(' ');
+  if (winners.length === 1 && !/\bdrawn\b|\bno result\b/i.test(text))
+    return { winner: winners[0], label: 'win' };
+  if (winners.length) return null;
+  if (formatOf(state) === 'TEST' && /\bdrawn\b/i.test(text)) return { winner: 2, label: 'draw' };
+  if (/\bno result\b|\babandoned\b|\bcancelled\b|\bcanceled\b/i.test(text))
+    return { winner: null, label: 'no result' };
+  // A tie is distinct from a draw; ambiguous/Super Over results require review.
+  return null;
 }
 export class TradingWorker {
   constructor(private readFeed: () => Promise<any> = fetchScoreboard) {}
@@ -140,7 +248,7 @@ export class TradingWorker {
                 title: event.name,
                 team0: event.competitors[0].displayName || event.competitors[0].name,
                 team1: event.competitors[1].displayName || event.competitors[1].name,
-                reason: 'Waiting for supported T20 state',
+                reason: 'Waiting for supported cricket state',
               },
             });
           }
@@ -158,8 +266,8 @@ export class TradingWorker {
             continue;
           }
           if (event.status === 'post') {
-            const winner = event.competitors.findIndex((t: any) => t.winner === true);
-            if (winner < 0 || event.competitors.filter((t: any) => t.winner === true).length !== 1) {
+            const result = confirmedResult(event, JSON.parse(existing.snapshot));
+            if (!result) {
               await prisma.tradingMarket.updateMany({
                 where: { id, status: { notIn: ['SETTLED', 'VOIDED'] } },
                 data: {
@@ -170,12 +278,12 @@ export class TradingWorker {
               continue;
             }
             // Persist result observations so a restart cannot bypass confirmation.
-            const observation = `result:${winner}`;
+            const observation = `result:${result.winner}:${result.label}`;
             if (existing.fingerprint === observation)
               await tradingService.settle(
                 id,
-                winner < 0 ? null : winner,
-                'Confirmed provider result (test mode)',
+                result.winner,
+                `Confirmed provider ${result.label} (test credits)`,
               );
             else
               await prisma.tradingMarket.updateMany({

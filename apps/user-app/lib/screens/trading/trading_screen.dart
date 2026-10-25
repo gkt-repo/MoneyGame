@@ -382,7 +382,7 @@ class _TradingScreenState extends State<TradingScreen> {
               children: [
                 Text('${m.title} · Credits for this match only'),
                 const Text(
-                  'New buys and funding pause whenever either team’s win probability exceeds 90%.',
+                  'New buys and funding pause whenever any outcome’s probability exceeds 90%.',
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -490,7 +490,7 @@ class _TradingScreenState extends State<TradingScreen> {
       title: const Text('Market details'),
       content: SingleChildScrollView(
         child: Text(
-          '${_snapshot?.market.reason ?? ''}\n\n₹1 = 10 match credits. Remaining principal returns at settlement. Positive net credits share the actual loss pool; profits are not guaranteed. Voided matches and pools without positive participants refund deposits. No fees.\n\nNew buys and funding pause for both teams when either team’s quoted win probability exceeds 90%. Entry resumes when both return to 90% or below. Existing positions can still exit at a valid quote.\n\nCandles use observed prices: per over, then one minute in the last three overs. Drag the price axis vertically to change candle height; drag the time axis horizontally to change spacing. Double-tap to reset.',
+          '${_snapshot?.market.reason ?? ''}\n\n₹1 = 10 match credits. Remaining principal returns at settlement. Positive net credits share the actual loss pool; profits are not guaranteed. Voided matches and pools without positive participants refund deposits. No fees.\n\nNew buys and funding pause when any outcome’s quoted probability exceeds 90%. Entry resumes when all return to 90% or below. Existing positions can still exit at a valid quote.\n\nTest and first-class matches include Draw. A confirmed drawn result settles Draw shares as winners. A tie is not a draw; no-result or voided markets refund deposits.\n\nODI and Test candles stay per over. Only T20 switches to one-minute candles in the last three overs. Drag the price axis vertically to change candle height; drag the time axis horizontally to change spacing. Double-tap to reset.',
         ),
       ),
       actions: [
@@ -511,6 +511,8 @@ class _TradingScreenState extends State<TradingScreen> {
     final position = positions.where((p) => p.outcome == _outcome).firstOrNull;
     final state = m?.state ?? <String, dynamic>{};
     final oneMinute =
+        m?.format == 'T20' &&
+        state['totalBalls'] != null &&
         state['balls'] != null &&
         (state['totalBalls'] as num) - (state['balls'] as num) <= 18;
     return Theme(
@@ -660,7 +662,7 @@ class _TradingScreenState extends State<TradingScreen> {
                   child: Text(
                     _tab == 'My positions'
                         ? 'No real-match positions yet.'
-                        : 'No live T20 matches available for trading right now. This list updates automatically.',
+                        : 'No live matches available for trading right now. This list updates automatically.',
                   ),
                 ),
               if (_markets.isNotEmpty)
@@ -736,7 +738,7 @@ class _TradingScreenState extends State<TradingScreen> {
                 const Padding(
                   padding: EdgeInsets.only(bottom: 18),
                   child: Text(
-                    'Win probability above 90% · New buys and funding paused. Exits require a valid quote.',
+                    'Outcome probability above 90% · New buys and funding paused. Exits require a valid quote.',
                     style: TextStyle(color: _muted, fontSize: 11),
                   ),
                 ),
@@ -768,7 +770,7 @@ class _TradingScreenState extends State<TradingScreen> {
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: Row(
-                      children: [0, 1]
+                      children: m.outcomes
                           .map(
                             (o) => Expanded(
                               child: Semantics(
@@ -780,7 +782,7 @@ class _TradingScreenState extends State<TradingScreen> {
                                   onTap: () => _chartChange(o),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
+                                      horizontal: 6,
                                       vertical: 11,
                                     ),
                                     decoration: BoxDecoration(
@@ -789,7 +791,7 @@ class _TradingScreenState extends State<TradingScreen> {
                                           : _panel,
                                       border: Border(
                                         left: BorderSide(
-                                          color: o == 1
+                                          color: o > 0
                                               ? const Color(0xff26303d)
                                               : Colors.transparent,
                                         ),
@@ -801,32 +803,41 @@ class _TradingScreenState extends State<TradingScreen> {
                                         ),
                                       ),
                                     ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          _teamCode(m.team(o)),
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                            color: o == _outcome
-                                                ? _green
-                                                : Colors.white,
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            o == 2
+                                                ? 'Draw'
+                                                : _teamCode(m.team(o)),
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: o == _outcome
+                                                  ? _green
+                                                  : Colors.white,
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Text(
-                                          (m.price(o) / 10).toStringAsFixed(2),
-                                          style: TextStyle(
-                                            fontSize: 17,
-                                            fontWeight: FontWeight.w600,
-                                            color: o == _outcome
-                                                ? _green
-                                                : Colors.white,
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            (m.price(o) / 10).toStringAsFixed(
+                                              2,
+                                            ),
+                                            style: TextStyle(
+                                              fontSize: m.outcomes.length == 3
+                                                  ? 15
+                                                  : 17,
+                                              fontWeight: FontWeight.w600,
+                                              color: o == _outcome
+                                                  ? _green
+                                                  : Colors.white,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -840,12 +851,16 @@ class _TradingScreenState extends State<TradingScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        m.team(_outcome),
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      Expanded(
+                        child: Text(
+                          m.team(_outcome),
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       Text(
-                        '${oneMinute ? '1 min' : 'Over'} candles · Auto',
+                        '${m.format} · ${oneMinute ? '1 min' : 'Over'} candles · Auto',
                         style: const TextStyle(fontSize: 10, color: _muted),
                       ),
                     ],
@@ -994,13 +1009,16 @@ class _TradingScreenState extends State<TradingScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                'LTP ${_credits(m.price(p.outcome))} cr',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: _muted,
+                              Expanded(
+                                child: Text(
+                                  'LTP ${_credits(m.price(p.outcome))} cr',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: _muted,
+                                  ),
                                 ),
                               ),
+                              const SizedBox(width: 8),
                               OutlinedButton(
                                 onPressed: m.open && !_busy && _pending == null
                                     ? () => _ticket(

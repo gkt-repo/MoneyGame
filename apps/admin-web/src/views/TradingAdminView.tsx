@@ -6,7 +6,10 @@ export function TradingAdminView() {
   const [markets, setMarkets] = useState<TradingMarketDTO[]>([]),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
-  const [action, setAction] = useState<{ market: TradingMarketDTO; type: 'pause' | 'settle' } | null>(null);
+  const [action, setAction] = useState<{
+    market: TradingMarketDTO;
+    type: 'pause' | 'settle';
+  } | null>(null);
   const [reason, setReason] = useState(''),
     [winner, setWinner] = useState('void');
   async function refresh() {
@@ -156,6 +159,7 @@ export function TradingAdminView() {
                   <option value="void">Void and refund all deposits</option>
                   <option value="0">{action.market.team0} wins</option>
                   <option value="1">{action.market.team1} wins</option>
+                  {action.market.quote?.state.format === 'TEST' && <option value="2">Draw</option>}
                 </select>
               </label>
             )}

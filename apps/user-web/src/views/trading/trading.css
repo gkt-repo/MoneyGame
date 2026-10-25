@@ -645,6 +645,14 @@
   line-height: 22px;
   font-weight: 600;
 }
+.crictrade .ct-three-outcomes button {
+  gap: 6px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.ct-three-outcomes strong {
+  font-size: 15px;
+}
 @media (max-width: 640px) {
   .ct-header-actions {
     gap: 6px;

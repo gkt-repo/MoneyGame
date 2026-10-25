@@ -23,15 +23,31 @@ class TradingMarket {
       quote == null ? {} : Map<String, dynamic>.from(quote!['state'] as Map);
   int price(int outcome) => outcome == 0
       ? (quote?['price0'] as num? ?? 0).toInt()
-      : 1000 - (quote?['price0'] as num? ?? 1000).toInt();
-  String team(int outcome) => outcome == 0 ? team0 : team1;
+      : outcome == 2
+      ? (quote?['priceDraw'] as num? ?? 0).toInt()
+      : 1000 -
+            (quote?['price0'] as num? ?? 1000).toInt() -
+            (quote?['priceDraw'] as num? ?? 0).toInt();
+  String get format =>
+      state['format'] as String? ??
+      (state['totalBalls'] == 300
+          ? 'ODI'
+          : state.containsKey('totalBalls') && state['totalBalls'] == null
+          ? 'TEST'
+          : 'T20');
+  List<int> get outcomes => format == 'TEST' ? [0, 1, 2] : [0, 1];
+  String team(int outcome) => outcome == 2
+      ? 'Draw'
+      : outcome == 0
+      ? team0
+      : team1;
   bool get open =>
       status == 'OPEN' &&
       quote != null &&
       DateTime.parse(quote!['expiresAt'] as String).isAfter(DateTime.now());
   bool get entryClosed =>
       _serverEntryClosed ||
-      (quote != null && (price(0) > 900 || price(1) > 900));
+      (quote != null && outcomes.any((o) => price(o) > 900));
   bool get canEnter => open && !entryClosed;
 }
 

@@ -1,6 +1,6 @@
 # MoneyGame product implementation plan
 
-Prepared 24 October 2026. Planning only; application behavior is unchanged.
+Prepared 24 October 2026. The lobby/profile/invitation/29 work remains deferred. CricTrade implementation and its 25 October ODI/Test/Draw extension are documented in [the implementation runbook](CRICTRADE.md); the research notes below preserve the original planning context.
 
 ## Agreed scope
 

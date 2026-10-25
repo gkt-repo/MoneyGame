@@ -173,7 +173,7 @@ void main() {
       expect(shares, 10);
       expect(requestIds.toSet().length, 2);
       expect(find.text('Sell India'), findsNothing);
-      expect(find.text('1 min candles · Auto'), findsOneWidget);
+      expect(find.text('T20 · 1 min candles · Auto'), findsOneWidget);
       for (final price in [901, 900, 99, 100, 901]) {
         (market['quote'] as Map)['price0'] = price;
         await tester.pump(const Duration(seconds: 5));
@@ -248,4 +248,141 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+  for (final format in ['ODI', 'TEST']) {
+    testWidgets(
+      '$format keeps over candles and trades its available outcomes',
+      (tester) async {
+        FlutterSecureStorage.setMockInitialValues({});
+        await tester.binding.setSurfaceSize(const Size(360, 844));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final now = DateTime.now();
+        final outcome = format == 'TEST' ? 2 : 0;
+        final market = <String, dynamic>{
+          'id': 'format-fixture',
+          'title': 'IND vs NZ',
+          'team0': 'India',
+          'team1': 'NZ',
+          'source': 'ESPN',
+          'mode': 'TEST',
+          'status': 'OPEN',
+          'reason': 'Fixture',
+          'pollingMs': 60000,
+          'quote': {
+            'id': 'format-quote',
+            'price0': 400,
+            'priceDraw': format == 'TEST' ? 200 : 0,
+            'publishedAt': now.toIso8601String(),
+            'expiresAt': now.add(const Duration(minutes: 5)).toIso8601String(),
+            'state': {
+              'format': format,
+              'innings': format == 'TEST' ? 4 : 2,
+              'runs': 100,
+              'wickets': 2,
+              'balls': 288,
+              'totalBalls': format == 'TEST' ? null : 300,
+              'target': 251,
+              'description': 'Fixture score',
+            },
+          },
+        };
+        var shares = 0, balance = 100000, orders = 0;
+        final paths = <String>[];
+        final price = format == 'TEST' ? 200 : 400;
+        Future<dynamic> request(
+          String path, {
+          Map<String, dynamic>? body,
+        }) async {
+          paths.add(path);
+          if (path == '/markets' || path == '/markets?view=positions') {
+            return [market];
+          }
+          if (path.contains('/candles')) {
+            return [
+              {
+                'time': now.millisecondsSinceEpoch ~/ 1000,
+                'open': price / 10,
+                'high': price / 10,
+                'low': price / 10,
+                'close': price / 10,
+                'quotes': 1,
+              },
+            ];
+          }
+          if (path.endsWith('/orders')) {
+            expect(body!['outcome'], outcome);
+            final quantity = body['quantity'] as int,
+                sign = body['side'] == 'BUY' ? 1 : -1;
+            shares += sign * quantity;
+            balance -= sign * quantity * price;
+            orders++;
+            return {'success': true};
+          }
+          return {
+            'market': market,
+            'account': {
+              'deposit': 100000,
+              'balance': balance,
+              'equity': balance + shares * price,
+              'net': 0,
+              'realized': 0,
+              'receipt': null,
+              'positions': shares == 0
+                  ? []
+                  : [
+                      {
+                        'outcome': outcome,
+                        'quantity': shares,
+                        'cost': shares * price,
+                        'value': shares * price,
+                        'averagePrice': price,
+                        'unrealized': 0,
+                      },
+                    ],
+            },
+            'pool': {},
+            'executions': [],
+          };
+        }
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TradingScreen(userId: 'format-user', request: request),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(DropdownButton<String>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('IND vs NZ').last);
+        await tester.pumpAndSettle();
+        expect(find.text('$format · Over candles · Auto'), findsOneWidget);
+        if (format == 'TEST') {
+          expect(find.text('Draw'), findsOneWidget);
+          await tester.tap(find.text('Draw'));
+          await tester.pumpAndSettle();
+          expect(paths.any((p) => p.contains('outcome=2')), isTrue);
+        } else {
+          expect(find.text('Draw'), findsNothing);
+        }
+        await tester.tap(
+          find.text(format == 'TEST' ? 'Buy Draw' : 'Buy India'),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Confirm buy'));
+        await tester.pumpAndSettle();
+        expect(shares, 10);
+        await tester.tap(find.text('My positions').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Exit position'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Confirm exit'));
+        await tester.pumpAndSettle();
+        expect(shares, 0);
+        expect(balance, 100000);
+        expect(orders, 2);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      },
+    );
+  }
 }

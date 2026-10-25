@@ -1,15 +1,15 @@
 # CricTrade implementation and runbook
 
-Implemented 24 October 2026. The backend, React user screen, Flutter user screen and React admin controls support a complete **test-credit** trading lifecycle. The current ESPN source and experimental model are not approved for cash execution. No production deployment or production database changes were performed.
+Implemented 24 October 2026; extended to ODI and Test/first-class on 25 October 2026. The backend, React user screen, Flutter user screen and React admin controls support a complete **test-credit** trading lifecycle. The current ESPN source and experimental model are not approved for cash execution. No production deployment or production database changes were performed.
 
 ## What is available
 
 - A CricTrade navigation tab in both user clients and admin web. User clients replace the MoneyGame header with match credits, Withdraw and a + action. Withdraw sits to the left of the credit button.
-- The Home match picker shows supported real T20 matches currently available for trading, with fresh quotes and a recently observed feed. Simulations, finished matches, paused matches and stale quotes are excluded. If none are available, it shows an empty state and refreshes automatically. My positions lists only the caller's funded real matches, retaining paused/finished matches and their settlement receipts.
-- Two user pages: Home and My positions. Home has team selection, current prices, a candlestick chart and Buy. Candle intervals switch automatically from sampled overs to one minute at 18 legal balls remaining in either innings. No interval selector, chart-style selector or zoom slider.
-- Players explicitly choose a match before funding or trading. Funding/conversion opens from the header credit button and names the selected match; switching matches loads that match's separate balance and positions. Team selection is a compact horizontal rate row (`IND 60.00 | NZ 40.00`), with no duplicate win-percentage label. Prices retain the existing 0.1-credit precision, displayed with two decimal places.
+- The Home match picker shows supported real T20, ODI/List A and Test/first-class matches currently available for trading, with fresh quotes and a recently observed feed. Simulations, finished matches, paused matches and stale quotes are excluded. If none are available, it shows an empty state and refreshes automatically. My positions lists only the caller's funded real matches, retaining paused/finished matches and their settlement receipts.
+- Two user pages: Home and My positions. Home has team selection, current prices, a candlestick chart and Buy. T20 candle intervals switch automatically from sampled overs to one minute at 18 legal balls remaining in either innings. ODI and Test candles remain per over throughout. No interval selector, chart-style selector or zoom slider.
+- Players explicitly choose a match before funding or trading. Funding/conversion opens from the header credit button and names the selected match; switching matches loads that match's separate balance and positions. Team selection is a compact horizontal rate row (`IND 60.00 | NZ 40.00`), with no duplicate win-percentage label. Test/first-class adds a third compact Draw button. Prices retain the existing 0.1-credit precision, displayed with two decimal places; all outcomes sum to 100 credits.
 - Whole-share buys have an order ticket; owned shares are managed through Exit position, including partial exits. There is no standalone sell/short action. Confirmation and changed/expired quote rejection are preserved.
-- New buys and additional funding pause for **both teams whenever either team's published win probability exceeds 90%**, in either innings. Exactly 90% permits entry; entry resumes when both teams return to 90% or below. The server checks the latest quote inside the funding/order transaction, before changing any balances. Existing positions can still exit at valid quotes. There is no over-based entry cutoff or artificial time-decay charge.
+- New buys and additional funding pause for **all outcomes whenever any published outcome probability exceeds 90%**, including Draw in a Test. Exactly 90% permits entry; entry resumes when every outcome returns to 90% or below. The server checks the latest quote inside the funding/order transaction, before changing any balances. Existing positions can still exit at valid quotes. There is no over-based entry cutoff or artificial time-decay charge.
 - My positions shows average entry, last price, invested/current values and green/red credit P&L. Order history and settlement receipts are collapsed. Market rules are behind an information action. Drag the price axis vertically to scale candle height, or the time axis horizontally to scale spacing; double-click/tap resets the axis.
 - Persisted request IDs and retry recovery, authenticated ownership checks, integer accounting and serializable mutations.
 - Admin simulation creation, pause/resume, result confirmation and void/refund with a recorded actor and reason.
@@ -19,7 +19,7 @@ Implemented 24 October 2026. The backend, React user screen, Flutter user screen
 
 All stored amounts use integer **credit tenths**. One unit equals 0.1 match credit and corresponds nominally to one paise. Thus ₹1,000 → 100,000 stored units → 10,000 displayed credits. A 60-credit share has a stored price of 600; 100 shares cost 60,000 units.
 
-Final balance is available credits plus open winning shares valued at 100 credits each; open losing shares close at zero. For each account:
+Final balance is available credits plus open winning shares valued at 100 credits each; open losing shares close at zero. In a confirmed Test draw, Draw shares win and both team shares lose. A tie is distinct from a draw and requires operator resolution; an abandoned/no-result match is refunded after confirmation. For each account:
 
 ```text
 gain      = max(finalBalance - deposit, 0)
@@ -39,17 +39,19 @@ Funding is capped at ₹100,000 equivalent per account per match; orders and eac
 
 ## Feed and pricing
 
-The worker requests the existing ESPN cricket scoreboard once per shared polling cycle, regardless of viewer count. A database lease elects one polling process. Normal cadence is 60 seconds, accelerating to 5 seconds when a supported innings has 1–18 legal balls remaining. Failures use exponential backoff and respect longer provider `Retry-After` values. `CRICTRADE_ESPN_ENABLED=false` disables external polling while simulations continue.
+The worker requests the existing ESPN cricket scoreboard once per shared polling cycle, regardless of viewer count. A database lease elects one polling process. Normal cadence is 60 seconds. Only T20 accelerates to 5 seconds when an innings has 1–18 legal balls remaining. ODI and Test never trigger that acceleration; if another T20 is in fast cadence, the shared response can still contain updated ODI/Test scores. Their candles remain per over. Failures use exponential backoff and respect longer provider `Retry-After` values. `CRICTRADE_ESPN_ENABLED=false` disables external polling while simulations continue.
 
 Prices recalculate on changed score snapshots, including changes within an over; per-over candles group those observed prices rather than limiting price updates to over ends. Simulation advances one delivery approximately every ten seconds. The probability cutoff does not change polling, chart intervals or pricing. Because it uses the published quote (0.1-percentage-point precision), it cannot detect a threshold crossing before the feed/model reports it.
 
 For a four-hour match with 30 minutes in fast cadence, the estimate is `210 + 360 = 570` upstream calls, plus discovery/retries. This is a budget estimate, not a verified free allowance. Existing sports-score polling elsewhere in MoneyGame has its own requests. Client refreshes use this backend's persisted data rather than making ESPN calls themselves.
 
-The adapter requires supported 20-over states and an explicit chase target. It suspends unsupported/reduced-overs inputs, interruptions, terminal innings, score regressions and revised targets. Corrections require operator review. A unique provider winner must appear twice before automatic test settlement; ambiguous results require admin resolution. Super Over execution and DLS pricing are not implemented.
+The adapter supports full-length T20 (120 balls), ODI/List A (300 balls), and Test/first-class (up to four innings, no fixed ball limit). Limited-overs chases require an explicit target. Test states require provider batting-team identity, both teams’ innings scores, match day/session and scheduled match duration. Follow-ons use batting identity rather than an assumed alternating order; declarations end an innings; fourth-innings targets derive from aggregate scores and must agree with any explicit target. Missing or inconsistent inputs suspend trading instead of inventing a score.
+
+Unsupported/reduced-overs inputs, interruptions, terminal innings, score regressions and revised targets suspend execution. Corrections require operator review. A unique provider winner, explicit Test draw, or explicit no-result must appear in two matching final observations before automatic settlement/refund. Ambiguous results require admin resolution. T10, The Hundred, Super Over execution and DLS pricing are not implemented.
 
 Identical snapshots update `feedReceivedAt` without renewing the quote. Quotes expire after 90 seconds for ESPN and 30 seconds for simulation. These limits stop execution on unchanged inputs; they do **not** prove source freshness. The earlier IND–NZ probe observed missing intermediate deliveries even at 5-second polling. See [feed evidence](CRICKET_FEED_TEST_REPORT.md).
 
-`cricket-baseline-v1` is a deterministic logistic estimate using runs, wickets, target and legal balls remaining. “Theta” is opportunity loss as balls run out; “delta” is sensitivity to changed match inputs. Neither is an arbitrary wall-clock charge or random price movement. The model is deliberately labelled experimental, not calibrated.
+`cricket-baseline-v1` remains the T20 model. `cricket-multiformat-baseline-v1` adds ODI scoring assumptions and an experimental three-outcome Test estimate. Limited-overs estimates use runs, wickets, target and legal balls remaining. Test team estimates use aggregate runs, innings remaining and wickets; the Draw estimate additionally uses source-provided match day/session and scheduled days. These are heuristic inputs, not calibrated odds. Test updates do not assume a fixed number of overs per innings. “Theta” is opportunity loss as balls run out; “delta” is sensitivity to changed match inputs. Neither is an arbitrary wall-clock charge or random price movement. The model is deliberately labelled experimental, not calibrated.
 
 For the documented 30-from-12, five-wickets-left chase, the baseline's batting-team quotes are:
 
@@ -79,7 +81,9 @@ All routes require authenticated users or administrators. `/api/trading/markets/
 | GET | `/admin/trading/markets` | Admin market state |
 | POST | `/admin/trading/simulation` | Create a test chase |
 | POST | `/admin/trading/markets/:id/pause` | `{paused, reason}`; resume waits for a changed score |
-| POST | `/admin/trading/markets/:id/settle` | `{winner: 0 | 1 | null, reason}`; null refunds |
+| POST | `/admin/trading/markets/:id/settle` | `{winner: 0 \| 1 \| 2 \| null, reason}`; 2 is Test-only Draw, null refunds |
+
+Outcome IDs are `0` (first team), `1` (second team), and `2` (Draw, Test-only). Orders and candle endpoints reject Draw for other formats. Quotes persist `price0` and `priceDraw`; the second team price is `1000 - price0 - priceDraw` in stored units. Existing two-outcome quotes default to zero Draw price.
 
 Socket events `trading_market_updated` and private `trading_account_updated` invalidate client snapshots. Clients also refresh every five seconds, so reconnecting clients obtain authoritative state. Candle OHLC comes from published quotes only; trade volume is separate from quote count. No skipped delivery prices are reconstructed.
 
@@ -87,7 +91,7 @@ Successful funding/trading requests store their payload and result atomically. R
 
 Settlement uses one serializable transaction for the market, all account receipts and any wallet movements. A failed transaction rolls back the entire settlement; the next worker/admin attempt retries it. This replaces the original plan's proposed batch settlement for the current small-user version. Large-pool batching and load qualification remain future work. Trade records remain persisted; the screens currently show the latest 100 executions.
 
-The cash ledger boundary is implemented and tested on isolated fixture accounts, including payout rollback. It requires `CRICTRADE_CASH_ENABLED=true`, a `VERIFIED` market source and a non-baseline model version. There is no UI for activating cash and no verified provider adapter in this release. Merely changing metadata or the environment flag is not a cash-launch procedure; current client funding flows are explicitly test-only.
+The cash ledger boundary is implemented and tested on isolated fixture accounts, including payout rollback. It requires `CRICTRADE_CASH_ENABLED=true`, a `VERIFIED` market source and a model version other than either experimental baseline. There is no UI for activating cash and no verified provider adapter in this release. Merely changing metadata or the environment flag is not a cash-launch procedure; current client funding flows are explicitly test-only.
 
 ## Run locally
 
@@ -110,15 +114,15 @@ npm run dev:server
 
 In separate terminals, run `npm run dev:user-web` and `npm run dev:admin-web`, or `flutter run` from `apps/user-app`. Sign in with existing accounts and open CricTrade. Startup discovers supported live real matches without creating a simulation. Real matches still use test credits. Admin simulation fixtures remain available for development and existing records are preserved, but they are hidden from both user pickers. Existing simulations continue their ten-second replay so their accounts can settle.
 
-A read-only feed check on 25 October 2026 at 10:18 IST found no supported live T20 match. New Zealand A v India A was live but was a multi-innings match, outside the current adapter/model. Availability changes with the provider feed; that check does not establish a deployed backend's state.
+The 25 October format extension was checked against a captured live New Zealand A v India A first-class snapshot: innings 3, New Zealand A 317, India A 113 & 92/2 (29.1 overs), day 2 session 3 of a four-day match. The adapter correctly retained batting identity and both innings aggregates, and produced three prices summing to 100 credits. This is parsing evidence, not model-accuracy or deployed-backend evidence. Availability changes with the provider feed.
 
-The new migration is `20261024000000_crictrade` in both migration directories. PostgreSQL deployments must use the repository's PostgreSQL schema/migration selection in `docker-entrypoint.sh`; do not apply SQLite migrations to PostgreSQL. Database changes during development verification were restricted to disposable test databases.
+The initial migration is `20261024000000_crictrade`; the required format-extension migration is `20261025000000_crictrade_draw` in both migration directories. Apply the Draw migration and regenerate Prisma before running the updated backend. It adds `TradingQuote.priceDraw` with a zero default and preserves existing quotes, balances and positions. PostgreSQL deployments must use the repository's PostgreSQL schema/migration selection in `docker-entrypoint.sh`; do not apply SQLite migrations to PostgreSQL. Database changes during development verification were restricted to disposable test databases.
 
 ## Verification
 
 ```bash
 npm run build
-npm --prefix apps/server test -- trading trading-http security sports
+npm --prefix apps/server test -- trading trading-http trading-formats security sports
 npm run test:migrations
 npm run test:web-sessions
 cd apps/user-app
@@ -126,9 +130,11 @@ flutter analyze
 flutter test
 ```
 
-Coverage includes 500 randomized conservation cases; exact conversion/rounding; ownership; quote expiry; concurrent overspending; duplicate operations/results; void refunds; separate match balances and unchanged running-match accounts during settlement; corrected/duplicate feed states; shared polling ownership; fast cadence; provider backoff; cash-boundary escrow/payout rollback; HTTP permissions and private-operation isolation. Existing security/payment and sports-pool regressions pass.
+Coverage includes ODI/Test parsing, follow-ons, declarations, fourth-innings targets, missing time metadata, three-outcome rounding/conservation, Draw trading and exit, the Draw probability cutoff, automatic/admin Draw settlement, and a legacy-quote migration regression; plus 500 randomized conservation cases; exact conversion/rounding; ownership; quote expiry; concurrent overspending; duplicate operations/results; void refunds; separate match balances and unchanged running-match accounts during settlement; corrected/duplicate feed states; shared polling ownership; fast cadence; provider backoff; cash-boundary escrow/payout rollback; HTTP permissions and private-operation isolation. Existing security/payment and sports-pool regressions pass.
 
 SQLite migrations were exercised against fresh and upgraded temporary databases. The PostgreSQL schema validates, but its migration was not executed against a running PostgreSQL instance. Flutter analysis reports two pre-existing informational lint notices in unrelated screens.
+
+Format-extension checks pass on 360px and 1280px web viewports and 360px Flutter layouts: a compact three-option Test row, Draw buy/exit, ODI per-over candles even in the final three overs, and T20 automatic one-minute candles.
 
 Browser checks use mocked API responses against the real local React apps: desktop/mobile chart rendering, automatic interval transitions, axis gestures, replacement header, funding, buy/exit confirmation, profit/loss positions, and admin pause/resume/settle. Flutter tests cover independent axis gestures and funding/buy/exit interactions with a fake API. These complement backend integration tests; they do not establish live-feed accuracy or production performance.
 

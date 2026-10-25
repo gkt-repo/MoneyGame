@@ -332,6 +332,7 @@ model TradingQuote {
   market TradingMarket @relation(fields: [marketId], references: [id], onDelete: Restrict)
   sequence Int
   price0 Int
+  priceDraw Int @default(0)
   snapshot String
   publishedAt DateTime @default(now())
   expiresAt DateTime

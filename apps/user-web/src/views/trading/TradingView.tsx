@@ -15,6 +15,7 @@ import {
   TradingSnapshotDTO,
   TradingCandleDTO,
   TradingExecutionDTO,
+  TradingOutcome,
 } from '@moneygame/shared-types';
 import { userApi } from '../../services/api';
 import { connectSocket } from '../../services/socket';
@@ -86,9 +87,14 @@ function PriceChart({
         secondsVisible: false,
         borderColor: '#28394e',
         tickMarkFormatter: (time: Time) =>
-          new Date(Number(time) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          new Date(Number(time) * 1000).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
       },
-      localization: { timeFormatter: (t: any) => new Date(Number(t) * 1000).toLocaleTimeString() },
+      localization: {
+        timeFormatter: (t: any) => new Date(Number(t) * 1000).toLocaleTimeString(),
+      },
     });
     const s = c.addSeries(CandlestickSeries, {
       upColor: '#34d399',
@@ -196,13 +202,13 @@ export function TradingView({
     [marketId, setMarketId] = useState('');
   const [snapshot, setSnapshot] = useState<TradingSnapshotDTO | null>(null),
     [bars, setBars] = useState<TradingCandleDTO[]>([]);
-  const [outcome, setOutcome] = useState<0 | 1>(0),
+  const [outcome, setOutcome] = useState<TradingOutcome>(0),
     [page, setPage] = useState<'home' | 'positions'>('home');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY'),
     [quantity, setQuantity] = useState('10'),
     [funding, setFunding] = useState('1000');
   const [dialog, setDialog] = useState<'fund' | 'order' | 'rules' | 'withdraw' | null>(null),
-    [orderOutcome, setOrderOutcome] = useState<0 | 1>(0),
+    [orderOutcome, setOrderOutcome] = useState<TradingOutcome>(0),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
@@ -329,9 +335,14 @@ export function TradingView({
     q = m?.quote,
     a = activeSnapshot?.account;
   const open = m?.status === 'OPEN' && !!q && new Date(q.expiresAt).getTime() > now;
-  const entryClosed = !!m?.entryClosed || (!!q && Math.max(q.price0, 1000 - q.price0) > 900);
+  const format =
+    q?.state.format ?? (q?.state.totalBalls === 300 ? 'ODI' : q?.state.totalBalls === null ? 'TEST' : 'T20');
+  const entryClosed =
+    !!m?.entryClosed ||
+    (!!q && Math.max(q.price0, 1000 - q.price0 - (q.priceDraw ?? 0), q.priceDraw ?? 0) > 900);
   const canEnter = open && !entryClosed;
-  const priceFor = (o: number) => (q ? (o === 0 ? q.price0 : 1000 - q.price0) : 0);
+  const priceFor = (o: number) =>
+    q ? (o === 0 ? q.price0 : o === 2 ? (q.priceDraw ?? 0) : 1000 - q.price0 - (q.priceDraw ?? 0)) : 0;
   const position = a?.positions.find((p) => p.outcome === outcome);
   const orderPosition = a?.positions.find((p) => p.outcome === orderOutcome);
   const count = Number(quantity),
@@ -340,11 +351,12 @@ export function TradingView({
   const maximum =
     side === 'BUY' ? Math.floor((a?.balance ?? 0) / Math.max(1, orderPrice)) : (orderPosition?.quantity ?? 0);
   const valid = Number.isSafeInteger(count) && count > 0 && count <= maximum;
-  const teamFor = (o: number) => (o === 0 ? m?.team0 : m?.team1);
-  const oneMinute = !!q && q.state.totalBalls - q.state.balls <= 18;
+  const teamFor = (o: number) => (o === 2 ? 'Draw' : o === 0 ? m?.team0 : m?.team1);
+  const oneMinute =
+    !!q && format === 'T20' && q.state.totalBalls !== null && q.state.totalBalls - q.state.balls <= 18;
   const positions = a?.positions.filter((p) => p.quantity > 0) ?? [];
   const signed = (n: number) => `${n > 0 ? '+' : ''}${credits(n)} cr`;
-  function ticket(o: 0 | 1, exit = false) {
+  function ticket(o: TradingOutcome, exit = false) {
     if (!open || (!exit && !canEnter)) return;
     setOrderOutcome(o);
     setSide(exit ? 'SELL' : 'BUY');
@@ -479,7 +491,7 @@ export function TradingView({
               ? 'Loading matches…'
               : page === 'positions'
                 ? 'No real-match positions yet.'
-                : 'No live T20 matches available for trading right now. This list updates automatically.'}
+                : 'No live matches available for trading right now. This list updates automatically.'}
           </div>
         )}
         {!!markets.length && !marketId && (
@@ -492,7 +504,7 @@ export function TradingView({
         {marketId && !snapshot && <div className="ct-empty">Loading market…</div>}
         {entryClosed && m?.status !== 'SETTLED' && m?.status !== 'VOIDED' && (
           <p className="ct-entry-note">
-            Win probability above 90% · New buys and funding paused. Exits require a valid quote.
+            Outcome probability above 90% · New buys and funding paused. Exits require a valid quote.
           </p>
         )}
         {m && a && activeSnapshot && (
@@ -510,10 +522,14 @@ export function TradingView({
                     </strong>
                   )}
                 </div>
-                <div className="ct-team-cards">
-                  {[m.team0, m.team1].map((name, i) => (
-                    <button key={i} aria-pressed={outcome === i} onClick={() => setOutcome(i as 0 | 1)}>
-                      <span title={name}>{teamCode(name)}</span>
+                <div className={`ct-team-cards ${format === 'TEST' ? 'ct-three-outcomes' : ''}`}>
+                  {(format === 'TEST' ? [m.team0, m.team1, 'Draw'] : [m.team0, m.team1]).map((name, i) => (
+                    <button
+                      key={i}
+                      aria-pressed={outcome === i}
+                      onClick={() => setOutcome(i as TradingOutcome)}
+                    >
+                      <span title={name}>{i === 2 ? 'Draw' : teamCode(name)}</span>
                       <strong>{q ? (priceFor(i) / 10).toFixed(2) : '—'}</strong>
                     </button>
                   ))}
@@ -524,7 +540,9 @@ export function TradingView({
                       <strong>{teamFor(outcome)}</strong>
                       <span> / credits</span>
                     </div>
-                    <span>{oneMinute ? '1 min candles' : 'Over candles'} · Auto</span>
+                    <span>
+                      {format} · {oneMinute ? '1 min candles' : 'Over candles'} · Auto
+                    </span>
                   </div>
                   <PriceChart
                     key={`${marketId}:${outcome}:${oneMinute ? '1m' : 'over'}`}
@@ -704,7 +722,7 @@ export function TradingView({
               <>
                 <h2>Add credits</h2>
                 <p>{m?.title} · Credits for this match only</p>
-                <p>New buys and funding pause whenever either team’s win probability exceeds 90%.</p>
+                <p>New buys and funding pause whenever any outcome’s probability exceeds 90%.</p>
                 <p>₹1 = 10 match credits</p>
                 <label>
                   Amount (₹)
@@ -801,14 +819,17 @@ export function TradingView({
               <>
                 <h2>Market details</h2>
                 <p>
-                  New buys and funding pause for both teams when either team’s quoted win probability exceeds
-                  90%. Entry resumes when both return to 90% or below. Existing positions can still exit at a
-                  valid quote.
+                  New buys and funding pause when any outcome’s quoted probability exceeds 90%. Entry resumes
+                  when all return to 90% or below. Existing positions can still exit at a valid quote.
                 </p>
                 <p>{m?.reason}</p>
                 <p>
-                  Prices are estimated win chances. Candles use observed prices: per over, then one minute in
-                  the last three overs.
+                  Prices are experimental outcome probabilities. ODI and Test candles stay per over. Only T20
+                  switches to one-minute candles in the last three overs.
+                </p>
+                <p>
+                  Test and first-class matches include Draw. A confirmed drawn result settles Draw shares as
+                  winners. A tie is not a draw; no-result or voided markets refund deposits.
                 </p>
                 <p>
                   ₹1 = 10 credits. Remaining principal is returned at settlement. Positive net credits share

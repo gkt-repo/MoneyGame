@@ -163,7 +163,94 @@ async function main() {
       0,
       'Position history is scoped to the authenticated user',
     );
-    await prisma.user.update({ where: { id: b.id }, data: { status: 'BANNED' } });
+    const testId = 'http-test-match';
+    await prisma.tradingMarket.create({
+      data: {
+        id: testId,
+        source: 'ESPN',
+        title: 'Test fixture',
+        team0: 'India',
+        team1: 'NZ',
+      },
+    });
+    await tradingService.publish(testId, {
+      format: 'TEST',
+      innings: 3,
+      batting: 1,
+      runs: 92,
+      wickets: 2,
+      balls: 175,
+      totalBalls: null,
+      target: null,
+      teamRuns: [317, 205],
+      inningsPlayed: [1, 2],
+      day: 2,
+      scheduledDays: 4,
+      session: 3,
+      description: 'Test HTTP fixture',
+    });
+    const testPath = `/trading/markets/${testId}`;
+    assert.equal(
+      (
+        await request(testPath + '/fund', token(a.id), {
+          amount: 10000,
+          requestId: 'http-draw-fund',
+        })
+      ).status,
+      200,
+    );
+    const testQuote = (await request(testPath, token(a.id))).body.market.quote;
+    assert(testQuote.priceDraw > 0);
+    const drawOrder = {
+      requestId: 'http-draw-buy',
+      quoteId: testQuote.id,
+      outcome: 2,
+      side: 'BUY',
+      quantity: 5,
+    };
+    assert.equal((await request(testPath + '/orders', token(a.id), drawOrder)).status, 200);
+    const drawBars = await request(testPath + '/candles?outcome=2&interval=auto', token(a.id));
+    assert.equal(drawBars.status, 200);
+    assert.equal(drawBars.body[0].close, testQuote.priceDraw / 10);
+    assert.equal(
+      (
+        await request(testPath + '/orders', token(a.id), {
+          ...drawOrder,
+          requestId: 'http-draw-exit',
+          side: 'SELL',
+          quantity: 1,
+        })
+      ).status,
+      200,
+    );
+    const drawSettlement = `/admin/trading/markets/${testId}/settle`;
+    assert.equal(
+      (
+        await request(drawSettlement, token(a.id), {
+          winner: 2,
+          reason: 'Unauthorized draw',
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
+      (
+        await request(drawSettlement, token(admin.id, 'ADMIN'), {
+          winner: 2,
+          reason: 'Confirmed Test draw',
+        })
+      ).status,
+      200,
+    );
+    const drawn = (await request(testPath, token(a.id))).body;
+    assert.equal(drawn.market.winner, 2);
+    assert.equal(drawn.market.status, 'SETTLED');
+    assert.equal(drawn.market.quote.priceDraw, 1000);
+    assert.equal(drawn.account.receipt.payout, 10000, 'No loss pool means no extra payout');
+    await prisma.user.update({
+      where: { id: b.id },
+      data: { status: 'BANNED' },
+    });
     assert.equal((await request('/trading/markets', token(b.id))).status, 403);
     const paused = await tradingService.snapshot(id, a.id);
     assert.equal(paused.market.status, 'VOIDED');

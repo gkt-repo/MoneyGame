@@ -2,21 +2,33 @@
 // Derived averagePrice can be fractional; candle OHLC uses displayed credits.
 export type TradingStatus = 'OPEN' | 'SUSPENDED' | 'SETTLED' | 'VOIDED';
 export type TradingSide = 'BUY' | 'SELL';
-export type TradingOutcome = 0 | 1;
+// Outcome 2 is Draw and is available only for Test/first-class matches.
+export type TradingOutcome = 0 | 1 | 2;
+export type CricketFormat = 'T20' | 'ODI' | 'TEST';
 export interface CricketState {
-  innings: 1 | 2;
-  batting: TradingOutcome;
+  // Omitted only by legacy T20 snapshots.
+  format?: CricketFormat;
+  innings: 1 | 2 | 3 | 4;
+  batting: 0 | 1;
   runs: number;
   wickets: number;
   balls: number;
-  totalBalls: number;
+  // Test/first-class innings have no fixed ball limit.
+  totalBalls: number | null;
   target: number | null;
   description: string;
+  declared?: boolean;
+  teamRuns?: [number, number];
+  inningsPlayed?: [number, number];
+  day?: number;
+  scheduledDays?: number;
+  session?: number;
 }
 export interface TradingQuoteDTO {
   id: string;
   sequence: number;
   price0: number;
+  priceDraw?: number;
   publishedAt: string;
   expiresAt: string;
   state: CricketState;
@@ -29,7 +41,7 @@ export interface TradingMarketDTO {
   source: string;
   mode: 'TEST' | 'CASH';
   status: TradingStatus;
-  // Either team's quoted probability is above 90%; exits still require a fresh OPEN quote.
+  // Any outcome's quoted probability is above 90%; exits still require a fresh OPEN quote.
   entryClosed: boolean;
   reason: string;
   rulesVersion: string;

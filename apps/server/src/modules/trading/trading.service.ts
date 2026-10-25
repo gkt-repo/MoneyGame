@@ -6,6 +6,7 @@ import {
   TradingAccountDTO,
   TradingMarketDTO,
   TradingOrderInput,
+  TradingOutcome,
   TradingReceipt,
   TradingSnapshotDTO,
 } from '@moneygame/shared-types';
@@ -18,11 +19,15 @@ import {
   automaticCandleInterval,
   candles,
   entryClosed,
+  formatOf,
+  inningsEnded,
   integer,
   LIMIT,
   MODEL,
+  MULTIFORMAT_MODEL,
+  outcomePrice,
   pollInterval,
-  price,
+  prices,
   RULES,
   TradingError,
   validateState,
@@ -66,7 +71,7 @@ export class TradingService {
       market.mode === 'CASH' &&
       (process.env.CRICTRADE_CASH_ENABLED !== 'true' ||
         market.source !== 'VERIFIED' ||
-        market.modelVersion === MODEL)
+        [MODEL, MULTIFORMAT_MODEL].includes(market.modelVersion))
     ) {
       throw new TradingError(
         'CASH_UNAVAILABLE',
@@ -127,12 +132,27 @@ export class TradingService {
       if (
         m.source === 'ESPN' &&
         prior.innings &&
-        (state.innings < prior.innings ||
+        (formatOf(state) !== formatOf(prior as CricketState) ||
+          state.innings < prior.innings ||
+          (state.day !== undefined && prior.day !== undefined && state.day < prior.day) ||
+          (state.teamRuns &&
+            prior.teamRuns &&
+            state.teamRuns.some((runs, team) => runs < prior.teamRuns![team])) ||
+          (state.inningsPlayed &&
+            prior.inningsPlayed &&
+            (state.inningsPlayed.some((n, team) => n < prior.inningsPlayed![team]) ||
+              (state.innings === prior.innings + 1 &&
+                state.inningsPlayed[state.batting] !== prior.inningsPlayed[state.batting] + 1))) ||
           (state.innings === prior.innings &&
             (state.batting !== prior.batting ||
               state.balls < prior.balls! ||
               state.runs < prior.runs! ||
               state.wickets < prior.wickets! ||
+              (state.teamRuns &&
+                prior.teamRuns &&
+                (state.teamRuns[1 - state.batting] !== prior.teamRuns[1 - state.batting] ||
+                  state.teamRuns[state.batting] - state.runs !==
+                    prior.teamRuns[state.batting] - prior.runs!)) ||
               state.target !== prior.target)))
       ) {
         await tx.tradingMarket.update({
@@ -150,16 +170,13 @@ export class TradingService {
       }
       const now = new Date(),
         sequence = m.sequence + 1;
-      const inningsEnded =
-        state.balls >= state.totalBalls ||
-        state.wickets >= 10 ||
-        (state.innings === 2 && state.runs >= state.target!);
+      const ended = inningsEnded(state);
       const expiresAt = new Date(now.getTime() + (m.source === 'SIMULATION' ? 30000 : 90000));
       await tx.tradingQuote.create({
         data: {
           marketId: id,
           sequence,
-          price0: price(state),
+          ...prices(state),
           snapshot: JSON.stringify(state),
           publishedAt: now,
           expiresAt,
@@ -172,11 +189,12 @@ export class TradingService {
           fingerprint,
           snapshot: JSON.stringify(state),
           snapshotChangedAt: now,
+          modelVersion: formatOf(state) === 'T20' ? m.modelVersion : MULTIFORMAT_MODEL,
           feedReceivedAt: receivedAt,
-          status: m.adminPaused || inningsEnded ? 'SUSPENDED' : 'OPEN',
+          status: m.adminPaused || ended ? 'SUSPENDED' : 'OPEN',
           reason: m.adminPaused
             ? m.reason
-            : inningsEnded
+            : ended
               ? 'Innings ended; awaiting confirmed next state or result'
               : m.source === 'ESPN'
                 ? 'Sampled feed · test credits · experimental probability'
@@ -200,7 +218,7 @@ export class TradingService {
       source: m.source,
       mode: m.mode,
       status: expired ? 'SUSPENDED' : m.status,
-      entryClosed: q ? entryClosed(q.price0) : false,
+      entryClosed: q ? entryClosed(q.price0, q.priceDraw) : false,
       reason: expired ? 'Waiting for a changed score; last quote expired' : m.reason,
       rulesVersion: m.rulesVersion,
       modelVersion: m.modelVersion,
@@ -215,6 +233,7 @@ export class TradingService {
             id: q.id,
             sequence: q.sequence,
             price0: q.price0,
+            priceDraw: q.priceDraw,
             publishedAt: q.publishedAt.toISOString(),
             expiresAt: q.expiresAt.toISOString(),
             state: JSON.parse(q.snapshot),
@@ -257,21 +276,20 @@ export class TradingService {
       });
       if (!m) throw new TradingError('NOT_FOUND', 'Trading match not found', 404);
       const market = this.marketDTO(m),
-        p0 = market.quote?.price0 ?? 500;
+        quote = market.quote ?? { price0: 500, priceDraw: 0 };
       const values = m.accounts.map((a) => ({
         id: a.id,
         deposit: a.deposit,
-        balance:
-          a.balance + a.positions.reduce((n, p) => n + p.quantity * (p.outcome === 0 ? p0 : 1000 - p0), 0),
+        balance: a.balance + a.positions.reduce((n, p) => n + p.quantity * outcomePrice(quote, p.outcome), 0),
       }));
       const allocation = allocate(values);
       const a = m.accounts.find((a) => a.userId === userId);
       const own = a ? allocation.find((v) => v.id === a.id) : null;
       const positions =
         a?.positions.map((p) => {
-          const value = p.quantity * (p.outcome === 0 ? p0 : 1000 - p0);
+          const value = p.quantity * outcomePrice(quote, p.outcome);
           return {
-            outcome: p.outcome as 0 | 1,
+            outcome: p.outcome as TradingOutcome,
             quantity: p.quantity,
             cost: p.cost,
             averagePrice: p.quantity ? p.cost / p.quantity : 0,
@@ -308,7 +326,7 @@ export class TradingService {
         executions: executions.map((e) => ({
           ...e,
           side: e.side as 'BUY' | 'SELL',
-          outcome: e.outcome as 0 | 1,
+          outcome: e.outcome as TradingOutcome,
           createdAt: e.createdAt.toISOString(),
         })),
         pool: {
@@ -326,7 +344,7 @@ export class TradingService {
     });
   }
   async history(id: string, outcome: number, interval: string, before?: number) {
-    integer(outcome, 0, 1, 'Outcome');
+    integer(outcome, 0, 2, 'Outcome');
     if (before !== undefined) integer(before, 0, 9_000_000_000_000, 'History time');
     const qs = await prisma.tradingQuote.findMany({
       where: { marketId: id, ...(before === undefined ? {} : { publishedAt: { lt: new Date(before) } }) },
@@ -334,6 +352,8 @@ export class TradingService {
       take: 3000,
     });
     qs.reverse();
+    if (outcome === 2 && (!qs.length || formatOf(JSON.parse(qs[qs.length - 1].snapshot)) !== 'TEST'))
+      throw new TradingError('INVALID_OUTCOME', 'Draw is available only for Test/first-class matches');
     const executions = qs.length
       ? await prisma.tradingExecution.findMany({
           where: {
@@ -368,7 +388,7 @@ export class TradingService {
       });
       if (!liveQuote || liveQuote.expiresAt.getTime() <= Date.now())
         throw new TradingError('PRICE_CHANGED', 'Wait for a fresh quote before funding', 409);
-      assertEntryAllowed(liveQuote.price0);
+      assertEntryAllowed(liveQuote.price0, liveQuote.priceDraw);
       this.assertCash(m);
       const a = await tx.tradingAccount.upsert({
         where: { marketId_userId: { marketId: id, userId } },
@@ -415,7 +435,7 @@ export class TradingService {
       throw new TradingError('INVALID_INPUT', 'An order object is required');
     const key = this.requestId(input.requestId);
     const quantity = integer(input.quantity, 1, 1_000_000, 'Share quantity'),
-      outcome = integer(input.outcome, 0, 1, 'Outcome');
+      outcome = integer(input.outcome, 0, 2, 'Outcome');
     if (!['BUY', 'SELL'].includes(input.side) || typeof input.quoteId !== 'string')
       throw new TradingError('INVALID_INPUT', 'Invalid order');
     const payload = JSON.stringify({
@@ -439,15 +459,19 @@ export class TradingService {
           'Quote changed or expired. Refresh and confirm the new price.',
           409,
         );
-      if (input.side === 'BUY') assertEntryAllowed(q.price0);
-      const a = await tx.tradingAccount.findUnique({ where: { marketId_userId: { marketId: id, userId } } });
+      if (outcome === 2 && formatOf(JSON.parse(q.snapshot)) !== 'TEST')
+        throw new TradingError('INVALID_OUTCOME', 'Draw is available only for Test/first-class matches');
+      if (input.side === 'BUY') assertEntryAllowed(q.price0, q.priceDraw);
+      const a = await tx.tradingAccount.findUnique({
+        where: { marketId_userId: { marketId: id, userId } },
+      });
       if (!a || a.receipt) throw new TradingError('NO_ACCOUNT', 'Add match credits before trading');
       const p = await tx.tradingPosition.upsert({
         where: { accountId_outcome: { accountId: a.id, outcome } },
         create: { accountId: a.id, outcome },
         update: {},
       });
-      const unitPrice = outcome === 0 ? q.price0 : 1000 - q.price0,
+      const unitPrice = outcomePrice(q, outcome),
         total = unitPrice * quantity;
       if (input.side === 'BUY') {
         if (total > a.balance) throw new TradingError('INSUFFICIENT_CREDITS', 'Not enough match credits');
@@ -532,10 +556,12 @@ export class TradingService {
     this.notify(id);
   }
   async settle(id: string, winner: number | null, reason: string, actor = 'system') {
-    if (winner !== null) integer(winner, 0, 1, 'Winner');
+    if (winner !== null) integer(winner, 0, 2, 'Winner');
     if (!reason.trim()) throw new TradingError('INVALID_INPUT', 'A settlement reason is required');
     const result = await serializable(async (tx) => {
       const m = await this.lock(tx, id);
+      if (winner === 2 && formatOf(JSON.parse(m.snapshot)) !== 'TEST')
+        throw new TradingError('INVALID_OUTCOME', 'Draw is available only for Test/first-class matches');
       if (['SETTLED', 'VOIDED'].includes(m.status)) {
         if (m.winner !== winner)
           throw new TradingError('SETTLEMENT_CONFLICT', 'A different result was already settled', 409);
@@ -588,21 +614,28 @@ export class TradingService {
         }
         await tx.tradingAccount.update({
           where: { id: a.id },
-          data: { balance: allocation.balance, receipt: JSON.stringify(receipt) },
+          data: {
+            balance: allocation.balance,
+            receipt: JSON.stringify(receipt),
+          },
         });
-        await tx.tradingPosition.updateMany({ where: { accountId: a.id }, data: { quantity: 0, cost: 0 } });
+        await tx.tradingPosition.updateMany({
+          where: { accountId: a.id },
+          data: { quantity: 0, cost: 0 },
+        });
       }
       let finalSnapshot = m.snapshot;
       if (winner !== null) {
         finalSnapshot = JSON.stringify({
           ...JSON.parse(m.snapshot),
-          description: `Final result: ${winner === 0 ? m.team0 : m.team1} win · last observed score`,
+          description: `Final result: ${winner === 2 ? 'Draw' : `${winner === 0 ? m.team0 : m.team1} win`} · last observed score`,
         });
         await tx.tradingQuote.create({
           data: {
             marketId: id,
             sequence: m.sequence + 1,
             price0: winner === 0 ? 1000 : 0,
+            priceDraw: winner === 2 ? 1000 : 0,
             snapshot: finalSnapshot,
             publishedAt: new Date(settledAt),
             expiresAt: new Date(settledAt),

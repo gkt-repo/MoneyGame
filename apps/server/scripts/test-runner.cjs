@@ -11,6 +11,7 @@ const cases = {
   game: 'teen_patti.test.ts', sports: 'sports_pool.test.ts',
   trading: 'trading.test.ts',
   'trading-http': 'trading_http.test.ts',
+  'trading-formats': 'trading_formats.test.ts',
   notifications: 'notifications.test.ts',
   moderator: 'moderator.test.ts',
   float: 'moderator_float.test.ts',
