@@ -48,7 +48,8 @@ class TradingMarket {
   bool get entryClosed =>
       _serverEntryClosed ||
       (quote != null && outcomes.any((o) => price(o) > 900));
-  bool get canEnter => open && !entryClosed;
+  bool get canEnter =>
+      open && !entryClosed && (mode == 'CASH' || source == 'SIMULATION');
 }
 
 class TradingCandle {
@@ -89,6 +90,7 @@ class TradingExecution {
 }
 
 class TradingSnapshot {
+  final int? walletAvailable;
   final TradingMarket market;
   final int deposit, balance, equity, net, realized;
   final List<TradingPosition> positions;
@@ -96,7 +98,8 @@ class TradingSnapshot {
   final Map<String, dynamic> pool;
   final Map<String, dynamic>? receipt;
   TradingSnapshot.fromJson(Map<String, dynamic> j)
-    : market = TradingMarket.fromJson(
+    : walletAvailable = (j['walletAvailable'] as num?)?.toInt(),
+      market = TradingMarket.fromJson(
         Map<String, dynamic>.from(j['market'] as Map),
       ),
       deposit = (j['account']['deposit'] as num).toInt(),

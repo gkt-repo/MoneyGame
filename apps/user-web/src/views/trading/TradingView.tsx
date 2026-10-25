@@ -237,7 +237,10 @@ export function TradingView({
         (m) =>
           ['ESPN', 'VERIFIED'].includes(m.source) &&
           (page === 'positions' ||
-            (m.status === 'OPEN' && !!m.quote && new Date(m.quote.expiresAt).getTime() > Date.now())),
+            (m.mode === 'CASH' &&
+              m.status === 'OPEN' &&
+              !!m.quote &&
+              new Date(m.quote.expiresAt).getTime() > Date.now())),
       );
       setMarkets(list);
       setMarketId((id) => (list.some((m) => m.id === id) ? id : ''));
@@ -340,7 +343,7 @@ export function TradingView({
   const entryClosed =
     !!m?.entryClosed ||
     (!!q && Math.max(q.price0, 1000 - q.price0 - (q.priceDraw ?? 0), q.priceDraw ?? 0) > 900);
-  const canEnter = open && !entryClosed;
+  const canEnter = open && !entryClosed && (m?.mode === 'CASH' || m?.source === 'SIMULATION');
   const priceFor = (o: number) =>
     q ? (o === 0 ? q.price0 : o === 2 ? (q.priceDraw ?? 0) : 1000 - q.price0 - (q.priceDraw ?? 0)) : 0;
   const position = a?.positions.find((p) => p.outcome === outcome);
@@ -724,12 +727,16 @@ export function TradingView({
                 <p>{m?.title} · Credits for this match only</p>
                 <p>New buys and funding pause whenever any outcome’s probability exceeds 90%.</p>
                 <p>₹1 = 10 match credits</p>
+                {activeSnapshot?.walletAvailable !== undefined && m?.mode === 'CASH' && (
+                  <p>Available wallet balance: {rupees(activeSnapshot.walletAvailable)}</p>
+                )}
                 <label>
                   Amount (₹)
                   <input
                     autoFocus
                     type="number"
                     min="1"
+                    step="0.01"
                     max="100000"
                     value={funding}
                     onChange={(e) => setFunding(e.target.value)}
@@ -741,8 +748,13 @@ export function TradingView({
                 <p className="ct-subtle">
                   {m?.mode === 'TEST'
                     ? 'Test market. No money will be deducted from your wallet.'
-                    : 'Converted funds stay in this match until settlement.'}
+                    : `${rupees(Math.round((Number(funding) || 0) * 100))} will be deducted from your wallet and locked in this match until settlement.`}
                 </p>
+                {m?.mode === 'CASH' &&
+                  activeSnapshot?.walletAvailable !== undefined &&
+                  Math.round(Number(funding) * 100) > activeSnapshot.walletAvailable && (
+                    <p role="alert">Not enough available wallet balance.</p>
+                  )}
                 <button
                   className="ct-primary"
                   disabled={
@@ -751,7 +763,10 @@ export function TradingView({
                     !!pending ||
                     !Number.isFinite(Number(funding)) ||
                     Number(funding) < 1 ||
-                    Number(funding) > 100000
+                    Number(funding) > 100000 ||
+                    (m?.mode === 'CASH' &&
+                      activeSnapshot?.walletAvailable !== undefined &&
+                      Math.round(Number(funding) * 100) > activeSnapshot.walletAvailable)
                   }
                   onClick={() =>
                     m &&

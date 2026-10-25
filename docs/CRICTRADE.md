@@ -1,13 +1,14 @@
 # CricTrade implementation and runbook
 
-Implemented 24 October 2026; extended to ODI and Test/first-class on 25 October 2026. The backend, React user screen, Flutter user screen and React admin controls support a complete **test-credit** trading lifecycle. The current ESPN source and experimental model are not approved for cash execution. No production deployment or production database changes were performed.
+Implemented 24 October 2026; extended to ODI and Test/first-class on 25 October 2026. Wallet-funded trading was enabled on 25 October 2026 at the owner’s request. New live matches use actual wallet money at **₹1 = 10 match credits** across the backend, React and Flutter clients. The ESPN feed and pricing models remain experimental; enabling conversion does not establish their accuracy. No production deployment or production database changes were performed.
 
 ## What is available
 
 - A CricTrade navigation tab in both user clients and admin web. User clients replace the MoneyGame header with match credits, Withdraw and a + action. Withdraw sits to the left of the credit button.
-- The Home match picker shows supported real T20, ODI/List A and Test/first-class matches currently available for trading, with fresh quotes and a recently observed feed. Simulations, finished matches, paused matches and stale quotes are excluded. If none are available, it shows an empty state and refreshes automatically. My positions lists only the caller's funded real matches, retaining paused/finished matches and their settlement receipts.
+- The Home match picker shows supported real T20, ODI/List A and Test/first-class matches currently available for trading, with fresh quotes, CASH mode and a recently observed feed. Simulations, finished matches, paused matches and stale quotes are excluded. If none are available, it shows an empty state and refreshes automatically. My positions lists only the caller's funded real matches, retaining paused/finished matches and their settlement receipts.
 - Two user pages: Home and My positions. Home has team selection, current prices, a candlestick chart and Buy. T20 candle intervals switch automatically from sampled overs to one minute at 18 legal balls remaining in either innings. ODI and Test candles remain per over throughout. No interval selector, chart-style selector or zoom slider.
 - Players explicitly choose a match before funding or trading. Funding/conversion opens from the header credit button and names the selected match; switching matches loads that match's separate balance and positions. Team selection is a compact horizontal rate row (`IND 60.00 | NZ 40.00`), with no duplicate win-percentage label. Test/first-class adds a third compact Draw button. Prices retain the existing 0.1-credit precision, displayed with two decimal places; all outcomes sum to 100 credits.
+- The + action shows available wallet money, the exact debit and credits received. Conversion deducts available wallet money and locks it in the selected match atomically. Insufficient funds are rejected; retrying a successful request does not debit twice. Wallet updates are sent privately after committed funding and settlement.
 - Whole-share buys have an order ticket; owned shares are managed through Exit position, including partial exits. There is no standalone sell/short action. Confirmation and changed/expired quote rejection are preserved.
 - New buys and additional funding pause for **all outcomes whenever any published outcome probability exceeds 90%**, including Draw in a Test. Exactly 90% permits entry; entry resumes when every outcome returns to 90% or below. The server checks the latest quote inside the funding/order transaction, before changing any balances. Existing positions can still exit at valid quotes. There is no over-based entry cutoff or artificial time-decay charge.
 - My positions shows average entry, last price, invested/current values and green/red credit P&L. Order history and settlement receipts are collapsed. Market rules are behind an information action. Drag the price axis vertically to scale candle height, or the time axis horizontally to scale spacing; double-click/tap resets the axis.
@@ -31,7 +32,7 @@ payout    = principal + reward
 
 Largest-remainder allocation distributes residual paise deterministically. Total payouts equal total deposits. No fees are charged. A void, or a pool without any positive participants, refunds all deposits. Positive participants with no loss pool receive no reward. All unused principal returns at settlement; there is no early withdrawal. Both clients display these exceptions.
 
-Settlement remains automatic **per match after its result is confirmed**, not a daily 5 PM batch. Every deposit, position and profit/loss allocation belongs to one match; another running match's credits cannot fund its payout. In cash mode, settlement already returns the final payout to the wallet atomically. The header Withdraw action explains locks before settlement, then opens the existing wallet withdrawal flow after cash settlement without issuing another payout. Test credits cannot be withdrawn as money. The header shows zero spendable match credits after settlement; the final accounting remains in the receipt.
+Settlement remains automatic **per match after its result is confirmed**, not a daily 5 PM batch. Every deposit, position and profit/loss allocation belongs to one match; another running match's credits cannot fund its payout. Settlement returns each wallet-funded match’s final payout to the wallet atomically. The header Withdraw action explains locks before settlement, then opens the existing wallet withdrawal flow after cash settlement without issuing another payout. Test credits cannot be withdrawn as money. The header shows zero spendable match credits after settlement; the final accounting remains in the receipt.
 
 Example: deposit 10,000 credits, buy 100 India shares at 60 and sell at 80 → 12,000 final credits. Principal is ₹1,000; 2,000 positive credits determine the share of the loss pool. They do not guarantee ₹200 profit. Test-mode receipts express the equivalent amounts but never change the wallet.
 
@@ -91,7 +92,9 @@ Successful funding/trading requests store their payload and result atomically. R
 
 Settlement uses one serializable transaction for the market, all account receipts and any wallet movements. A failed transaction rolls back the entire settlement; the next worker/admin attempt retries it. This replaces the original plan's proposed batch settlement for the current small-user version. Large-pool batching and load qualification remain future work. Trade records remain persisted; the screens currently show the latest 100 executions.
 
-The cash ledger boundary is implemented and tested on isolated fixture accounts, including payout rollback. It requires `CRICTRADE_CASH_ENABLED=true`, a `VERIFIED` market source and a model version other than either experimental baseline. There is no UI for activating cash and no verified provider adapter in this release. Merely changing metadata or the environment flag is not a cash-launch procedure; current client funding flows are explicitly test-only.
+Wallet conversion is enabled by default for CASH markets with ESPN or VERIFIED sources. The previous verified-source/model-version gate was removed for the requested live-money testing; model versions and experimental labels remain truthful. `CRICTRADE_CASH_ENABLED=false` pauses new cash funding and buys. Valid exits and settlement still work so disabling entries does not trap existing funds. Simulations cannot execute cash funding or trades.
+
+New provider markets use IDs `espn-cash-<eventId>`. Old `espn-<eventId>` markets keep their original TEST mode, credits, positions and receipts; their balances are never relabelled or redeemed as cash. The worker follows both pools to the result using the same scoreboard request. Home lists only live CASH pools; My positions retains the user’s legacy test records. New funding and buys into legacy real-feed TEST pools are rejected, while owned positions can still exit with valid quotes. Existing simulation fixtures stay available to administrators and cannot cash out.
 
 ## Run locally
 
@@ -112,17 +115,17 @@ cd ../..
 npm run dev:server
 ```
 
-In separate terminals, run `npm run dev:user-web` and `npm run dev:admin-web`, or `flutter run` from `apps/user-app`. Sign in with existing accounts and open CricTrade. Startup discovers supported live real matches without creating a simulation. Real matches still use test credits. Admin simulation fixtures remain available for development and existing records are preserved, but they are hidden from both user pickers. Existing simulations continue their ten-second replay so their accounts can settle.
+In separate terminals, run `npm run dev:user-web` and `npm run dev:admin-web`, or `flutter run` from `apps/user-app`. Sign in with existing accounts and open CricTrade. Startup discovers supported live real matches without creating a simulation. New real matches use wallet-funded credits; no free balance is issued on selecting a match. Admin simulation fixtures remain available for development and existing records are preserved, but they are hidden from both user pickers. Existing simulations continue their ten-second replay so their accounts can settle.
 
 The 25 October format extension was checked against a captured live New Zealand A v India A first-class snapshot: innings 3, New Zealand A 317, India A 113 & 92/2 (29.1 overs), day 2 session 3 of a four-day match. The adapter correctly retained batting identity and both innings aggregates, and produced three prices summing to 100 credits. This is parsing evidence, not model-accuracy or deployed-backend evidence. Availability changes with the provider feed.
 
-The initial migration is `20261024000000_crictrade`; the required format-extension migration is `20261025000000_crictrade_draw` in both migration directories. Apply the Draw migration and regenerate Prisma before running the updated backend. It adds `TradingQuote.priceDraw` with a zero default and preserves existing quotes, balances and positions. PostgreSQL deployments must use the repository's PostgreSQL schema/migration selection in `docker-entrypoint.sh`; do not apply SQLite migrations to PostgreSQL. Database changes during development verification were restricted to disposable test databases.
+The initial migration is `20261024000000_crictrade`; the required format-extension migration is `20261025000000_crictrade_draw` in both migration directories. Apply the Draw migration and regenerate Prisma before running the updated backend. It adds `TradingQuote.priceDraw` with a zero default and preserves existing quotes, balances and positions. PostgreSQL deployments must use the repository's PostgreSQL schema/migration selection in `docker-entrypoint.sh`; do not apply SQLite migrations to PostgreSQL. This wallet-conversion update needs no additional schema migration beyond those two migrations. Verification used disposable databases; no existing user funds were moved.
 
 ## Verification
 
 ```bash
 npm run build
-npm --prefix apps/server test -- trading trading-http trading-formats security sports
+npm --prefix apps/server test -- trading trading-http trading-formats trading-cash security sports
 npm run test:migrations
 npm run test:web-sessions
 cd apps/user-app
@@ -142,4 +145,6 @@ The 25 October match-selection update additionally checks compact rates, disable
 
 Probability-cutoff checks cover both teams, exact 90% boundaries, reopening, existing and new account funding rejection, both BUY outcomes, recovery of successful pre-cutoff requests, unchanged cash balances on rejection, valid exits and expired/finished-market exit rejection. The API exposes `entryClosed` separately from market status so a cutoff does not imply that exits are paused.
 
-Before live cash release: integrate and measure a suitable provider, validate the probability model, finalize the published product rules, implement cash-specific client funding flows, and qualify settlement at the intended pool size. The other lobby/profile/invitation/29 plan remains deferred as requested.
+Further production qualification: measure provider latency, calibrate the probability models, finalize published product rules and qualify settlement at the intended pool size. The other lobby/profile/invitation/29 plan remains deferred as requested.
+
+The wallet-conversion checks cover real-mode discovery, fractional-rupee conversion, wallet locking, insufficient funds, duplicate and concurrent requests, separate legacy pools, private wallet notifications, disabled-entry exits, confirmed-result cash payouts, void refunds and total-pool conservation. Browser tests use mocked wallets; backend integration tests use isolated fixture accounts, not real users’ money.

@@ -69,8 +69,8 @@ export function TradingAdminView() {
         </button>
       </div>
       <div className="bg-amber-50 p-4 rounded-lg text-amber-900">
-        Current ESPN and simulation markets use test credits. Cash activation requires a verified source and
-        approved probability model.
+        Live matches use wallet-funded credits. Existing test balances and simulations remain separate and
+        cannot be withdrawn as money. Prices still use the experimental probability model.
       </div>
       {error && (
         <p role="alert" className="text-red-400">

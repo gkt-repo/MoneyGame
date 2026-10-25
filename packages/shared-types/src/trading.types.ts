@@ -114,6 +114,8 @@ export interface TradingCandleDTO {
 export interface TradingSnapshotDTO {
   market: TradingMarketDTO;
   account: TradingAccountDTO;
+  // Available wallet money in paise, excluding locked funds.
+  walletAvailable?: number;
   pool: TradingPoolDTO;
   executions: TradingExecutionDTO[];
 }

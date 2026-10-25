@@ -42,6 +42,7 @@ async function create(id: string, state: CricketState) {
     data: {
       id,
       source: 'ESPN',
+      mode: 'CASH',
       title: id,
       team0: 'New Zealand A',
       team1: 'India A',
@@ -243,7 +244,7 @@ async function main() {
   assert.equal((await service.history(id, 2, 'over')).at(-1)!.close, 100);
   await tick();
   assert.deepEqual((await service.snapshot(id, a.id)).account.receipt, settled.account.receipt);
-  assert.equal((await prisma.wallet.findUniqueOrThrow({ where: { userId: a.id } })).balance, 1000);
+  assert.equal((await prisma.wallet.findUniqueOrThrow({ where: { userId: a.id } })).balance, settled.account.receipt!.payout / 100);
   for (const [format, state] of [
     ['odi', odi],
     ['t20', t20],
@@ -259,9 +260,9 @@ async function main() {
     where: { id: 'cash-test-model' },
     data: { source: 'VERIFIED', mode: 'CASH' },
   });
-  process.env.CRICTRADE_CASH_ENABLED = 'true';
+  process.env.CRICTRADE_CASH_ENABLED = 'false';
   assert.equal((await service.snapshot('cash-test-model', a.id)).market.modelVersion, MULTIFORMAT_MODEL);
-  await assert.rejects(service.fund('cash-test-model', a.id, 1000, 'cash-model-guard'), /approved model/);
+  await assert.rejects(service.fund('cash-test-model', a.id, 1000, 'cash-model-guard'), /entries are disabled/);
   delete process.env.CRICTRADE_CASH_ENABLED;
   await create('test-transition', test);
   const next: CricketState = {
@@ -284,7 +285,7 @@ async function main() {
     'Historical score corrections pause trading',
   );
   console.log(
-    'PASS: ODI/Test parsing, follow-ons, declarations, fourth-innings targets, format-specific cadence, three-outcome prices, Draw trading/cutoff/settlement, conservation and cash model guard.',
+    'PASS: ODI/Test parsing, follow-ons, declarations, fourth-innings targets, format-specific cadence, three-outcome prices, Draw trading/cutoff/settlement, conservation and cash entry switch.',
   );
 }
 main()

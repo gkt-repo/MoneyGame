@@ -270,7 +270,7 @@ async function main() {
   assert.equal(attempts.filter((a) => a.status === 'fulfilled').length, 1);
   const cash = await service.createSimulation();
   await prisma.tradingMarket.update({ where: { id: cash }, data: { mode: 'CASH' } });
-  await assert.rejects(service.fund(cash, a.id, 1000, 'cash-test'), /verified feed/);
+  await assert.rejects(service.fund(cash, a.id, 1000, 'cash-test'), /no live feed/);
   const terminal = await service.createSimulation();
   await service.publish(terminal, { ...state, runs: 181 });
   assert.equal((await service.snapshot(terminal, a.id)).market.status, 'SUSPENDED');
@@ -311,7 +311,7 @@ async function main() {
   });
   await worker.tick();
   assert.equal(
-    await prisma.tradingMarket.count({ where: { id: 'espn-old-result' } }),
+    await prisma.tradingMarket.count({ where: { id: 'espn-cash-old-result' } }),
     0,
     'Completed feed events are not discovered as new trading matches',
   );
@@ -325,22 +325,22 @@ async function main() {
   assert.equal(requests, 1, 'Only one process owns the shared poller');
   const lease = await prisma.tradingLease.findUniqueOrThrow({ where: { id: 'crictrade' } });
   assert(lease.nextPollAt.getTime() - Date.now() <= 5000, 'Final three overs select fast cadence');
-  assert.equal((await service.snapshot('espn-fixture', a.id)).market.pollingMs, 5000);
-  const espnQuote = await prisma.tradingQuote.findFirstOrThrow({ where: { marketId: 'espn-fixture' } });
-  await service.publish('espn-fixture', JSON.parse(espnQuote.snapshot));
+  assert.equal((await service.snapshot('espn-cash-fixture', a.id)).market.pollingMs, 5000);
+  const espnQuote = await prisma.tradingQuote.findFirstOrThrow({ where: { marketId: 'espn-cash-fixture' } });
+  await service.publish('espn-cash-fixture', JSON.parse(espnQuote.snapshot));
   assert.equal(
-    (await prisma.tradingQuote.findFirstOrThrow({ where: { marketId: 'espn-fixture' } })).expiresAt.getTime(),
+    (await prisma.tradingQuote.findFirstOrThrow({ where: { marketId: 'espn-cash-fixture' } })).expiresAt.getTime(),
     espnQuote.expiresAt.getTime(),
     'Duplicate feed checks never renew executable quotes',
   );
-  await service.publish('espn-fixture', { ...JSON.parse(espnQuote.snapshot), runs: 149 });
+  await service.publish('espn-cash-fixture', { ...JSON.parse(espnQuote.snapshot), runs: 149 });
   assert.equal(
-    (await service.snapshot('espn-fixture', a.id)).market.status,
+    (await service.snapshot('espn-cash-fixture', a.id)).market.status,
     'SUSPENDED',
     'Score corrections require review',
   );
   assert.equal(
-    await prisma.tradingQuote.count({ where: { marketId: 'espn-fixture' } }),
+    await prisma.tradingQuote.count({ where: { marketId: 'espn-cash-fixture' } }),
     1,
     'Unreviewed corrections do not publish a price',
   );
@@ -358,7 +358,7 @@ async function main() {
     'Provider Retry-After is honored even when longer than normal backoff',
   );
 
-  // Exercise the future cash ledger boundary only in this runner's isolated DB.
+  // Exercise the cash ledger boundary only in this runner's isolated DB.
   const escrow = await service.createSimulation();
   await prisma.tradingMarket.update({
     where: { id: escrow },

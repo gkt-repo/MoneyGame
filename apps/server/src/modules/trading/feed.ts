@@ -231,87 +231,89 @@ export class TradingWorker {
         this.failures = 0;
         const events = data.sports.flatMap((s: any) => (s.leagues || []).flatMap((l: any) => l.events || []));
         for (const event of events) {
-          const id = `espn-${event.id}`;
           if (!event.id || !Array.isArray(event.competitors) || event.competitors.length !== 2) continue;
           const state = normalizeEvent(event);
-          let existing = await prisma.tradingMarket.findUnique({ where: { id } });
-          if (
-            !existing &&
-            (!state || event.status !== 'in' || !/^(Live|In Progress)$/i.test(event.summary || ''))
-          )
-            continue;
-          if (!existing) {
-            existing = await prisma.tradingMarket.create({
-              data: {
-                id,
-                source: 'ESPN',
-                title: event.name,
-                team0: event.competitors[0].displayName || event.competitors[0].name,
-                team1: event.competitors[1].displayName || event.competitors[1].name,
-                reason: 'Waiting for supported cricket state',
-              },
-            });
-          }
-          if (['SETTLED', 'VOIDED'].includes(existing.status)) continue;
-          if (
-            existing.team0 !== (event.competitors[0].displayName || event.competitors[0].name) ||
-            existing.team1 !== (event.competitors[1].displayName || event.competitors[1].name)
-          ) {
-            await tradingService.pause(
-              id,
-              true,
-              'Provider team identities changed; operator review required',
-              'system',
-            );
-            continue;
-          }
-          if (event.status === 'post') {
-            const result = confirmedResult(event, JSON.parse(existing.snapshot));
-            if (!result) {
-              await prisma.tradingMarket.updateMany({
-                where: { id, status: { notIn: ['SETTLED', 'VOIDED'] } },
+          // Never relabel existing free credits as cash. Keep legacy pools updating
+          // to their result, while all new entries use a distinct wallet-funded pool.
+          const cashId = `espn-cash-${event.id}`;
+          for (const id of [cashId, `espn-${event.id}`]) {
+            let existing = await prisma.tradingMarket.findUnique({ where: { id } });
+            if (!existing && id !== cashId) continue;
+            if (
+              !existing &&
+              (!state || event.status !== 'in' || !/^(Live|In Progress)$/i.test(event.summary || ''))
+            )
+              continue;
+            if (!existing) {
+              existing = await prisma.tradingMarket.create({
                 data: {
-                  status: 'SUSPENDED',
-                  reason: 'Final result has no unique winner; operator must confirm result or refund',
+                  id,
+                  source: 'ESPN',
+                  mode: 'CASH',
+                  title: event.name,
+                  team0: event.competitors[0].displayName || event.competitors[0].name,
+                  team1: event.competitors[1].displayName || event.competitors[1].name,
+                  reason: 'Waiting for supported cricket state',
                 },
               });
+            }
+            if (['SETTLED', 'VOIDED'].includes(existing.status)) continue;
+            if (
+              existing.team0 !== (event.competitors[0].displayName || event.competitors[0].name) ||
+              existing.team1 !== (event.competitors[1].displayName || event.competitors[1].name)
+            ) {
+              await tradingService.pause(
+                id,
+                true,
+                'Provider team identities changed; operator review required',
+                'system',
+              );
               continue;
             }
-            // Persist result observations so a restart cannot bypass confirmation.
-            const observation = `result:${result.winner}:${result.label}`;
-            if (existing.fingerprint === observation)
-              await tradingService.settle(
-                id,
-                result.winner,
-                `Confirmed provider ${result.label} (test credits)`,
-              );
-            else
+            if (event.status === 'post') {
+              const result = confirmedResult(event, JSON.parse(existing.snapshot));
+              if (!result) {
+                await prisma.tradingMarket.updateMany({
+                  where: { id, status: { notIn: ['SETTLED', 'VOIDED'] } },
+                  data: {
+                    status: 'SUSPENDED',
+                    reason: 'Final result has no unique winner; operator must confirm result or refund',
+                  },
+                });
+                continue;
+              }
+              // Persist result observations so a restart cannot bypass confirmation.
+              const observation = `result:${result.winner}:${result.label}`;
+              if (existing.fingerprint === observation)
+                await tradingService.settle(id, result.winner, `Confirmed provider ${result.label}`);
+              else
+                await prisma.tradingMarket.updateMany({
+                  where: { id, status: { notIn: ['SETTLED', 'VOIDED'] } },
+                  data: {
+                    status: 'SUSPENDED',
+                    fingerprint: observation,
+                    reason: 'Awaiting a second matching result observation',
+                  },
+                });
+            } else if (['canc', 'abandoned', 'postponed'].includes(event.status)) {
+              // An interruption is not enough to destroy a pool. Await operator review.
+              await prisma.tradingMarket.updateMany({
+                where: { id, status: { notIn: ['SETTLED', 'VOIDED'] } },
+                data: { status: 'SUSPENDED', reason: 'Match interrupted; awaiting result review' },
+              });
+            } else if (state && event.status === 'in' && /^(Live|In Progress)$/i.test(event.summary || '')) {
+              await tradingService.publish(id, state);
+              next = Math.min(next, pollInterval(state));
+            } else {
               await prisma.tradingMarket.updateMany({
                 where: { id, status: { notIn: ['SETTLED', 'VOIDED'] } },
                 data: {
                   status: 'SUSPENDED',
-                  fingerprint: observation,
-                  reason: 'Awaiting a second matching result observation',
+                  reason: 'Unsupported or interrupted match state; waiting for confirmed inputs',
+                  feedReceivedAt: new Date(),
                 },
               });
-          } else if (['canc', 'abandoned', 'postponed'].includes(event.status)) {
-            // An interruption is not enough to destroy a pool. Await operator review.
-            await prisma.tradingMarket.updateMany({
-              where: { id, status: { notIn: ['SETTLED', 'VOIDED'] } },
-              data: { status: 'SUSPENDED', reason: 'Match interrupted; awaiting result review' },
-            });
-          } else if (state && event.status === 'in' && /^(Live|In Progress)$/i.test(event.summary || '')) {
-            await tradingService.publish(id, state);
-            next = Math.min(next, pollInterval(state));
-          } else {
-            await prisma.tradingMarket.updateMany({
-              where: { id, status: { notIn: ['SETTLED', 'VOIDED'] } },
-              data: {
-                status: 'SUSPENDED',
-                reason: 'Unsupported or interrupted match state; waiting for confirmed inputs',
-                feedReceivedAt: new Date(),
-              },
-            });
+            }
           }
         }
       } catch (error: any) {

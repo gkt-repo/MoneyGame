@@ -130,7 +130,7 @@ class _TradingScreenState extends State<TradingScreen> {
               .where(
                 (m) =>
                     ['ESPN', 'VERIFIED'].contains(m.source) &&
-                    (tab == 'My positions' || m.open),
+                    (tab == 'My positions' || (m.mode == 'CASH' && m.open)),
               )
               .toList();
       if (!mounted || tab != _tab) return;
@@ -374,13 +374,20 @@ class _TradingScreenState extends State<TradingScreen> {
                   amount != null &&
                   amount.isFinite &&
                   amount >= 1 &&
-                  amount <= 100000;
+                  amount <= 100000 &&
+                  (m.mode != 'CASH' ||
+                      _snapshot?.walletAvailable == null ||
+                      (amount * 100).round() <= _snapshot!.walletAvailable!);
           return AlertDialog(
             title: const Text('Add credits'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text('${m.title} · Credits for this match only'),
+                if (m.mode == 'CASH' && _snapshot?.walletAvailable != null)
+                  Text(
+                    'Available wallet balance: ${_rupees(_snapshot!.walletAvailable!)}',
+                  ),
                 const Text(
                   'New buys and funding pause whenever any outcome’s probability exceeds 90%.',
                 ),
@@ -396,8 +403,8 @@ class _TradingScreenState extends State<TradingScreen> {
                 const SizedBox(height: 12),
                 Text(
                   valid
-                      ? '${_credits((amount * 100).round())} credits · ₹1 = 10 credits\n${m.mode == 'TEST' ? 'Test market. No wallet deduction.' : 'Funds stay in this match until settlement.'}'
-                      : 'Enter an amount from 1 to 100,000.',
+                      ? '${_credits((amount * 100).round())} credits · ₹1 = 10 credits\n${m.mode == 'TEST' ? 'Test market. No wallet deduction.' : '${_rupees((amount * 100).round())} will be deducted from your wallet and locked in this match until settlement.'}'
+                      : 'Enter ₹1 to ₹100,000, within your available wallet balance.',
                 ),
               ],
             ),

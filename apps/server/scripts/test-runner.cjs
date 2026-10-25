@@ -12,6 +12,7 @@ const cases = {
   trading: 'trading.test.ts',
   'trading-http': 'trading_http.test.ts',
   'trading-formats': 'trading_formats.test.ts',
+  'trading-cash': 'trading_cash.test.ts',
   notifications: 'notifications.test.ts',
   moderator: 'moderator.test.ts',
   float: 'moderator_float.test.ts',

@@ -85,8 +85,8 @@ export function validateState(s: CricketState): CricketState {
   return s;
 }
 
-// Experimental deterministic baseline, deliberately not approved for cash
-// execution. Runs, wickets and remaining opportunities affect the estimate;
+// Experimental deterministic baseline used by the live markets. This is not
+// calibrated odds. Runs, wickets and remaining opportunities affect the estimate;
 // wall-clock time and user order flow do not. No random tick noise.
 function decisiveProbability(s: CricketState): number {
   validateState(s);

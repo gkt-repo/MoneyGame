@@ -135,6 +135,7 @@ async function main() {
         where: { id: marketId },
         data: {
           source: 'ESPN',
+          mode: 'CASH',
           ...(kind === 'stale' ? { feedReceivedAt: new Date(0) } : {}),
           ...(kind === 'paused' ? { status: 'SUSPENDED' } : {}),
           ...(kind === 'settled' ? { status: 'SETTLED' } : {}),
@@ -148,7 +149,7 @@ async function main() {
       liveList.map((m: any) => m.id),
       [fixtures.live],
     );
-    assert.equal(liveList[0].mode, 'TEST', 'Real-feed markets remain test-credit markets');
+    assert.equal(liveList[0].mode, 'CASH', 'Live markets use actual wallet conversion');
     await tradingService.fund(fixtures.live, a.id, 1000, 'fund-live-fixture');
     await tradingService.settle(fixtures.live, null, 'Live fixture ended');
     assert.equal((await request('/trading/markets', token(a.id))).body.length, 0);
@@ -168,6 +169,7 @@ async function main() {
       data: {
         id: testId,
         source: 'ESPN',
+        mode: 'CASH',
         title: 'Test fixture',
         team0: 'India',
         team1: 'NZ',

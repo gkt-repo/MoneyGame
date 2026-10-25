@@ -18,7 +18,7 @@ void main() {
         'team1': 'NZ',
         'source': 'ESPN',
         'status': 'OPEN',
-        'mode': 'TEST',
+        'mode': 'CASH',
         'reason': 'Fixture match',
         'pollingMs': 5000,
         'feedReceivedAt': now.toIso8601String(),
@@ -39,6 +39,7 @@ void main() {
         },
       };
       var balance = 0, deposit = 0, shares = 0, orders = 0, withdrawals = 0;
+      var walletAvailable = 100000;
       final requestIds = <String>[];
       Future<dynamic> request(String path, {Map<String, dynamic>? body}) async {
         if (path == '/markets' || path == '/markets?view=positions') {
@@ -65,7 +66,8 @@ void main() {
           ];
         }
         if (path.endsWith('/fund')) {
-          deposit += body!['amount'] as int;
+          walletAvailable -= body!['amount'] as int;
+          deposit += body['amount'] as int;
           balance += body['amount'] as int;
           requestIds.add(body['requestId'] as String);
           return {'success': true};
@@ -84,6 +86,7 @@ void main() {
         }
         return {
           'market': market,
+          'walletAvailable': walletAvailable,
           'account': {
             'deposit': deposit,
             'balance': balance,
@@ -160,9 +163,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(OutlinedButton, '0 cr'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Add test credits'));
+      await tester.tap(find.text('Convert to credits'));
       await tester.pumpAndSettle();
       expect(deposit, 100000);
+      expect(walletAvailable, 0);
+      expect(find.text('Test credits'), findsNothing);
       expect(balance, 100000);
       await tester.tap(find.text('Buy India'));
       await tester.pumpAndSettle();
@@ -208,6 +213,7 @@ void main() {
       expect(balance, 103010);
       expect(find.text('No open positions'), findsOneWidget);
       market['status'] = 'SETTLED';
+      market['mode'] = 'TEST';
       // Even after a result, test funds must never offer cash withdrawal.
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
@@ -263,7 +269,7 @@ void main() {
           'team0': 'India',
           'team1': 'NZ',
           'source': 'ESPN',
-          'mode': 'TEST',
+          'mode': 'CASH',
           'status': 'OPEN',
           'reason': 'Fixture',
           'pollingMs': 60000,

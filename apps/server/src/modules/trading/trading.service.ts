@@ -13,6 +13,7 @@ import {
 import { prisma } from '../../db';
 import { serializable } from '../../transaction';
 import { moveWallet } from '../../wallet-ledger';
+import { toPaise } from '../../money';
 import {
   allocate,
   assertEntryAllowed,
@@ -49,6 +50,20 @@ export class TradingService {
   setSocketServer(io: Server) {
     this.io = io;
   }
+  private async notifyWallet(userId: string) {
+    if (!this.io) return;
+    try {
+      const wallet = await prisma.wallet.findUnique({ where: { userId } });
+      if (wallet)
+        this.io.to(`user:${userId}`).emit('wallet_updated', {
+          balance: wallet.balance,
+          lockedBalance: wallet.lockedBalance,
+        });
+    } catch {
+      // Notification failure must not turn a committed debit/payout into an error.
+      console.warn('[CricTrade] Wallet notification unavailable; clients can refresh');
+    }
+  }
   notify(id: string, userId?: string) {
     if (!this.io) return;
     // A busy market must not trigger two HTTP refreshes per trade for every viewer.
@@ -66,16 +81,22 @@ export class TradingService {
     if (!found.count) throw new TradingError('NOT_FOUND', 'Trading match not found', 404);
     return tx.tradingMarket.findUniqueOrThrow({ where: { id } });
   }
-  private assertCash(market: { mode: string; source: string; modelVersion: string }) {
+  private assertCash(market: { mode: string; source: string }, entry = true) {
+    if (entry && market.mode === 'TEST' && market.source !== 'SIMULATION') {
+      throw new TradingError(
+        'LEGACY_TEST_MARKET',
+        'Choose the live match on Home to use wallet-funded credits',
+        409,
+      );
+    }
     if (
       market.mode === 'CASH' &&
-      (process.env.CRICTRADE_CASH_ENABLED !== 'true' ||
-        market.source !== 'VERIFIED' ||
-        [MODEL, MULTIFORMAT_MODEL].includes(market.modelVersion))
+      (!['ESPN', 'VERIFIED'].includes(market.source) ||
+        (entry && process.env.CRICTRADE_CASH_ENABLED === 'false'))
     ) {
       throw new TradingError(
         'CASH_UNAVAILABLE',
-        'Cash trading requires a verified feed and an approved model',
+        'Wallet-funded entries are disabled or this match has no live feed',
         409,
       );
     }
@@ -197,7 +218,7 @@ export class TradingService {
             : ended
               ? 'Innings ended; awaiting confirmed next state or result'
               : m.source === 'ESPN'
-                ? 'Sampled feed · test credits · experimental probability'
+                ? `Sampled feed · ${m.mode === 'CASH' ? 'wallet-funded credits' : 'legacy test credits'} · experimental probability`
                 : 'Simulated match · test credits',
           ...(step === undefined ? {} : { replayStep: step }),
         },
@@ -258,6 +279,7 @@ export class TradingService {
     const now = new Date();
     const markets = await this.list({
       ...realSources,
+      mode: 'CASH',
       status: 'OPEN',
       adminPaused: false,
       feedReceivedAt: { gte: new Date(now.getTime() - 120000) },
@@ -323,6 +345,7 @@ export class TradingService {
       return {
         market,
         account,
+        walletAvailable: toPaise((await tx.wallet.findUnique({ where: { userId } }))?.balance ?? 0),
         executions: executions.map((e) => ({
           ...e,
           side: e.side as 'BUY' | 'SELL',
@@ -405,6 +428,9 @@ export class TradingService {
         'Maximum account value',
       );
       if (m.mode === 'CASH') {
+        const wallet = await tx.wallet.findUnique({ where: { userId } });
+        if (!wallet || toPaise(wallet.balance) < amount)
+          throw new TradingError('INSUFFICIENT_WALLET_BALANCE', 'Not enough available money in your wallet');
         await moveWallet(tx, userId, -amount / 100, amount / 100);
         await tx.transaction.create({
           data: {
@@ -428,6 +454,7 @@ export class TradingService {
       return response;
     });
     this.notify(id, userId);
+    await this.notifyWallet(userId);
     return result;
   }
   async trade(id: string, userId: string, input: TradingOrderInput) {
@@ -449,7 +476,7 @@ export class TradingService {
       const m = await this.lock(tx, id);
       const old = await this.previous(tx, id, userId, key, payload);
       if (old) return old;
-      this.assertCash(m);
+      this.assertCash(m, input.side === 'BUY');
       if (m.status !== 'OPEN' || m.adminPaused)
         throw new TradingError('MARKET_CLOSED', 'Trading is paused or finished', 409);
       const q = await tx.tradingQuote.findFirst({ where: { marketId: id }, orderBy: { sequence: 'desc' } });
@@ -558,6 +585,7 @@ export class TradingService {
   async settle(id: string, winner: number | null, reason: string, actor = 'system') {
     if (winner !== null) integer(winner, 0, 2, 'Winner');
     if (!reason.trim()) throw new TradingError('INVALID_INPUT', 'A settlement reason is required');
+    let settledUsers: string[] = [];
     const result = await serializable(async (tx) => {
       const m = await this.lock(tx, id);
       if (winner === 2 && formatOf(JSON.parse(m.snapshot)) !== 'TEST')
@@ -571,6 +599,7 @@ export class TradingService {
         where: { marketId: id },
         include: { positions: true },
       });
+      settledUsers = m.mode === 'CASH' ? accounts.map((a) => a.userId) : [];
       const balances = accounts.map((a) => ({
         id: a.id,
         deposit: a.deposit,
@@ -667,6 +696,7 @@ export class TradingService {
       return { success: true, alreadySettled: false };
     });
     this.notify(id);
+    if (!result.alreadySettled) await Promise.all(settledUsers.map((userId) => this.notifyWallet(userId)));
     return result;
   }
 }
