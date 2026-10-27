@@ -12,3 +12,14 @@ body {
   font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
 }
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Smooth micro-interactions & touch feedback */
+button, a {
+  user-select: none;
+  -webkit-touch-callout: none;
+}

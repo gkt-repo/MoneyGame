@@ -515,7 +515,11 @@ class _RoomsScreenState extends State<RoomsScreen> {
                                     spacing: 6,
                                     runSpacing: 6,
                                     children: room.players.map((p) {
-                                      final isRoomWinner = room.winnerId == p.userId;
+                                      final isTwentyNine = room.gameType == 'TWENTY_NINE';
+                                      final winnerUserIds = room.customConfig?['winnerUserIds'];
+                                      final isRoomWinner = isTwentyNine && winnerUserIds is List
+                                          ? winnerUserIds.contains(p.userId)
+                                          : room.winnerId == p.userId;
 
                                       return InkWell(
                                         onTap: () => _openUserProfile(p.userId),

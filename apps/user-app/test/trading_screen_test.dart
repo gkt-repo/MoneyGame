@@ -378,6 +378,18 @@ void main() {
         expect(shares, 10);
         await tester.tap(find.text('My positions').first);
         await tester.pumpAndSettle();
+        await tester.tap(find.byKey(ValueKey('position-chart-$outcome')));
+        await tester.pumpAndSettle();
+        expect(
+          find.text(format == 'TEST' ? 'Buy Draw' : 'Buy India'),
+          findsOneWidget,
+        );
+        expect(
+          paths.lastWhere((p) => p.contains('/candles')),
+          contains('outcome=$outcome'),
+        );
+        await tester.tap(find.text('My positions').first);
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Exit position'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Confirm exit'));

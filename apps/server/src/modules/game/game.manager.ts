@@ -8,6 +8,7 @@ import { walletService } from '../wallet/wallet.service';
 import { notificationService } from '../notification/notification.service';
 import { gameRegistry } from './game.registry';
 import { RoomWithPlayers } from './engine.interface';
+import { publicRoomConfig, invitationUnavailable } from './room-presentation';
 
 export class GameManager {
   private io: Server | null = null;
@@ -25,7 +26,8 @@ export class GameManager {
     maxPlayers: number,
     guessNumber?: number | null,
     gameType: string = 'GUESS_NUMBER',
-    customConfig?: Record<string, any>
+    customConfig?: Record<string, any>,
+    isPrivate: boolean = false
   ) {
     const entryFee = money(amount, 1);
     if (!gameRegistry.has(gameType)) {
@@ -45,16 +47,21 @@ export class GameManager {
 
     let sanitizedConfig: Record<string, any> | null = null;
     if (customConfig && typeof customConfig === 'object') {
-      const { playerStakes, settledPool, platformCommission, ...rest } = customConfig;
+      const { playerStakes, settledPool, platformCommission, twentyNineState, engineState, ...rest } = customConfig;
       if (Object.keys(rest).length > 0) {
         sanitizedConfig = rest;
       }
     }
 
+    const invitationToken = 'inv-' + crypto.randomBytes(12).toString('hex');
+
     const room = await serializable(async tx => {
       const created = await tx.room.create({
         data: {
           roomCode: 'R-' + crypto.randomBytes(4).toString('hex').toUpperCase(),
+          invitationToken,
+          invitationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          isPrivate: Boolean(isPrivate),
           gameType,
           entryFee,
           maxPlayers,
@@ -131,6 +138,7 @@ export class GameManager {
       });
 
       if (room.players.length >= room.maxPlayers) throw new Error('Room is already full');
+      if (invitationUnavailable(room)) throw new Error('Invitation expired or revoked; ask the host for a new link or code');
 
       await walletService.lockRoomEntry(
         tx,
@@ -165,9 +173,9 @@ export class GameManager {
       await engine.onPlayerJoined(updatedRoom as unknown as RoomWithPlayers, userId, this.io);
     }
 
-    this.io?.to(`room:${result.id}`).emit('room_updated', updatedRoom);
+    await this.broadcastRoomUpdate(result.id);
     await this.broadcastLobbyUpdate();
-    return updatedRoom;
+    return this.getRoomDetails(result.id, userId);
   }
 
   /**
@@ -178,6 +186,9 @@ export class GameManager {
     if (!room) throw new Error('Room not found');
 
     const engine = gameRegistry.get(room.gameType);
+    if (room.gameType === 'TWENTY_NINE' && (!Number.isInteger(payload?.expectedSequence) || typeof payload?.actionId !== 'string' || payload.actionId.length < 8 || payload.actionId.length > 100)) {
+      return { success: false, message: 'Refresh the table before acting (sequence and action ID required)' };
+    }
     return engine.handleAction(roomId, userId, action, payload, this.io);
   }
 
@@ -327,8 +338,7 @@ export class GameManager {
       }).catch(err => console.error(`[AdminCancel] Notification failed for ${p.userId}:`, err?.message));
     }
 
-    const roomDetails = await this.getRoomDetails(roomId);
-    this.io?.to(`room:${roomId}`).emit('room_updated', roomDetails);
+    await this.broadcastRoomUpdate(roomId);
     this.io?.to(`room:${roomId}`).emit('room_cancelled', {
       roomId,
       roomCode: existing.roomCode,
@@ -407,7 +417,7 @@ export class GameManager {
       this.io?.to(`user:${player.userId}`).emit('balance_updated', await walletService.getWallet(player.userId));
     }
 
-    this.io?.to(`room:${roomId}`).emit('room_updated', await this.getRoomDetails(roomId));
+    await this.broadcastRoomUpdate(roomId);
     await this.broadcastLobbyUpdate();
   }
 
@@ -417,10 +427,17 @@ export class GameManager {
         status: { in: ['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'] },
         gameType: { not: 'SPORTS_MATCH' },
       },
-      select: { id: true },
+      select: { id: true, gameType: true, status: true },
     });
     for (const room of rooms) {
       try {
+        if (room.gameType === 'TWENTY_NINE' && room.status === 'PLAYING') {
+          const engine = gameRegistry.get('TWENTY_NINE');
+          if (engine && typeof (engine as any).restoreRoom === 'function') {
+            const restored = await (engine as any).restoreRoom(room.id, this.io);
+            if (restored) continue;
+          }
+        }
         await this.refundRoom(room.id);
       } catch (err: any) {
         console.error(`[Recovery] Failed to recover room ${room.id}:`, err?.message || err);
@@ -431,34 +448,49 @@ export class GameManager {
   /**
    * Helper to fetch full room info with player details and sanitized game state
    */
-  async getRoomDetails(roomId: string, forUserId?: string) {
+  async getRoomDetails(roomId: string, forUserId?: string, invitationToken?: string) {
     const room = await prisma.room.findUnique({
       where: { id: roomId },
       include: {
         players: {
           include: {
-            user: { select: { id: true, username: true } },
+            user: { select: { id: true, username: true, displayName: true, avatar: true } },
           },
           orderBy: { seatIndex: 'asc' },
         },
         winner: {
-          select: { id: true, username: true },
+          select: { id: true, username: true, displayName: true, avatar: true },
         },
       },
     });
 
     if (!room) return null;
 
-    const engine = gameRegistry.get(room.gameType);
-    const gameState = engine ? engine.getClientState(roomId, forUserId) : null;
-    let parsedConfig: Record<string, any> | null = null;
-    try {
-      if (room.customConfig) parsedConfig = JSON.parse(room.customConfig);
-    } catch (_) {}
+    const isParticipant = Boolean(forUserId && room.players.some(p => p.userId === forUserId));
+    const isHost = Boolean(forUserId && (room.players.find(p => p.seatIndex === 0)?.userId === forUserId || room.players[0]?.userId === forUserId));
 
+    // If room is private, unauthorized outsiders cannot view unless completed or presenting valid invite authorization
+    if (room.isPrivate && !isParticipant) {
+      const cleanToken = invitationToken?.trim();
+      const hasAuth = !invitationUnavailable(room) && cleanToken && (
+        cleanToken === room.invitationToken ||
+        cleanToken.toUpperCase() === room.roomCode
+      );
+      if (!hasAuth) {
+        return null;
+      }
+    }
+
+    const engine = gameRegistry.get(room.gameType);
+    if (room.gameType === 'TWENTY_NINE' && !engine.getClientState(roomId) && room.status === 'COMPLETED') {
+      await (engine as any).restoreRoom(roomId, null);
+    }
+    const gameState = engine ? engine.getClientState(roomId, forUserId) : null;
+    const { engineState, engineSequence, ...publicRoom } = room;
     return {
-      ...room,
-      customConfig: parsedConfig,
+      ...publicRoom,
+      invitationToken: isHost ? room.invitationToken : undefined,
+      customConfig: publicRoomConfig(room.customConfig),
       gameState,
     };
   }
@@ -473,73 +505,185 @@ export class GameManager {
       include: {
         players: {
           include: {
-            user: { select: { id: true, username: true } },
+            user: { select: { id: true, username: true, displayName: true, avatar: true } },
           },
           orderBy: { seatIndex: 'asc' },
         },
         winner: {
-          select: { id: true, username: true },
+          select: { id: true, username: true, displayName: true, avatar: true },
+        },
+      },
+    });
+
+    if (!room) return null;
+    const participant = Boolean(forUserId && room.players.some(p => p.userId === forUserId));
+    if (!participant && invitationUnavailable(room)) return null;
+
+    const isHost = Boolean(forUserId && (room.players.find(p => p.seatIndex === 0)?.userId === forUserId || room.players[0]?.userId === forUserId));
+    const engine = gameRegistry.get(room.gameType);
+    const gameState = engine ? engine.getClientState(room.id, forUserId) : null;
+    const { engineState, engineSequence, ...publicRoom } = room;
+    return {
+      ...publicRoom,
+      invitationToken: isHost ? room.invitationToken : undefined,
+      customConfig: publicRoomConfig(room.customConfig),
+      gameState,
+    };
+  }
+
+  /**
+   * Get preview information for an invitation token without reserving a seat
+   */
+  async getRoomPreviewByInvitation(token: string) {
+    if (typeof token !== 'string') return null;
+    const cleanToken = token.trim();
+    const room = await prisma.room.findFirst({
+      where: {
+        OR: [
+          { invitationToken: cleanToken },
+          { roomCode: cleanToken.toUpperCase() },
+        ],
+      },
+      include: {
+        players: {
+          include: {
+            user: { select: { id: true, username: true, displayName: true, avatar: true } },
+          },
+          orderBy: { seatIndex: 'asc' },
         },
       },
     });
 
     if (!room) return null;
 
-    const engine = gameRegistry.get(room.gameType);
-    const gameState = engine ? engine.getClientState(room.id, forUserId) : null;
-    let parsedConfig: Record<string, any> | null = null;
-    try {
-      if (room.customConfig) parsedConfig = JSON.parse(room.customConfig);
-    } catch (_) {}
+    const hostPlayer = room.players.find(p => p.seatIndex === 0) || room.players[0];
+    const hostUser = hostPlayer?.user;
+
+    const expired = invitationUnavailable(room);
+    const isAvailable = !expired && room.status === 'WAITING' && room.players.length < room.maxPlayers;
+    let unavailabilityReason: 'FULL' | 'STARTED' | 'CANCELLED' | 'EXPIRED' | 'NOT_FOUND' | null = null;
+    if (expired) unavailabilityReason = 'EXPIRED';
+    else if (room.status === 'CANCELLED') unavailabilityReason = 'CANCELLED';
+    else if (room.status !== 'WAITING') unavailabilityReason = 'STARTED';
+    else if (room.players.length >= room.maxPlayers) unavailabilityReason = 'FULL';
 
     return {
-      ...room,
-      customConfig: parsedConfig,
-      gameState,
+      id: room.id,
+      roomCode: room.roomCode,
+      invitationToken: room.invitationToken || room.roomCode,
+      gameType: room.gameType,
+      entryFee: room.entryFee,
+      maxPlayers: room.maxPlayers,
+      occupiedSeats: room.players.length,
+      status: room.status,
+      isPrivate: room.isPrivate,
+      rulesVersion: room.gameType === 'TWENTY_NINE' ? 'single-deal-v1' : undefined,
+      rulesSummary: room.gameType === 'TWENTY_NINE' ? 'Single deal · 8 tricks · bids 16–28 · 28 card points · hidden trump · 20s turns · 30s disconnect grace once per player · equal team payout, odd paise to lower seat' : undefined,
+      takenNumbers: room.gameType === 'GUESS_NUMBER' ? room.players.map(p => p.guessNumber).filter(n => n !== null) : undefined,
+      teams: room.gameType === 'SPORTS_MATCH' ? [publicRoomConfig(room.customConfig)?.team1?.name || 'Team 1', publicRoomConfig(room.customConfig)?.team2?.name || 'Team 2'] : undefined,
+      host: {
+        id: hostUser?.id || '',
+        username: hostUser?.username || 'Host',
+        displayName: (hostUser as any)?.displayName || hostUser?.username || 'Host',
+        avatar: (hostUser as any)?.avatar || 'avatar_1',
+      },
+      available: isAvailable,
+      unavailabilityReason,
     };
   }
 
   /**
-   * Fetch all open/active rooms for the lobby
+   * Join a room via invitation token with explicit user action
    */
-  async getActiveRooms() {
-    const rooms = await prisma.room.findMany({
+  async joinRoomByInvitation(
+    userId: string,
+    invitationToken: string,
+    guessNumber?: number | null,
+    seatIndex?: number
+  ) {
+    if (typeof invitationToken !== 'string') throw new Error('Invitation token is required');
+    const cleanToken = invitationToken.trim();
+    const room = await prisma.room.findFirst({
       where: {
-        status: { in: ['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'] },
+        OR: [
+          { invitationToken: cleanToken },
+          { roomCode: cleanToken.toUpperCase() },
+        ],
       },
+      select: { roomCode: true },
+    });
+
+    if (!room) throw new Error('Room not found with provided invitation');
+    return this.joinRoom(userId, room.roomCode, guessNumber, seatIndex);
+  }
+
+  /**
+   * Fetch all open/active rooms for the lobby (includes public rooms + private rooms user is participating in)
+   */
+  async getActiveRooms(forUserId?: string) {
+    const whereClause: any = {
+      status: { in: ['WAITING', 'COUNTDOWN', 'ROLLING', 'PLAYING'] },
+    };
+
+    if (forUserId) {
+      whereClause.OR = [
+        { isPrivate: false },
+        { isPrivate: true, players: { some: { userId: forUserId } } },
+      ];
+    } else {
+      whereClause.isPrivate = false;
+    }
+
+    const rooms = await prisma.room.findMany({
+      where: whereClause,
       include: {
         players: {
           include: {
-            user: { select: { id: true, username: true } },
+            user: { select: { id: true, username: true, displayName: true, avatar: true } },
           },
           orderBy: { seatIndex: 'asc' },
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 30,
+      take: forUserId ? undefined : 30,
     });
 
-    return rooms.map(room => {
-      let parsedConfig: Record<string, any> | null = null;
-      try {
-        if (room.customConfig) parsedConfig = JSON.parse(room.customConfig);
-      } catch (_) {}
-      return {
-        ...room,
-        customConfig: parsedConfig,
-      };
+    return rooms.filter((r, i) => i < 30 || r.players.some(p => p.userId === forUserId)).map(room => {
+      const { engineState, engineSequence, invitationToken, ...publicRoom } = room;
+      return { ...publicRoom, customConfig: publicRoomConfig(room.customConfig) };
     });
   }
 
-  /**
-   * Broadcast lobby room updates
-   */
+  async updateInvitation(roomId: string, userId: string, operation: 'REVOKE' | 'RENEW') {
+    await serializable(async tx => {
+      const room = await tx.room.findUnique({ where: { id: roomId }, include: { players: true } });
+      if (!room || room.players.find(p => p.seatIndex === 0)?.userId !== userId) throw new Error('Only the host can manage invitations');
+      if (room.status !== 'WAITING') throw new Error('Only waiting-room invitations can be changed');
+      await tx.room.update({ where: { id: roomId }, data: {
+        roomCode: 'R-' + crypto.randomBytes(4).toString('hex').toUpperCase(),
+        invitationToken: 'inv-' + crypto.randomBytes(12).toString('hex'),
+        invitationRevokedAt: operation === 'REVOKE' ? new Date() : null,
+        invitationExpiresAt: operation === 'RENEW' ? new Date(Date.now() + 86400000) : new Date(),
+      } });
+    });
+    await this.broadcastRoomUpdate(roomId);
+    await this.broadcastLobbyUpdate();
+    return this.getRoomDetails(roomId, userId);
+  }
+
+  private async broadcastRoomUpdate(roomId: string) {
+    if (!this.io) return;
+    const room = await prisma.room.findUnique({ where: { id: roomId }, include: {
+      players: { include: { user: { select: { id: true, username: true, displayName: true, avatar: true } } }, orderBy: { seatIndex: 'asc' } },
+    } });
+    if (!room) return;
+    const { engineState, engineSequence, invitationToken, ...publicRoom } = room;
+    this.io.to(`room:${roomId}`).emit('room_updated', { ...publicRoom, customConfig: publicRoomConfig(room.customConfig) });
+  }
+
+  /** General events never contain private tables. Clients refresh their authenticated listing. */
   async broadcastLobbyUpdate() {
-    if (this.io) {
-      const rooms = await this.getActiveRooms();
-      this.io.emit('lobby_rooms_updated', rooms);
-    }
+    if (this.io) this.io.emit('lobby_rooms_updated', await this.getActiveRooms());
   }
 }
-
 export const gameManager = new GameManager();

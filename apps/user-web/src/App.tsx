@@ -3,6 +3,8 @@ import { userApi, UserProfile, RoomItem, NotificationItem } from './services/api
 import { AuthModal } from './components/AuthModal';
 import { UserNavbar, UserTab } from './components/UserNavbar';
 import { NotificationDrawer } from './components/NotificationDrawer';
+import { ProfileModal } from './components/ProfileModal';
+import { InvitationPreviewModal } from './components/InvitationPreviewModal';
 import { LobbyView } from './views/LobbyView';
 import { ActiveRoomView } from './views/ActiveRoomView';
 import { WalletView } from './views/WalletView';
@@ -34,6 +36,17 @@ export const App: React.FC = () => {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [toastNotification, setToastNotification] = useState<NotificationItem | null>(null);
+
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [invitationToken, setInvitationToken] = useState<string | null>(() => {
+    const match = window.location.pathname.match(/\/join\/([^/?#]+)/);
+    if (match) return match[1];
+    const urlParams = new URLSearchParams(window.location.search);
+    const searchToken = urlParams.get('token') || urlParams.get('invite');
+    if (searchToken) return searchToken;
+    return sessionStorage.getItem('pending_invitation_token');
+  });
 
   // Authenticate on Mount
   useEffect(() => {
@@ -164,6 +177,8 @@ export const App: React.FC = () => {
 
       const socket = connectSocket();
 
+      socket.on('lobby_rooms_updated', () => { void refreshRooms(); });
+
       // Join private user channel for wallet events
       socket.on('connect', () => socket.emit('join_user_channel', user.id));
 
@@ -218,18 +233,38 @@ export const App: React.FC = () => {
 
   if (!user) {
     return (
-      <AuthModal
-        onSuccess={(u) => {
-          setUser(u);
-          if (u.wallet) setBalance(u.wallet.balance);
-        }}
-      />
+      <>
+        <AuthModal
+          onSuccess={(u) => {
+            setUser(u);
+            if (u.wallet) setBalance(u.wallet.balance);
+            setShowAuthModal(false);
+            const pending = sessionStorage.getItem('pending_invitation_token');
+            if (pending) setInvitationToken(pending);
+          }}
+        />
+        {invitationToken && !showAuthModal && (
+          <InvitationPreviewModal
+            token={invitationToken}
+            currentUser={null}
+            onClose={() => {
+              setInvitationToken(null);
+              sessionStorage.removeItem('pending_invitation_token');
+              if (window.location.pathname.startsWith('/join/')) {
+                window.history.replaceState({}, '', '/');
+              }
+            }}
+            onRequireAuth={() => setShowAuthModal(true)}
+            onJoined={() => {}}
+          />
+        )}
+      </>
     );
   }
 
   return (
     <div className={`min-h-screen text-slate-900 flex flex-col ${currentTab === 'trading' ? 'bg-[#0d1117]' : 'bg-slate-50'}`}>
-      {currentTab !== 'trading' && <UserNavbar
+      <UserNavbar
         user={user}
         balance={balance}
         currentTab={currentTab}
@@ -248,7 +283,8 @@ export const App: React.FC = () => {
         isRefreshing={isRefreshing || loadingRooms}
         onOpenNotifications={() => setNotificationsOpen(true)}
         unreadNotificationsCount={unreadNotificationsCount}
-      />}
+        onOpenProfile={() => setProfileOpen(true)}
+      />
 
       <NotificationDrawer
         isOpen={notificationsOpen}
@@ -310,6 +346,7 @@ export const App: React.FC = () => {
                 loading={loadingRooms || isRefreshing}
                 onRefresh={handleRefreshAll}
                 onSelectRoom={(id) => setActiveRoomId(id)}
+                onOpenInvitationModal={(token) => setInvitationToken(token)}
               />
             )}
             {currentTab === 'sports' && (
@@ -321,6 +358,7 @@ export const App: React.FC = () => {
                 onRefresh={handleRefreshAll}
                 onSelectRoom={(id) => setActiveRoomId(id)}
                 defaultFilter="SPORTS_MATCH"
+                onOpenInvitationModal={(token) => setInvitationToken(token)}
               />
             )}
             {currentTab === 'wallet' && (
@@ -360,6 +398,47 @@ export const App: React.FC = () => {
           setCurrentTab(t);
         }}
         balance={balance}
+      />
+
+      {/* User Profile Modal */}
+      <ProfileModal
+        isOpen={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        onProfileUpdated={(updated) => {
+          setUser((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  displayName: updated.displayName,
+                  avatar: updated.avatar,
+                }
+              : null
+          );
+        }}
+      />
+
+      {/* Invitation Preview Modal */}
+      <InvitationPreviewModal
+        token={invitationToken}
+        currentUser={user}
+        onClose={() => {
+          setInvitationToken(null);
+          sessionStorage.removeItem('pending_invitation_token');
+          if (window.location.pathname.startsWith('/join/')) {
+            window.history.replaceState({}, '', '/');
+          }
+        }}
+        onRequireAuth={() => setShowAuthModal(true)}
+        onJoined={(roomId) => {
+          setInvitationToken(null);
+          sessionStorage.removeItem('pending_invitation_token');
+          if (window.location.pathname.startsWith('/join/')) {
+            window.history.replaceState({}, '', '/');
+          }
+          setActiveRoomId(roomId);
+          refreshBalance();
+          refreshRooms();
+        }}
       />
 
       {toastNotification && (

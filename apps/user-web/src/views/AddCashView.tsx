@@ -426,40 +426,50 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
                   Exact Amount to Pay
                 </span>
                 <div className="flex items-center justify-center gap-3">
-                  <div className="text-3xl sm:text-4xl font-extrabold mono-num text-slate-900">
+                  <div className="text-3xl sm:text-4xl font-extrabold mono-num tabular-nums text-slate-900 tracking-tight">
                     ₹{deposit.totalAmount.toFixed(2)}
                   </div>
                   <button
                     type="button"
                     onClick={handleCopyAmount}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition border border-slate-200 cursor-pointer"
-                    title="Copy Amount"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold transition border border-emerald-300 cursor-pointer shadow-2xs"
+                    title="Copy Exact Amount"
                   >
                     {copiedAmount ? (
                       <>
                         <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-700">Copied</span>
+                        <span className="text-emerald-700">Copied ₹{deposit.totalAmount.toFixed(2)}</span>
                       </>
                     ) : (
                       <>
                         <Copy className="w-3.5 h-3.5" />
-                        <span>Copy</span>
+                        <span>Copy Amount</span>
                       </>
                     )}
                   </button>
                 </div>
+
+                {/* Amount Breakdown Badge */}
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-full text-[11px] text-slate-600 font-medium">
+                  <span>Base: ₹{deposit.baseAmount.toFixed(2)}</span>
+                  <span>+</span>
+                  <span className="font-bold text-amber-700">Auto-Match Code: ₹{(deposit.offsetPaise / 100).toFixed(2)}</span>
+                </div>
               </div>
 
-              {/* Paise Offset Alert Notice */}
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-left flex items-start gap-2.5">
-                <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-900 leading-relaxed">
-                  Pay <span className="font-bold">EXACTLY ₹{deposit.totalAmount.toFixed(2)}</span> (including {deposit.offsetPaise} paise offset). Do not round off or auto-credit will fail.
+              {/* High-Impact Paise Offset Alert Notice */}
+              <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-left space-y-1">
+                <div className="flex items-center gap-2 text-amber-900 font-bold text-xs uppercase tracking-wide">
+                  <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>Important: Pay Exact Amount with Paise</span>
+                </div>
+                <p className="text-xs text-amber-950 leading-relaxed">
+                  Please enter <span className="font-extrabold underline decoration-amber-500">₹{deposit.totalAmount.toFixed(2)}</span> in your UPI app. <strong className="text-red-700">Do NOT round off to ₹{deposit.baseAmount.toFixed(2)}</strong> or the automated banking system cannot verify and credit your wallet.
                 </p>
               </div>
 
               {/* Primary 1-Tap UPI Intent Button (Green) */}
-              <div>
+              <div className="space-y-2">
                 <button
                   type="button"
                   onClick={handleOpenUpiApp}
@@ -468,6 +478,14 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
                   <ExternalLink className="w-4 h-4" />
                   <span>Pay via UPI App (GPay / PhonePe / Paytm)</span>
                 </button>
+
+                {/* App Brand Badges */}
+                <div className="flex items-center justify-center gap-2 text-[10px] text-slate-400 font-semibold uppercase">
+                  <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-600">GPay</span>
+                  <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-600">PhonePe</span>
+                  <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-600">Paytm</span>
+                  <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-600">BHIM UPI</span>
+                </div>
               </div>
 
               {/* OR SCAN QR CODE Divider */}
@@ -489,7 +507,7 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
                 </div>
               </div>
 
-              {/* Post-Payment Verification Workflow (Distinct Dark Slate CTA) */}
+              {/* Post-Payment Verification Workflow (Interactive 3-Step Timeline) */}
               {!hasTappedPaid ? (
                 /* Stage A: User has not yet tapped "I Have Completed Payment" */
                 <div className="space-y-1.5 pt-2">
@@ -498,30 +516,69 @@ export const AddCashView: React.FC<AddCashViewProps> = ({ user, onPaymentSuccess
                     onClick={handlePaidClicked}
                     className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-bold transition shadow-xs cursor-pointer"
                   >
-                    <CheckCircle2 className="w-4 h-4" />
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                     <span>I Have Completed Payment</span>
                   </button>
                   <p className="text-[11px] text-slate-500 text-center">
-                    Tap after paying in your UPI app to start automated bank verification.
+                    Tap after transferring in your UPI app to start automated bank reconciliation.
                   </p>
                 </div>
               ) : paidCountdown > 0 ? (
-                /* Stage B: User tapped "I Have Completed Payment", 1-minute countdown actively verifying */
-                <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-2.5 text-center">
-                  <div className="flex items-center justify-center gap-2">
-                    <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
-                    <span className="text-xs font-bold text-emerald-900">
-                      Verifying with bank... ({paidCountdown}s remaining)
+                /* Stage B: User tapped "I Have Completed Payment", 3-Step Stepper Active */
+                <div className="p-4 bg-emerald-50/90 border border-emerald-300 rounded-2xl space-y-3 text-left">
+                  <div className="flex items-center justify-between border-b border-emerald-200/80 pb-2">
+                    <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                      Verification in Progress
+                    </span>
+                    <span className="text-[11px] font-mono tabular-nums font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                      {paidCountdown}s remaining
                     </span>
                   </div>
-                  <p className="text-[11px] text-emerald-800">
-                    Listening for automated bank confirmation. Your wallet balance will update instantaneously the moment the notification arrives.
-                  </p>
-                  <div className="w-full bg-emerald-200/60 h-1.5 rounded-full overflow-hidden">
+
+                  {/* 3-Step Visual Progress Stepper */}
+                  <div className="space-y-2.5 text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                        ✓
+                      </div>
+                      <span className="font-semibold text-emerald-900">1. Payment Transferred in UPI App</span>
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0 animate-pulse">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      </div>
+                      <div className="flex-1">
+                        <span className="font-bold text-amber-950">2. Matching Bank Webhook</span>
+                        <p className="text-[10px] text-amber-800">Listening for automated incoming transaction...</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 opacity-60">
+                      <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[10px] font-bold shrink-0">
+                        3
+                      </div>
+                      <span className="font-semibold text-slate-700">3. ₹{deposit.baseAmount.toFixed(2)} Credited Instantly</span>
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-full bg-emerald-200/70 h-1.5 rounded-full overflow-hidden mt-1">
                     <div
                       className="bg-emerald-600 h-full transition-all duration-1000 ease-linear rounded-full"
                       style={{ width: `${((60 - paidCountdown) / 60) * 100}%` }}
                     />
+                  </div>
+
+                  <div className="pt-1 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowUtrModal(true)}
+                      className="text-[11px] text-emerald-800 hover:text-emerald-950 underline font-semibold cursor-pointer"
+                    >
+                      Have UTR Reference No.? Enter here to speed up
+                    </button>
                   </div>
                 </div>
               ) : utrSubmitted ? (

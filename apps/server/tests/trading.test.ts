@@ -70,9 +70,10 @@ async function main() {
     const result = allocate(rows);
     assert.equal(
       result.reduce((n, a) => n + a.payout, 0),
-      rows.reduce((n, a) => n + a.deposit, 0),
+      rows.reduce((n, a) => n + a.deposit, 0) - (result.some(a => a.gain > 0)
+        ? Math.max(0, result.reduce((n, a) => n + a.loss - a.gain, 0)) : 0),
     );
-    assert(result.every((a) => a.payout >= 0 && a.loss <= a.deposit));
+    assert(result.every((a) => a.payout >= 0 && a.loss <= a.deposit && a.reward <= a.gain));
     assert.deepEqual(result, allocate(rows));
   }
   assert.equal(allocate([{ id: 'a', deposit: 1000, balance: 800 }])[0].payout, 1000);
@@ -173,9 +174,10 @@ async function main() {
     'The chart includes final settlement valuation',
   );
   const endB = (await service.snapshot(market, b.id)).account.receipt!;
-  assert.equal(endA.payout, 140000);
+  assert.equal(endA.payout, 120000);
   assert.equal(endB.payout, 60000);
-  assert.equal(endA.payout + endB.payout, 200000);
+  assert.equal(endA.payout + endB.payout, 180000);
+  assert.equal((await service.snapshot(market, a.id)).market.platformSurplus, 20000);
   await assert.rejects(service.settle(market, 1, 'Changed winner'), /different result/);
   assert.equal(await prisma.transaction.count({ where: { referenceId: market } }), 0);
   assert.equal((await prisma.wallet.findUniqueOrThrow({ where: { userId: a.id } })).balance, 1000);

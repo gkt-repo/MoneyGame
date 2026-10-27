@@ -8,6 +8,8 @@ export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
     username: string;
+    displayName?: string | null;
+    avatar?: string | null;
     phone: string | null;
     email: string | null;
     role: string;
@@ -38,6 +40,8 @@ export async function authenticateUser(
       select: {
         id: true,
         username: true,
+        displayName: true,
+        avatar: true,
         phone: true,
         email: true,
         role: true,
@@ -105,6 +109,8 @@ export async function authenticateAdmin(
       select: {
         id: true,
         username: true,
+        displayName: true,
+        avatar: true,
         phone: true,
         email: true,
         role: true,

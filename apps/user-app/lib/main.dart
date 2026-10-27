@@ -5,6 +5,7 @@ import 'core/constants/api_constants.dart';
 import 'core/network/api_client.dart';
 import 'core/storage/secure_storage_service.dart';
 import 'core/services/display_mode_service.dart';
+import 'core/services/room_invitations.dart';
 import 'screens/auth/auth_screen.dart';
 import 'screens/home_screen.dart';
 
@@ -43,11 +44,16 @@ class _MoneyGameUserAppState extends State<MoneyGameUserApp>
     with WidgetsBindingObserver {
   UserProfileModel? _currentUser;
   bool _initializing = true;
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  String? _pendingInvitation;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _pendingInvitation = RoomInvitations.targetFromLink(
+      WidgetsBinding.instance.platformDispatcher.defaultRouteName,
+    );
     DisplayModeService.force120Hz();
     _checkSavedSession();
   }
@@ -63,6 +69,15 @@ class _MoneyGameUserAppState extends State<MoneyGameUserApp>
     if (state == AppLifecycleState.resumed) {
       DisplayModeService.force120Hz();
     }
+  }
+
+  @override
+  Future<bool> didPushRouteInformation(RouteInformation routeInformation) async {
+    final target = RoomInvitations.targetFromLink(routeInformation.uri.toString());
+    if (target == null) return true; // Ignore unsupported links without routing them.
+    _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+    setState(() => _pendingInvitation = target);
+    return true;
   }
 
   Future<void> _checkSavedSession() async {
@@ -109,6 +124,9 @@ class _MoneyGameUserAppState extends State<MoneyGameUserApp>
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
+      // Invitations wait for authentication rather than creating a second root.
+      initialRoute: '/',
       title: 'MoneyGame',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -190,6 +208,8 @@ class _MoneyGameUserAppState extends State<MoneyGameUserApp>
               ? HomeScreen(
                   user: _currentUser!,
                   onLogout: _onLogout,
+                  pendingInvitation: _pendingInvitation,
+                  onInvitationOpened: () => setState(() => _pendingInvitation = null),
                 )
               : AuthScreen(
                   onAuthSuccess: _onAuthSuccess,

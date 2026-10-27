@@ -45,6 +45,7 @@ export interface TradingMarketDTO {
   entryClosed: boolean;
   reason: string;
   rulesVersion: string;
+  platformSurplus?: number;
   modelVersion: string;
   quote: TradingQuoteDTO | null;
   updatedAt: string;
@@ -72,6 +73,7 @@ export interface TradingAccountDTO {
   receipt: TradingReceipt | null;
 }
 export interface TradingReceipt {
+  rulesVersion?: string;
   deposit: number;
   finalBalance: number;
   gain: number;
@@ -93,6 +95,7 @@ export interface TradingExecutionDTO {
   createdAt: string;
 }
 export interface TradingPoolDTO {
+  platformSurplus?: number;
   participants: number;
   deposits: number;
   losses: number;
@@ -118,6 +121,16 @@ export interface TradingSnapshotDTO {
   walletAvailable?: number;
   pool: TradingPoolDTO;
   executions: TradingExecutionDTO[];
+}
+export interface TradingHistoryItemDTO extends TradingExecutionDTO {
+  marketId: string;
+  marketTitle: string;
+  outcomeName: string;
+  mode: 'TEST' | 'CASH';
+}
+export interface TradingHistoryDTO {
+  items: TradingHistoryItemDTO[];
+  nextCursor: string | null;
 }
 export interface TradingOrderInput {
   requestId: string;

@@ -13,6 +13,8 @@ model User {
   tradingAccounts TradingAccount[]
   id                String             @id @default(uuid())
   username          String             @unique
+  displayName       String?
+  avatar            String?            @default("avatar_1")
   phone             String?            @unique
   email             String?            @unique
   passwordHash      String             @default("")
@@ -143,9 +145,15 @@ model Withdrawal {
 }
 
 model Room {
-  id            String       @id @default(uuid())
-  roomCode      String       @unique
-  gameType      String       @default("GUESS_NUMBER") // GUESS_NUMBER, TEEN_PATTI, TWENTY_NINE
+  id              String       @id @default(uuid())
+  roomCode        String       @unique
+  invitationToken String?      @unique
+  invitationExpiresAt DateTime?
+  invitationRevokedAt DateTime?
+  engineState     String?
+  engineSequence  Int          @default(0)
+  isPrivate       Boolean      @default(false)
+  gameType        String       @default("GUESS_NUMBER") // GUESS_NUMBER, TEEN_PATTI, TWENTY_NINE
   entryFee      Float
   maxPlayers    Int          @default(2)
   status        String       @default("WAITING") // WAITING, COUNTDOWN, PLAYING, ROLLING, COMPLETED, CANCELLED
@@ -310,6 +318,7 @@ model TradingMarket {
   status String @default("SUSPENDED")
   reason String @default("")
   rulesVersion String @default("pooled-v1")
+  platformSurplus BigInt @default(0)
   modelVersion String @default("cricket-baseline-v1")
   sequence Int @default(0)
   revision Int @default(0)

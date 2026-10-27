@@ -15,6 +15,7 @@ import {
   Copy,
   Check,
   CheckCircle,
+  Zap,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -33,9 +34,23 @@ export const WithdrawView: React.FC<WithdrawViewProps> = ({
 }) => {
   const [amount, setAmount] = useState(balance > 0 ? Math.min(balance, 100).toString() : '10');
   const [upiId, setUpiId] = useState('');
+  const [savedUpiFound, setSavedUpiFound] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Load saved UPI from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('moneygame_saved_upi_id');
+      if (saved && !upiId) {
+        setUpiId(saved);
+        setSavedUpiFound(true);
+      }
+    } catch (_) {}
+  }, []);
+
+  const isUpiValid = (val: string) => /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/.test(val.trim());
 
   // History state
   const [withdrawals, setWithdrawals] = useState<WithdrawalItem[]>([]);
@@ -112,6 +127,10 @@ export const WithdrawView: React.FC<WithdrawViewProps> = ({
 
     try {
       await userApi.requestWithdrawal(user.id, withdrawAmount, cleanUpi);
+      try {
+        localStorage.setItem('moneygame_saved_upi_id', cleanUpi);
+        setSavedUpiFound(true);
+      } catch (_) {}
       setSuccess('Withdrawal initiated! Funds will be dispatched shortly to your UPI.');
       setAmount('');
       onWithdrawSuccess();
@@ -326,14 +345,14 @@ export const WithdrawView: React.FC<WithdrawViewProps> = ({
               <button
                 type="button"
                 onClick={() => setAmount(balance.toFixed(2))}
-                className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-200 hover:bg-emerald-100 transition cursor-pointer"
+                className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-300 hover:bg-emerald-100 transition cursor-pointer shadow-2xs"
               >
-                Max
+                Max Payout
               </button>
             )}
           </div>
 
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-1.5 text-slate-500 text-xs font-semibold mb-1">
                 <Lock className="w-3.5 h-3.5 text-amber-600" />
@@ -343,6 +362,11 @@ export const WithdrawView: React.FC<WithdrawViewProps> = ({
                 ₹{lockedBalance.toFixed(2)}
               </span>
             </div>
+            {lockedBalance > 0 && (
+              <p className="text-[10px] text-amber-800 font-medium mt-1">
+                Staked in active rooms or pending payouts. Unlocks upon completion.
+              </p>
+            )}
           </div>
         </div>
 
@@ -351,7 +375,7 @@ export const WithdrawView: React.FC<WithdrawViewProps> = ({
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
               Select or Enter Withdrawal Amount (₹)
             </label>
-            <div className="grid grid-cols-5 gap-2 mb-2.5">
+            <div className="grid grid-cols-6 gap-1.5 sm:gap-2 mb-2.5">
               {presets.map((val) => (
                 <button
                   key={val}
@@ -367,6 +391,20 @@ export const WithdrawView: React.FC<WithdrawViewProps> = ({
                   ₹{val}
                 </button>
               ))}
+              {balance > 0 && (
+                <button
+                  type="button"
+                  disabled={Boolean(activeWithdrawal)}
+                  onClick={() => setAmount(balance.toFixed(2))}
+                  className={`py-2 rounded-xl text-xs font-bold font-mono tabular-nums border transition cursor-pointer ${
+                    amount === balance.toFixed(2)
+                      ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                      : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 disabled:opacity-40 disabled:pointer-events-none'
+                  }`}
+                >
+                  Max
+                </button>
+              )}
             </div>
 
             <div className="relative">
@@ -392,9 +430,17 @@ export const WithdrawView: React.FC<WithdrawViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              Your Receiving UPI ID
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-slate-700">
+                Your Receiving UPI ID
+              </label>
+              {isUpiValid(upiId) && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Valid UPI Format</span>
+                </span>
+              )}
+            </div>
             <input
               type="text"
               required
@@ -402,8 +448,30 @@ export const WithdrawView: React.FC<WithdrawViewProps> = ({
               value={upiId}
               onChange={(e) => setUpiId(e.target.value)}
               placeholder="e.g. 9876543210@paytm or name@okhdfcbank"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-600 disabled:opacity-50"
+              className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl text-sm font-mono text-slate-900 focus:bg-white focus:outline-none disabled:opacity-50 ${
+                upiId.length > 0 && !isUpiValid(upiId)
+                  ? 'border-amber-400 focus:border-amber-500'
+                  : 'border-slate-200 focus:border-emerald-600'
+              }`}
             />
+            {upiId.length > 0 && !isUpiValid(upiId) && (
+              <p className="text-[11px] text-amber-700 mt-1 font-medium">
+                Please enter a complete UPI VPA format (e.g., yourname@bank or mobile@upi).
+              </p>
+            )}
+            {savedUpiFound && upiId && isUpiValid(upiId) && (
+              <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
+                <span>⚡ Saved for fast payouts.</span>
+              </p>
+            )}
+          </div>
+
+          {/* SLA Expectation Banner */}
+          <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2.5">
+            <Zap className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="text-[11px] leading-relaxed">
+              <strong className="font-bold text-emerald-950">Fast Bank Transfer:</strong> Payout requests are verified and dispatched directly via IMPS, typically within <strong>5–15 minutes</strong>.
+            </div>
           </div>
 
           {activeWithdrawal ? (

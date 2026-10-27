@@ -2,10 +2,12 @@ import React, { useEffect, useState, useRef } from 'react';
 import { RoomItem, userApi, UserProfile } from '../services/api';
 import { connectSocket } from '../services/socket';
 import { ArrowLeft, Loader2, RotateCw } from 'lucide-react';
+import { RoomInvitationControls } from '../components/RoomInvitationControls';
 import confetti from 'canvas-confetti';
 import { TeenPattiTableView } from './games/teen-patti/TeenPattiTableView';
 import { GuessNumberTableView } from './games/guess-number/GuessNumberTableView';
 import { SportsMatchTableView } from './games/sports-match/SportsMatchTableView';
+import { TwentyNineTableView } from './games/twenty-nine/TwentyNineTableView';
 
 interface ActiveRoomViewProps {
   roomId: string;
@@ -61,7 +63,7 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
 
     socket.on('room_updated', (data: RoomItem) => {
       if (data && data.id === roomId) {
-        setRoom(data);
+        setRoom(previous => previous ? { ...previous, ...data } : data);
         if (['COMPLETED', 'CANCELLED'].includes(data.status) && !finished.current) {
           finished.current = true;
           if (data.winnerId === user.id) {
@@ -144,6 +146,7 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
           catch (err) { setError(err instanceof Error ? err.message : 'Cancellation failed'); }
         }}>Cancel table and refund all entries</button>
       )}
+      <RoomInvitationControls room={room} userId={user.id} onChanged={() => { void fetchRoom(); }} />
       {/* Dynamic Game Table Rendering based on room.gameType */}
       {room.gameType === 'TEEN_PATTI' ? (
         <TeenPattiTableView
@@ -154,6 +157,13 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
         />
       ) : room.gameType === 'SPORTS_MATCH' ? (
         <SportsMatchTableView
+          room={room}
+          user={user}
+          onRefreshBalance={onRefreshBalance}
+          onBack={onBack}
+        />
+      ) : room.gameType === 'TWENTY_NINE' ? (
+        <TwentyNineTableView
           room={room}
           user={user}
           onRefreshBalance={onRefreshBalance}

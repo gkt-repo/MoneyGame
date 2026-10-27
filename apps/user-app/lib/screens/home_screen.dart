@@ -9,15 +9,20 @@ import 'lobby/lobby_screen.dart';
 import 'trading/trading_screen.dart';
 import 'wallet/add_cash_screen.dart';
 import 'wallet/withdraw_screen.dart';
+import 'profile/profile_dialogs.dart';
 
 class HomeScreen extends StatefulWidget {
   final UserProfileModel user;
   final VoidCallback onLogout;
+  final String? pendingInvitation;
+  final VoidCallback? onInvitationOpened;
 
   const HomeScreen({
     super.key,
     required this.user,
     required this.onLogout,
+    this.pendingInvitation,
+    this.onInvitationOpened,
   });
 
   @override
@@ -42,6 +47,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _initSocket();
     _refreshProfile();
     _loadNotifications();
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.pendingInvitation != null && widget.pendingInvitation != oldWidget.pendingInvitation) {
+      _currentIndex = 0;
+    }
   }
 
   void _initSocket() {
@@ -254,6 +267,22 @@ class _HomeScreenState extends State<HomeScreen> {
     ).then((_) => _refreshProfile());
   }
 
+  void _openEditProfileModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => EditProfileModal(
+        onSaved: () {
+          _refreshProfile();
+        },
+      ),
+    );
+  }
+
   void _confirmLogout() {
     showDialog(
       context: context,
@@ -308,15 +337,17 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            const Text(
+            const Flexible(child: Text(
               'MONEYGAME',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.5,
                 color: AppColors.slate900,
               ),
-            ),
+            )),
           ],
         ),
         actions: [
@@ -399,6 +430,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
             ],
           ),
+          // Profile Avatar Pill
+          GestureDetector(
+            onTap: _openEditProfileModal,
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: AppColors.slate100,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.slate200),
+              ),
+              child: Text(
+                getAvatarEmoji(_user.avatar),
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.logout, size: 20, color: AppColors.slate600),
             tooltip: 'Logout',
@@ -417,6 +465,8 @@ class _HomeScreenState extends State<HomeScreen> {
           LobbyScreen(
             user: _user,
             onBalanceRefresh: _refreshProfile,
+            pendingInvitation: widget.pendingInvitation,
+            onInvitationOpened: widget.onInvitationOpened,
           ),
           _buildWalletTab(),
           _currentIndex == 2
@@ -725,6 +775,57 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: AppColors.slate100,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.emerald600, width: 1.5),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        getAvatarEmoji(_user.avatar),
+                        style: const TextStyle(fontSize: 24),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _user.displayName ?? _user.username,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.slate900,
+                            ),
+                          ),
+                          Text(
+                            '@${_user.username}',
+                            style: const TextStyle(fontSize: 12, color: AppColors.slate500),
+                          ),
+                        ],
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _openEditProfileModal,
+                      icon: const Icon(Icons.edit_outlined, size: 14, color: AppColors.slate700),
+                      label: const Text('Edit', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate700)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        side: const BorderSide(color: AppColors.slate300),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                const Divider(height: 1, color: AppColors.slate100),
+                const SizedBox(height: 14),
                 const Text(
                   'ACCOUNT DETAILS',
                   style: TextStyle(
@@ -742,6 +843,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildInfoRow('Recovery Email', _user.email ?? 'N/A'),
                 const Divider(height: 18, color: AppColors.slate100),
                 _buildInfoRow('Account Status', _user.status, isStatus: true),
+                if (_user.createdAt != null) ...[
+                  const Divider(height: 18, color: AppColors.slate100),
+                  _buildInfoRow('Member Since', _formatDate(_user.createdAt!)),
+                ],
               ],
             ),
           ),

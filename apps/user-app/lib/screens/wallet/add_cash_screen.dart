@@ -918,31 +918,59 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
               ),
               const SizedBox(height: 10),
 
-              // Paise Offset Alert Notice
+              // Breakdown Chip
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.slate100,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Base: ₹${_deposit!.baseAmount.toStringAsFixed(2)} + Match Code: ₹${(_deposit!.offsetPaise / 100).toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.slate700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // High-Impact Paise Offset Alert Notice
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: AppColors.amber50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.amber600.withValues(alpha: 0.3)),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.amber600.withValues(alpha: 0.5), width: 1.5),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.warning_amber_rounded, size: 16, color: AppColors.amber700),
+                    const Icon(Icons.warning_amber_rounded, size: 18, color: AppColors.amber800),
                     const SizedBox(width: 8),
                     Expanded(
                       child: RichText(
                         text: TextSpan(
-                          style: const TextStyle(fontSize: 11, color: AppColors.amber900, height: 1.3),
+                          style: const TextStyle(fontSize: 11.5, color: AppColors.amber900, height: 1.35),
                           children: [
-                            const TextSpan(text: 'Pay '),
-                            TextSpan(
-                              text: 'EXACTLY ₹${_deposit!.totalAmount.toStringAsFixed(2)} ',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            const TextSpan(
+                              text: 'IMPORTANT: Pay EXACTLY ',
+                              style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.amber900),
                             ),
                             TextSpan(
-                              text: '(including ${_deposit!.offsetPaise} paise offset). Do not round off or auto-credit will fail.',
+                              text: '₹${_deposit!.totalAmount.toStringAsFixed(2)}. ',
+                              style: const TextStyle(fontWeight: FontWeight.w900, decoration: TextDecoration.underline),
+                            ),
+                            TextSpan(
+                              text: 'Do NOT round off to ₹${_deposit!.baseAmount.toStringAsFixed(2)} or automated verification will fail.',
+                              style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.red700),
                             ),
                           ],
                         ),

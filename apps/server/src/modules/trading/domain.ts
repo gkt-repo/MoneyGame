@@ -1,6 +1,6 @@
 import { CricketState, TradingCandleDTO } from '@moneygame/shared-types';
 
-export const RULES = 'pooled-v1';
+export const RULES = 'pooled-capped-v2';
 export const MODEL = 'cricket-baseline-v1';
 export const MULTIFORMAT_MODEL = 'cricket-multiformat-baseline-v1';
 export function formatOf(s: CricketState) {
@@ -181,7 +181,7 @@ export function automaticCandleInterval(s: CricketState): 'over' | '1m' {
   return formatOf(s) === 'T20' && s.totalBalls! - s.balls <= 18 ? '1m' : 'over';
 }
 
-export function allocate(accounts: { id: string; deposit: number; balance: number }[], voided = false) {
+export function allocate(accounts: { id: string; deposit: number; balance: number }[], voided = false, capped = true) {
   const rows = accounts.map((a) => {
     integer(a.deposit, 0, LIMIT, 'Deposit');
     integer(a.balance, 0, 2_000_000_000, 'Balance');
@@ -198,11 +198,13 @@ export function allocate(accounts: { id: string; deposit: number; balance: numbe
   const losses = rows.reduce((n, a) => n + BigInt(a.loss), 0n);
   if (voided || gains === 0n)
     return rows.map((a) => ({ ...a, loss: 0, principal: a.deposit, payout: a.deposit }));
-  for (const a of rows) a.reward = Number((losses * BigInt(a.gain)) / gains);
-  let remainder = Number(losses - rows.reduce((n, a) => n + BigInt(a.reward), 0n));
+  // Units are credit tenths/paise: reward <= gain caps redemption at 10 credits per rupee.
+  const distributable = capped && gains < losses ? gains : losses;
+  for (const a of rows) a.reward = Number((distributable * BigInt(a.gain)) / gains);
+  let remainder = Number(distributable - rows.reduce((n, a) => n + BigInt(a.reward), 0n));
   const ranked = [...rows].sort((a, b) => {
-    const ar = (losses * BigInt(a.gain)) % gains,
-      br = (losses * BigInt(b.gain)) % gains;
+    const ar = (distributable * BigInt(a.gain)) % gains,
+      br = (distributable * BigInt(b.gain)) % gains;
     return ar === br ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : ar > br ? -1 : 1;
   });
   for (const a of ranked) if (remainder-- > 0) a.reward++;

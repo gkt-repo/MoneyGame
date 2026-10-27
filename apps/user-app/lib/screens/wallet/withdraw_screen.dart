@@ -258,19 +258,71 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                 ),
               ),
               const SizedBox(height: 6),
-              Text(
-                '₹${widget.user.balance.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 26,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.slate900,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '₹${widget.user.balance.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 26,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.slate900,
+                    ),
+                  ),
+                  if (widget.user.balance >= 10)
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          _amountController.text = widget.user.balance.toStringAsFixed(0);
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.emerald50,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.emerald600),
+                        ),
+                        child: const Text(
+                          'Max',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.emerald700,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // SLA Fast Transfer Banner
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: AppColors.emerald50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.emerald600.withValues(alpha: 0.3)),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.bolt, size: 16, color: AppColors.emerald600),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Fast IMPS Transfer: Typically processed and dispatched within 5–15 minutes.',
+                  style: TextStyle(fontSize: 11, color: AppColors.emerald900, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 20),
 
         // Error message if any
         if (_error != null) ...[

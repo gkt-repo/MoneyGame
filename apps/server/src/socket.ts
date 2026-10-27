@@ -2,6 +2,7 @@ import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { prisma } from './db';
 import { config } from './config';
+import { twentyNineEngine } from './modules/game/engines/twenty-nine/twenty-nine.engine';
 import { TokenPayload } from './modules/auth/auth.types';
 
 export function configureSockets(io: Server) {
@@ -33,7 +34,13 @@ export function configureSockets(io: Server) {
     if (socket.data.admin) socket.join('admin_channel');
     // Disconnect expired sessions so clients must refresh and authenticate again.
     const expiry = setTimeout(() => socket.disconnect(true), Math.max(1, socket.data.expiresAt - Date.now()));
-    socket.on('disconnect', () => clearTimeout(expiry));
+    void twentyNineEngine.setConnected(socket.data.userId, true, io).catch(error => console.error('Reconnect persistence:', error.message));
+    socket.on('disconnect', () => {
+      clearTimeout(expiry);
+      if (!io.sockets?.adapter?.rooms?.get(`user:${socket.data.userId}`)?.size) {
+        void twentyNineEngine.setConnected(socket.data.userId, false, io).catch(error => console.error('Disconnect persistence:', error.message));
+      }
+    });
     socket.on('join_user_channel', () => socket.join(`user:${socket.data.userId}`));
     socket.on('join_admin_channel', async () => {
       if (!socket.data.admin) return;
@@ -66,7 +73,30 @@ export function configureSockets(io: Server) {
       } catch { socket.emit('subscription_error', { message: 'Unable to subscribe to deposit' }); }
     });
     socket.on('leave_deposit_channel', (id: unknown) => { if (typeof id === 'string') socket.leave?.(`deposit:${id}`); });
-    socket.on('join_room_channel', (id: unknown) => { if (typeof id === 'string') socket.join(`room:${id}`); });
+    socket.on('join_room_channel', async (id: unknown) => {
+      if (typeof id !== 'string') return;
+      try {
+        const room = await prisma.room.findUnique({
+          where: { id },
+          select: { id: true, isPrivate: true, status: true, players: { select: { userId: true } } },
+        });
+        if (!room) return;
+        if (room.isPrivate) {
+          const isMember = socket.data.userId && room.players.some(p => p.userId === socket.data.userId);
+          if (!isMember) {
+            socket.emit('subscription_error', { message: 'Access denied: private room' });
+            return;
+          }
+        }
+        if (socket.connected) {
+          await socket.join(`room:${id}`);
+          const state = twentyNineEngine.getClientState(id, socket.data.userId);
+          if (state) socket.emit('twenty_nine_state', state);
+        }
+      } catch {
+        socket.emit('subscription_error', { message: 'Unable to subscribe to room' });
+      }
+    });
     socket.on('leave_room_channel', (id: unknown) => { if (typeof id === 'string') socket.leave?.(`room:${id}`); });
     socket.on('game_action', async (data: unknown) => {
       if (typeof data !== 'object' || !data) return;

@@ -6,6 +6,7 @@ import '../../core/network/api_client.dart';
 import '../../core/network/socket_service.dart';
 import 'teen_patti/teen_patti_table_screen.dart';
 import 'sports_match/sports_match_table_screen.dart';
+import 'twenty_nine/twenty_nine_table_screen.dart';
 import 'widgets/dice_3d_widget.dart';
 
 class ActiveRoomScreen extends StatefulWidget {
@@ -210,6 +211,14 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
   Widget build(BuildContext context) {
     if (!_loading && _error == null && _room?.gameType == 'TEEN_PATTI') {
       return TeenPattiTableScreen(
+        roomId: widget.roomId,
+        user: widget.user,
+        onBalanceRefresh: () => _loadRoom(silent: true),
+      );
+    }
+
+    if (!_loading && _error == null && _room?.gameType == 'TWENTY_NINE') {
+      return TwentyNineTableScreen(
         roomId: widget.roomId,
         user: widget.user,
         onBalanceRefresh: () => _loadRoom(silent: true),

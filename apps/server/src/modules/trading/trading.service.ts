@@ -9,6 +9,7 @@ import {
   TradingOutcome,
   TradingReceipt,
   TradingSnapshotDTO,
+  TradingHistoryDTO,
 } from '@moneygame/shared-types';
 import { prisma } from '../../db';
 import { serializable } from '../../transaction';
@@ -242,6 +243,7 @@ export class TradingService {
       entryClosed: q ? entryClosed(q.price0, q.priceDraw) : false,
       reason: expired ? 'Waiting for a changed score; last quote expired' : m.reason,
       rulesVersion: m.rulesVersion,
+      platformSurplus: Number(m.platformSurplus),
       modelVersion: m.modelVersion,
       updatedAt: m.updatedAt.toISOString(),
       feedReceivedAt: m.feedReceivedAt?.toISOString() ?? null,
@@ -276,16 +278,42 @@ export class TradingService {
     if (positions) {
       return this.list({ ...realSources, accounts: { some: { userId, deposit: { gt: 0 } } } });
     }
-    const now = new Date();
-    const markets = await this.list({
+    return this.list({
       ...realSources,
       mode: 'CASH',
-      status: 'OPEN',
-      adminPaused: false,
-      feedReceivedAt: { gte: new Date(now.getTime() - 120000) },
-      quotes: { some: { expiresAt: { gt: now } } },
+      status: { in: ['OPEN', 'SUSPENDED'] },
+      quotes: { some: {} },
     });
-    return markets.filter((m) => m.status === 'OPEN');
+  }
+  async tradeHistory(userId: string, cursor?: string): Promise<TradingHistoryDTO> {
+    const account = { userId, market: { source: { in: ['ESPN', 'VERIFIED'] } } };
+    let before: Prisma.TradingExecutionWhereInput = {};
+    if (cursor) {
+      if (cursor.length > 100) throw new TradingError('INVALID_CURSOR', 'Invalid history cursor');
+      const last = await prisma.tradingExecution.findFirst({ where: { id: cursor, account } });
+      if (!last) throw new TradingError('INVALID_CURSOR', 'Invalid history cursor');
+      before = { OR: [
+        { createdAt: { lt: last.createdAt } },
+        { createdAt: last.createdAt, id: { lt: last.id } },
+      ] };
+    }
+    const rows = await prisma.tradingExecution.findMany({
+      where: { account, ...before },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 51,
+      include: { account: { select: { market: {
+        select: { id: true, title: true, team0: true, team1: true, mode: true },
+      } } } },
+    });
+    const page = rows.slice(0, 50);
+    return {
+      items: page.map(({ account: { market }, ...e }) => ({
+        id: e.id, side: e.side as 'BUY' | 'SELL', outcome: e.outcome as TradingOutcome,
+        quantity: e.quantity, price: e.price, total: e.total, createdAt: e.createdAt.toISOString(),
+        marketId: market.id, marketTitle: market.title, mode: market.mode as 'TEST' | 'CASH',
+        outcomeName: e.outcome === 2 ? 'Draw' : e.outcome === 0 ? market.team0 : market.team1,
+      })),
+      nextCursor: rows.length > 50 ? page[page.length - 1].id : null,
+    };
   }
   async snapshot(id: string, userId: string): Promise<TradingSnapshotDTO> {
     return serializable(async (tx) => {
@@ -304,7 +332,7 @@ export class TradingService {
         deposit: a.deposit,
         balance: a.balance + a.positions.reduce((n, p) => n + p.quantity * outcomePrice(quote, p.outcome), 0),
       }));
-      const allocation = allocate(values);
+      const allocation = allocate(values, false, m.rulesVersion === RULES);
       const a = m.accounts.find((a) => a.userId === userId);
       const own = a ? allocation.find((v) => v.id === a.id) : null;
       const positions =
@@ -361,6 +389,9 @@ export class TradingService {
           gains: values.reduce((n, v) => n + Math.max(0, v.balance - v.deposit), 0),
           estimatedReward: receipt?.reward ?? own?.reward ?? 0,
           estimatedPrincipal: receipt?.principal ?? own?.principal ?? 0,
+          platformSurplus: ['SETTLED', 'VOIDED'].includes(m.status)
+            ? Number(m.platformSurplus)
+            : allocation.reduce((n, row) => n + row.deposit - row.payout, 0),
           provisional: !['SETTLED', 'VOIDED'].includes(m.status),
         },
       };
@@ -606,8 +637,10 @@ export class TradingService {
         balance:
           a.balance + a.positions.reduce((n, p) => n + (p.outcome === winner ? p.quantity * 1000 : 0), 0),
       }));
-      const allocations = allocate(balances, winner === null),
+      const allocations = allocate(balances, winner === null, m.rulesVersion === RULES),
         settledAt = new Date().toISOString();
+      const totalPayout = allocations.reduce((n, a) => n + a.payout, 0);
+      const platformSurplus = accounts.reduce((n, a) => n + a.deposit, 0) - totalPayout;
       const noGains = balances.every((a) => a.balance <= a.deposit);
       for (const allocation of allocations) {
         const a = accounts.find((a) => a.id === allocation.id)!;
@@ -621,6 +654,7 @@ export class TradingService {
           payout: allocation.payout,
           settledAt,
           mode: m.mode as 'TEST' | 'CASH',
+          rulesVersion: m.rulesVersion,
           reason:
             winner === null
               ? `Voided: ${reason}`
@@ -677,6 +711,7 @@ export class TradingService {
           status: winner === null ? 'VOIDED' : 'SETTLED',
           winner,
           reason,
+          platformSurplus,
           snapshot: finalSnapshot,
           sequence: m.sequence + (winner === null ? 0 : 1),
         },
@@ -689,7 +724,9 @@ export class TradingService {
           payload: JSON.stringify({ winner, reason }),
           result: JSON.stringify({
             participants: accounts.length,
-            totalPayout: allocations.reduce((n, a) => n + a.payout, 0),
+            totalPayout,
+            platformSurplus,
+            rulesVersion: m.rulesVersion,
           }),
         },
       });

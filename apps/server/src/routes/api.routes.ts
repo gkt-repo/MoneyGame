@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import { walletService } from '../modules/wallet/wallet.service';
 import { paymentService } from '../modules/payment/payment.service';
 import { gameManager } from '../modules/game/game.manager';
+import { profileService } from '../modules/profile/profile.service';
 import { adminService } from '../modules/admin/admin.service';
 import { notificationService } from '../modules/notification/notification.service';
 import { config } from '../config';
@@ -67,6 +68,42 @@ router.use('/admin', moderatorRouter);
 
 router.get('/user/me', authenticateUser, (req: AuthenticatedRequest, res: Response): void => {
   res.json({ success: true, user: req.user });
+});
+
+router.get('/user/profile', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const profile = await profileService.getUserProfile(userId);
+    res.json({ success: true, profile });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/user/profile', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const { displayName, avatar } = req.body;
+    const profile = await profileService.updateProfile(userId, { displayName, avatar });
+    res.json({ success: true, profile });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/user/:userId/public-profile', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const rawUserId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
+    const userId = String(rawUserId || '').trim();
+    if (!userId) {
+      res.status(400).json({ error: 'User ID is required' });
+      return;
+    }
+    const profile = await profileService.getPublicProfile(userId);
+    res.json({ success: true, profile });
+  } catch (err: any) {
+    res.status(404).json({ error: err.message });
+  }
 });
 
 router.get('/user/wallet', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -274,9 +311,31 @@ router.get('/games', async (_req: Request, res: Response): Promise<void> => {
   }
 });
 
-router.get('/rooms', async (_req: Request, res: Response): Promise<void> => {
+router.get('/rooms', async (req: Request, res: Response): Promise<void> => {
   try {
-    const rooms = await gameManager.getActiveRooms();
+    let userId: string | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.substring(7);
+        const decoded = jwt.verify(token, config.jwtSecret, {
+          algorithms: ['HS256'],
+          audience: [config.userAudience, config.adminAudience],
+        }) as any;
+        if (decoded?.userId) {
+          const user = await prisma.user.findUnique({
+            where: { id: decoded.userId },
+            select: { id: true, status: true, tokenVersion: true },
+          });
+          const tokenVersion = typeof decoded.tokenVersion === 'number' ? decoded.tokenVersion : 0;
+          if (user && user.status === 'ACTIVE' && user.tokenVersion === tokenVersion) {
+            userId = user.id;
+          }
+        }
+      } catch (_) {}
+    }
+
+    const rooms = await gameManager.getActiveRooms(userId);
     res.json({ success: true, rooms });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -286,7 +345,7 @@ router.get('/rooms', async (_req: Request, res: Response): Promise<void> => {
 router.post('/rooms/create', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user!.id;
-    const { entryFee, maxPlayers, guessNumber, gameType, customConfig } = req.body;
+    const { entryFee, maxPlayers, guessNumber, gameType, customConfig, isPrivate } = req.body;
     if (!userId || entryFee === undefined || maxPlayers === undefined) {
       res.status(400).json({ error: 'userId, entryFee, and maxPlayers are required' });
       return;
@@ -297,7 +356,8 @@ router.post('/rooms/create', authenticateUser, async (req: AuthenticatedRequest,
       Number(maxPlayers),
       guessNumber !== undefined && guessNumber !== null ? Number(guessNumber) : null,
       gameType || 'GUESS_NUMBER',
-      customConfig
+      customConfig,
+      Boolean(isPrivate)
     );
     res.json({ success: true, room });
   } catch (err: any) {
@@ -323,6 +383,54 @@ router.post('/rooms/join', authenticateUser, async (req: AuthenticatedRequest, r
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
+});
+
+router.post('/rooms/join-invitation', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const { invitationToken, guessNumber, seatIndex } = req.body;
+    if (!userId || !invitationToken) {
+      res.status(400).json({ error: 'userId and invitationToken are required' });
+      return;
+    }
+    const room = await gameManager.joinRoomByInvitation(
+      userId,
+      invitationToken,
+      guessNumber !== undefined && guessNumber !== null ? Number(guessNumber) : null,
+      seatIndex !== undefined ? Number(seatIndex) : undefined
+    );
+    res.json({ success: true, room });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/invitations/:token', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const rawToken = Array.isArray(req.params.token) ? req.params.token[0] : req.params.token;
+    const token = String(rawToken || '').trim();
+    if (!token) {
+      res.status(400).json({ error: 'Invitation token is required' });
+      return;
+    }
+    const preview = await gameManager.getRoomPreviewByInvitation(token);
+    if (!preview) {
+      res.status(404).json({ error: 'Room not found with provided invitation token', reason: 'NOT_FOUND' });
+      return;
+    }
+    res.json({ success: true, preview });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/rooms/:roomId/invitation', authenticateUser, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const operation = req.body.operation;
+    if (operation !== 'REVOKE' && operation !== 'RENEW') { res.status(400).json({ error: 'Invalid invitation operation' }); return; }
+    const room = await gameManager.updateInvitation(String(req.params.roomId), req.user!.id, operation);
+    res.json({ success: true, room });
+  } catch (error: any) { res.status(400).json({ error: error.message }); }
 });
 
 router.post('/rooms/:roomId/action', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {

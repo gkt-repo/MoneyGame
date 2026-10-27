@@ -1,3 +1,5 @@
+import { UserProfileDTO, PublicProfileDTO, RoomPreviewDTO } from '@moneygame/shared-types';
+
 declare const __VITE_API_URL__: string | undefined;
 const API_BASE = typeof __VITE_API_URL__ !== 'undefined' && __VITE_API_URL__
   ? `${__VITE_API_URL__.replace(/\/+$/, '')}/api`
@@ -6,6 +8,8 @@ const API_BASE = typeof __VITE_API_URL__ !== 'undefined' && __VITE_API_URL__
 export interface UserProfile {
   id: string;
   username: string;
+  displayName?: string;
+  avatar?: string;
   phone: string | null;
   email: string | null;
   role: string;
@@ -73,6 +77,8 @@ export interface WithdrawalItem {
 export interface RoomItem {
   id: string;
   roomCode: string;
+  invitationToken?: string;
+  isPrivate?: boolean;
   gameType: string;
   entryFee: number;
   maxPlayers: number;
@@ -80,7 +86,7 @@ export interface RoomItem {
   winningNumber?: number | null;
   winnerPrize?: number | null;
   winnerId?: string | null;
-  winner?: { username: string } | null;
+  winner?: { username: string; displayName?: string; avatar?: string } | null;
   gameState?: any;
   customConfig?: any;
   players: Array<{
@@ -89,7 +95,7 @@ export interface RoomItem {
     seatIndex: number;
     status?: string;
     guessNumber?: number | null;
-    user?: { username: string };
+    user?: { username: string; displayName?: string; avatar?: string };
   }>;
 }
 
@@ -349,11 +355,12 @@ class UserApiService {
     maxPlayers: number,
     guessNumber?: number | null,
     gameType: string = 'TEEN_PATTI',
-    customConfig?: Record<string, any>
+    customConfig?: Record<string, any>,
+    isPrivate?: boolean
   ): Promise<any> {
     return this.request('/rooms/create', {
       method: 'POST',
-      body: JSON.stringify({ userId, entryFee, maxPlayers, guessNumber, gameType, customConfig }),
+      body: JSON.stringify({ userId, entryFee, maxPlayers, guessNumber, gameType, customConfig, isPrivate }),
     });
   }
 
@@ -369,11 +376,52 @@ class UserApiService {
     });
   }
 
+  async joinByInvitation(
+    invitationToken: string,
+    seatIndex?: number,
+    guessNumber?: number | null
+  ): Promise<any> {
+    return this.request('/rooms/join-invitation', {
+      method: 'POST',
+      body: JSON.stringify({ invitationToken, seatIndex, guessNumber }),
+    });
+  }
+
+  async updateInvitation(roomId: string, operation: 'REVOKE' | 'RENEW'): Promise<RoomItem> {
+    const result = await this.request<{room: RoomItem}>(`/rooms/${roomId}/invitation`, { method: 'POST', body: JSON.stringify({ operation }) });
+    return result.room;
+  }
+
+  async getInvitationPreview(token: string): Promise<RoomPreviewDTO> {
+    const res = await this.request<{ success: boolean; preview: RoomPreviewDTO }>(`/invitations/${token}`);
+    return res.preview;
+  }
+
+  async getUserProfile(): Promise<UserProfileDTO> {
+    const res = await this.request<{ success: boolean; profile: UserProfileDTO }>('/user/profile');
+    return res.profile;
+  }
+
+  async updateUserProfile(data: { displayName?: string; avatar?: string }): Promise<UserProfileDTO> {
+    const res = await this.request<{ success: boolean; profile: UserProfileDTO }>('/user/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return res.profile;
+  }
+
+  async getPublicProfile(userId: string): Promise<PublicProfileDTO> {
+    const res = await this.request<{ success: boolean; profile: PublicProfileDTO }>(`/user/${userId}/public-profile`);
+    return res.profile;
+  }
+
   async sendGameAction(roomId: string, action: string, payload?: any): Promise<any> {
-    return this.request(`/rooms/${roomId}/action`, {
+    const result = await this.request<any>(`/rooms/${roomId}/action`, {
       method: 'POST',
       body: JSON.stringify({ action, payload }),
     });
+    if (!result.success) throw new Error(result.message || 'Action rejected');
+    return result;
   }
 
   async cancelRoom(roomId: string): Promise<void> {

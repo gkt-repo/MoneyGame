@@ -7,39 +7,51 @@ import '../storage/secure_storage_service.dart';
 class UserProfileModel {
   final String id;
   final String username;
+  final String? displayName;
+  final String? avatar;
   final String? phone;
   final String? email;
   final String role;
   final String status;
   final double balance;
+  final DateTime? createdAt;
 
   UserProfileModel({
     required this.id,
     required this.username,
+    this.displayName,
+    this.avatar,
     this.phone,
     this.email,
     required this.role,
     required this.status,
     this.balance = 0.0,
+    this.createdAt,
   });
 
   UserProfileModel copyWith({
     String? id,
     String? username,
+    String? displayName,
+    String? avatar,
     String? phone,
     String? email,
     String? role,
     String? status,
     double? balance,
+    DateTime? createdAt,
   }) {
     return UserProfileModel(
       id: id ?? this.id,
       username: username ?? this.username,
+      displayName: displayName ?? this.displayName,
+      avatar: avatar ?? this.avatar,
       phone: phone ?? this.phone,
       email: email ?? this.email,
       role: role ?? this.role,
       status: status ?? this.status,
       balance: balance ?? this.balance,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 
@@ -48,26 +60,285 @@ class UserProfileModel {
     if (json['wallet'] != null) {
       bal = (json['wallet']['balance'] as num?)?.toDouble() ?? 0.0;
     }
+    DateTime? created;
+    if (json['createdAt'] != null) {
+      try {
+        created = DateTime.parse(json['createdAt']);
+      } catch (_) {}
+    }
     return UserProfileModel(
       id: json['id'] ?? '',
       username: json['username'] ?? '',
+      displayName: json['displayName'] ?? json['username'],
+      avatar: json['avatar'] ?? 'avatar_1',
       phone: json['phone'],
       email: json['email'],
       role: json['role'] ?? 'USER',
       status: json['status'] ?? 'ACTIVE',
       balance: bal,
+      createdAt: created,
     );
   }
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'username': username,
+        'displayName': displayName,
+        'avatar': avatar,
         'phone': phone,
         'email': email,
         'role': role,
         'status': status,
         'balance': balance,
+        if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
       };
+}
+
+class UserStatsModel {
+  final int totalGames;
+  final int totalWins;
+  final double winRatePercent;
+  final Map<String, GameStatsModel> byGame;
+
+  UserStatsModel({
+    required this.totalGames,
+    required this.totalWins,
+    required this.winRatePercent,
+    required this.byGame,
+  });
+
+  factory UserStatsModel.fromJson(Map<String, dynamic> json) {
+    Map<String, GameStatsModel> games = {};
+    if (json['byGame'] != null && json['byGame'] is Map) {
+      (json['byGame'] as Map).forEach((k, v) {
+        games[k.toString()] = GameStatsModel.fromJson(Map<String, dynamic>.from(v));
+      });
+    }
+    return UserStatsModel(
+      totalGames: json['totalGames'] ?? 0,
+      totalWins: json['totalWins'] ?? 0,
+      winRatePercent: (json['winRatePercent'] as num?)?.toDouble() ?? 0.0,
+      byGame: games,
+    );
+  }
+}
+
+class GameStatsModel {
+  final int played;
+  final int won;
+  final double winRatePercent;
+
+  GameStatsModel({
+    required this.played,
+    required this.won,
+    required this.winRatePercent,
+  });
+
+  factory GameStatsModel.fromJson(Map<String, dynamic> json) {
+    return GameStatsModel(
+      played: json['played'] ?? 0,
+      won: json['won'] ?? 0,
+      winRatePercent: (json['winRatePercent'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+}
+
+class RecentGameModel {
+  final String roomId;
+  final String roomCode;
+  final String gameType;
+  final double entryFee;
+  final bool isWin;
+  final double prize;
+  final String settledAt;
+
+  RecentGameModel({
+    required this.roomId,
+    required this.roomCode,
+    required this.gameType,
+    required this.entryFee,
+    required this.isWin,
+    required this.prize,
+    required this.settledAt,
+  });
+
+  factory RecentGameModel.fromJson(Map<String, dynamic> json) {
+    return RecentGameModel(
+      roomId: json['roomId'] ?? '',
+      roomCode: json['roomCode'] ?? '',
+      gameType: json['gameType'] ?? '',
+      entryFee: (json['entryFee'] as num?)?.toDouble() ?? 0.0,
+      isWin: json['isWin'] ?? false,
+      prize: (json['prize'] as num?)?.toDouble() ?? 0.0,
+      settledAt: json['settledAt'] ?? '',
+    );
+  }
+}
+
+class UserProfileDetailModel {
+  final String id;
+  final String username;
+  final String displayName;
+  final String avatar;
+  final String? phone;
+  final String? email;
+  final String role;
+  final String status;
+  final String createdAt;
+  final UserStatsModel stats;
+  final List<RecentGameModel> recentGames;
+
+  UserProfileDetailModel({
+    required this.id,
+    required this.username,
+    required this.displayName,
+    required this.avatar,
+    this.phone,
+    this.email,
+    required this.role,
+    required this.status,
+    required this.createdAt,
+    required this.stats,
+    required this.recentGames,
+  });
+
+  factory UserProfileDetailModel.fromJson(Map<String, dynamic> json) {
+    var rawRecent = json['recentGames'] as List? ?? [];
+    return UserProfileDetailModel(
+      id: json['id'] ?? '',
+      username: json['username'] ?? '',
+      displayName: json['displayName'] ?? json['username'] ?? '',
+      avatar: json['avatar'] ?? 'avatar_1',
+      phone: json['phone'],
+      email: json['email'],
+      role: json['role'] ?? 'USER',
+      status: json['status'] ?? 'ACTIVE',
+      createdAt: json['createdAt'] ?? '',
+      stats: json['stats'] != null
+          ? UserStatsModel.fromJson(Map<String, dynamic>.from(json['stats']))
+          : UserStatsModel(totalGames: 0, totalWins: 0, winRatePercent: 0, byGame: {}),
+      recentGames: rawRecent.map((g) => RecentGameModel.fromJson(Map<String, dynamic>.from(g))).toList(),
+    );
+  }
+}
+
+class PublicProfileModel {
+  final String id;
+  final String username;
+  final String displayName;
+  final String avatar;
+  final String createdAt;
+  final UserStatsModel stats;
+
+  PublicProfileModel({
+    required this.id,
+    required this.username,
+    required this.displayName,
+    required this.avatar,
+    required this.createdAt,
+    required this.stats,
+  });
+
+  factory PublicProfileModel.fromJson(Map<String, dynamic> json) {
+    return PublicProfileModel(
+      id: json['id'] ?? '',
+      username: json['username'] ?? '',
+      displayName: json['displayName'] ?? json['username'] ?? '',
+      avatar: json['avatar'] ?? 'avatar_1',
+      createdAt: json['createdAt'] ?? '',
+      stats: json['stats'] != null
+          ? UserStatsModel.fromJson(Map<String, dynamic>.from(json['stats']))
+          : UserStatsModel(totalGames: 0, totalWins: 0, winRatePercent: 0, byGame: {}),
+    );
+  }
+}
+
+class RoomPreviewPlayerModel {
+  final String userId;
+  final String username;
+  final String displayName;
+  final String avatar;
+  final int seatIndex;
+
+  RoomPreviewPlayerModel({
+    required this.userId,
+    required this.username,
+    required this.displayName,
+    required this.avatar,
+    required this.seatIndex,
+  });
+
+  factory RoomPreviewPlayerModel.fromJson(Map<String, dynamic> json) {
+    return RoomPreviewPlayerModel(
+      userId: json['userId'] ?? '',
+      username: json['username'] ?? '',
+      displayName: json['displayName'] ?? json['username'] ?? '',
+      avatar: json['avatar'] ?? 'avatar_1',
+      seatIndex: json['seatIndex'] ?? 0,
+    );
+  }
+}
+
+class RoomPreviewModel {
+  final bool available;
+  final String? unavailabilityReason;
+  final String? rulesSummary;
+  final List<int> takenNumbers;
+  final List<String> teams;
+  final String id;
+  final String roomCode;
+  final String gameType;
+  final double entryFee;
+  final int maxPlayers;
+  final int occupiedSeats;
+  final bool isPrivate;
+  final String status;
+  final bool isFull;
+  final String hostUsername;
+  final String hostDisplayName;
+  final String hostAvatar;
+  final List<RoomPreviewPlayerModel> players;
+
+  int get availableSeats => maxPlayers - occupiedSeats;
+
+  RoomPreviewModel({
+    this.available = false, this.unavailabilityReason, this.rulesSummary,
+    this.takenNumbers = const [], this.teams = const [],
+    required this.id,
+    required this.roomCode,
+    required this.gameType,
+    required this.entryFee,
+    required this.maxPlayers,
+    required this.occupiedSeats,
+    required this.isPrivate,
+    required this.status,
+    required this.isFull,
+    required this.hostUsername,
+    required this.hostDisplayName,
+    required this.hostAvatar,
+    required this.players,
+  });
+
+  factory RoomPreviewModel.fromJson(Map<String, dynamic> json) {
+    var rawPlayers = json['players'] as List? ?? [];
+    return RoomPreviewModel(
+      available: json['available'] == true, unavailabilityReason: json['unavailabilityReason'], rulesSummary: json['rulesSummary'],
+      takenNumbers: List<int>.from(json['takenNumbers'] ?? []), teams: List<String>.from(json['teams'] ?? []),
+      id: json['id'] ?? '',
+      roomCode: json['roomCode'] ?? '',
+      gameType: json['gameType'] ?? '',
+      entryFee: (json['entryFee'] as num?)?.toDouble() ?? 0.0,
+      maxPlayers: json['maxPlayers'] ?? 0,
+      occupiedSeats: json['occupiedSeats'] ?? 0,
+      isPrivate: json['isPrivate'] ?? false,
+      status: json['status'] ?? '',
+      isFull: json['isFull'] ?? false,
+      hostUsername: json['host']?['username'] ?? '',
+      hostDisplayName: json['host']?['displayName'] ?? json['host']?['username'] ?? '',
+      hostAvatar: json['host']?['avatar'] ?? 'avatar_1',
+      players: rawPlayers.map((p) => RoomPreviewPlayerModel.fromJson(Map<String, dynamic>.from(p))).toList(),
+    );
+  }
 }
 
 class DepositResponseModel {
@@ -116,6 +387,8 @@ class RoomModel {
   final double? winnerPrize;
   final String? winnerId;
   final String? winnerUsername;
+  final bool isPrivate;
+  final String? invitationToken;
   final List<RoomPlayerModel> players;
   final Map<String, dynamic>? gameState;
   final dynamic customConfig;
@@ -131,6 +404,8 @@ class RoomModel {
     this.winnerPrize,
     this.winnerId,
     this.winnerUsername,
+    this.isPrivate = false,
+    this.invitationToken,
     required this.players,
     this.gameState,
     this.customConfig,
@@ -162,6 +437,8 @@ class RoomModel {
       winnerPrize: (json['winnerPrize'] as num?)?.toDouble(),
       winnerId: json['winnerId'],
       winnerUsername: json['winner']?['username'],
+      isPrivate: json['isPrivate'] ?? false,
+      invitationToken: json['invitationToken'],
       players: parsedPlayers,
       gameState: json['gameState'] != null ? Map<String, dynamic>.from(json['gameState']) : null,
       customConfig: parsedConfig ?? rawConfig,
@@ -173,6 +450,8 @@ class RoomPlayerModel {
   final String id;
   final String userId;
   final String username;
+  final String displayName;
+  final String avatar;
   final int seatIndex;
   final int? guessNumber;
 
@@ -180,15 +459,24 @@ class RoomPlayerModel {
     required this.id,
     required this.userId,
     required this.username,
+    required this.displayName,
+    this.avatar = 'avatar_1',
     this.seatIndex = 0,
     this.guessNumber,
   });
 
   factory RoomPlayerModel.fromJson(Map<String, dynamic> json) {
+    final rawUser = json['user'];
+    final uname = rawUser?['username'] ?? 'Player';
+    final dname = rawUser?['displayName'] ?? uname;
+    final av = rawUser?['avatar'] ?? 'avatar_1';
+
     return RoomPlayerModel(
       id: json['id'] ?? '',
       userId: json['userId'] ?? '',
-      username: json['user']?['username'] ?? 'Player',
+      username: uname,
+      displayName: dname,
+      avatar: av,
       seatIndex: json['seatIndex'] ?? 0,
       guessNumber: json['guessNumber'],
     );
@@ -538,6 +826,7 @@ class ApiClient {
     int? guessNumber,
     String gameType = 'TEEN_PATTI',
     Map<String, dynamic>? customConfig,
+    bool isPrivate = false,
   }) async {
     try {
       final res = await _dio.post('/rooms/create', data: {
@@ -547,10 +836,70 @@ class ApiClient {
         if (guessNumber != null) ...{'guessNumber': guessNumber},
         'gameType': gameType,
         if (customConfig != null) ...{'customConfig': customConfig},
+        'isPrivate': isPrivate,
       });
       return RoomModel.fromJson(res.data['room']);
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to create room';
+    }
+  }
+
+  static Future<RoomModel> joinByInvitation({
+    required String invitationToken,
+    int? seatIndex,
+    int? guessNumber,
+  }) async {
+    try {
+      final res = await _dio.post('/rooms/join-invitation', data: {
+        'invitationToken': invitationToken,
+        if (seatIndex != null) 'seatIndex': seatIndex,
+        if (guessNumber != null) 'guessNumber': guessNumber,
+      });
+      return RoomModel.fromJson(res.data['room']);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to join via invitation';
+    }
+  }
+
+  static Future<RoomPreviewModel> getInvitationPreview(String token) async {
+    try {
+      final res = await _dio.get('/invitations/$token');
+      return RoomPreviewModel.fromJson(res.data['preview']);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Invalid or expired invitation link';
+    }
+  }
+
+  static Future<UserProfileDetailModel> getUserProfile() async {
+    try {
+      final res = await _dio.get('/user/profile');
+      return UserProfileDetailModel.fromJson(res.data['profile']);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to fetch player profile';
+    }
+  }
+
+  static Future<UserProfileDetailModel> updateUserProfile({
+    String? displayName,
+    String? avatar,
+  }) async {
+    try {
+      final res = await _dio.patch('/user/profile', data: {
+        if (displayName != null) 'displayName': displayName,
+        if (avatar != null) 'avatar': avatar,
+      });
+      return UserProfileDetailModel.fromJson(res.data['profile']);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to update player profile';
+    }
+  }
+
+  static Future<PublicProfileModel> getPublicProfile(String userId) async {
+    try {
+      final res = await _dio.get('/user/$userId/public-profile');
+      return PublicProfileModel.fromJson(res.data['profile']);
+    } on DioException catch (e) {
+      throw e.response?.data['error'] ?? 'Failed to fetch player profile';
     }
   }
 
@@ -601,10 +950,16 @@ class ApiClient {
         'action': action,
         'payload': payload ?? {},
       });
+      if (res.data['success'] != true) throw res.data['message'] ?? 'Action rejected';
       return Map<String, dynamic>.from(res.data);
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Action failed';
     }
+  }
+
+  static Future<RoomModel> updateInvitation(String roomId, String operation) async {
+    final res = await _dio.post('/rooms/$roomId/invitation', data: {'operation': operation});
+    return RoomModel.fromJson(Map<String, dynamic>.from(res.data['room']));
   }
 
   static Future<void> cancelRoom(String roomId) async {

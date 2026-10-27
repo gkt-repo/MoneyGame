@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RoomItem, userApi, UserProfile } from '../services/api';
+import { PublicProfileModal } from '../components/PublicProfileModal';
+import { AVATAR_ICONS } from '../components/ProfileModal';
 import {
   Plus,
   Users,
@@ -19,6 +21,8 @@ import {
   Search,
   RotateCw,
   Clock,
+  Shield,
+  Filter,
 } from 'lucide-react';
 
 interface LobbyViewProps {
@@ -28,7 +32,8 @@ interface LobbyViewProps {
   loading: boolean;
   onRefresh: () => void;
   onSelectRoom: (roomId: string) => void;
-  defaultFilter?: 'ALL' | 'TEEN_PATTI' | 'GUESS_NUMBER' | 'SPORTS_MATCH';
+  defaultFilter?: 'ALL' | 'TWENTY_NINE' | 'TEEN_PATTI' | 'GUESS_NUMBER' | 'SPORTS_MATCH';
+  onOpenInvitationModal?: (token: string) => void;
 }
 
 const parseCustomConfig = (cfg: any): Record<string, any> => {
@@ -239,18 +244,23 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   onRefresh,
   onSelectRoom,
   defaultFilter,
+  onOpenInvitationModal,
 }) => {
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinCodeModal, setShowJoinCodeModal] = useState(false);
   const [selectedTeenPattiRoom, setSelectedTeenPattiRoom] = useState<RoomItem | null>(null);
+  const [selectedTwentyNineRoom, setSelectedTwentyNineRoom] = useState<RoomItem | null>(null);
   const [selectedDiceRoom, setSelectedDiceRoom] = useState<RoomItem | null>(null);
   const [selectedSportsRoom, setSelectedSportsRoom] = useState<RoomItem | null>(null);
+  const [selectedPublicUserId, setSelectedPublicUserId] = useState<string | null>(null);
 
-  // Selected game filter
-  const [filterGame, setFilterGame] = useState<'ALL' | 'TEEN_PATTI' | 'GUESS_NUMBER' | 'SPORTS_MATCH'>(
+  // Selected filters
+  const [filterGame, setFilterGame] = useState<'ALL' | 'TWENTY_NINE' | 'TEEN_PATTI' | 'GUESS_NUMBER' | 'SPORTS_MATCH'>(
     defaultFilter || 'ALL'
   );
+  const [filterStake, setFilterStake] = useState<'ALL' | 'LOW' | 'MID' | 'HIGH'>('ALL');
+  const [filterSeats, setFilterSeats] = useState<'ALL' | 'AVAILABLE'>('ALL');
 
   useEffect(() => {
     if (defaultFilter) {
@@ -259,12 +269,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   }, [defaultFilter]);
 
   // Create Room fields
-  const [selectedGameType, setSelectedGameType] = useState<'TEEN_PATTI' | 'GUESS_NUMBER' | 'SPORTS_MATCH'>(
-    defaultFilter === 'SPORTS_MATCH' ? 'SPORTS_MATCH' : 'TEEN_PATTI'
+  const [selectedGameType, setSelectedGameType] = useState<'TWENTY_NINE' | 'TEEN_PATTI' | 'GUESS_NUMBER' | 'SPORTS_MATCH'>(
+    defaultFilter === 'SPORTS_MATCH' ? 'SPORTS_MATCH' : defaultFilter === 'TWENTY_NINE' ? 'TWENTY_NINE' : 'TEEN_PATTI'
   );
   const [entryFee, setEntryFee] = useState(20);
   const [maxPlayers, setMaxPlayers] = useState(6);
   const [createGuess, setCreateGuess] = useState(7);
+  const [isPrivate, setIsPrivate] = useState(false);
 
   // Sports Match Specific States
   const [sportsMatches, setSportsMatches] = useState<any[]>([]);
@@ -311,6 +322,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   // Stake options
+  const twentyNineStakes = [25, 50, 100, 250, 500];
   const teenPattiStakes = [10, 20, 50, 100, 200, 500];
   const diceStakes = [10, 25, 50, 100];
   const sportsStakes = [10, 25, 50, 100, 200, 500, 1000];
@@ -417,9 +429,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     try {
       const isDice = selectedGameType === 'GUESS_NUMBER';
       const isSports = selectedGameType === 'SPORTS_MATCH';
+      const isTwentyNine = selectedGameType === 'TWENTY_NINE';
 
       let customConfig: Record<string, any> | undefined = undefined;
-      let targetMaxPlayers = maxPlayers;
+      let targetMaxPlayers = isTwentyNine ? 4 : maxPlayers;
       let targetGuessNumber: number | null = null;
 
       if (isDice) {
@@ -449,12 +462,35 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         targetMaxPlayers,
         targetGuessNumber,
         selectedGameType,
-        customConfig
+        customConfig,
+        isPrivate
       );
       setShowCreateModal(false);
       onSelectRoom(res.room.id);
     } catch (err: any) {
       setError(err.message || 'Failed to create table');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ─── 29 CARD GAME JOIN CONFIRMATION ───
+  const handleConfirmTwentyNineJoin = async () => {
+    if (!selectedTwentyNineRoom) return;
+    if (balance < selectedTwentyNineRoom.entryFee) {
+      setError(`Insufficient balance. (Available: ₹${balance.toFixed(2)})`);
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const res = await userApi.joinRoom(user.id, selectedTwentyNineRoom.roomCode);
+      setSelectedTwentyNineRoom(null);
+      onSelectRoom(res.room.id);
+    } catch (err: any) {
+      setError(err.message || 'Failed to take seat');
     } finally {
       setSubmitting(false);
     }
@@ -529,11 +565,24 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   // ─── STEP 1: LOOKUP ROOM BY CODE ───
   const handleLookupRoomCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanCode = roomCode.trim().toUpperCase();
-    if (!cleanCode) {
-      setError('Please enter a valid room code');
+    const rawInput = roomCode.trim();
+    if (!rawInput) {
+      setError('Please enter a valid room code or invitation link');
       return;
     }
+
+    const joinUrlMatch = rawInput.match(/\/join\/([^/?#]+)/i);
+    const invMatch = joinUrlMatch || rawInput.match(/(?:token=|^)(inv[-_][a-zA-Z0-9]+)/i);
+    if (invMatch) {
+      const token = invMatch[1];
+      if (onOpenInvitationModal) {
+        handleCloseJoinCodeModal();
+        onOpenInvitationModal(token);
+        return;
+      }
+    }
+
+    const cleanCode = rawInput.toUpperCase();
 
     setFindingRoom(true);
     setError(null);
@@ -654,7 +703,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     if (isFull) return;
 
     setError(null);
-    if (room.gameType === 'TEEN_PATTI') {
+    if (room.gameType === 'TWENTY_NINE') {
+      setSelectedTwentyNineRoom(room);
+    } else if (room.gameType === 'TEEN_PATTI') {
       setSelectedTeenPattiRoom(room);
     } else if (room.gameType === 'SPORTS_MATCH') {
       setSportsJoinTeam(1);
@@ -674,9 +725,30 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     }
   };
 
+  const activeUserRoom = rooms.find(
+    (r) => ['WAITING', 'COUNTDOWN', 'PLAYING', 'ROLLING'].includes(r.status) && r.players?.some((p) => p.userId === user.id)
+  );
+
   const filteredRooms = rooms.filter((r) => {
-    if (filterGame === 'ALL') return true;
-    return (r.gameType || 'GUESS_NUMBER') === filterGame;
+    // Exclude completed or cancelled from lobby
+    if (r.status === 'COMPLETED' || r.status === 'CANCELLED') return false;
+
+    // Filter by game
+    if (filterGame !== 'ALL' && (r.gameType || 'GUESS_NUMBER') !== filterGame) {
+      return false;
+    }
+
+    // Filter by stake
+    if (filterStake === 'LOW' && r.entryFee > 50) return false;
+    if (filterStake === 'MID' && (r.entryFee <= 50 || r.entryFee > 200)) return false;
+    if (filterStake === 'HIGH' && r.entryFee <= 200) return false;
+
+    // Filter by available seats
+    if (filterSeats === 'AVAILABLE' && (r.status !== 'WAITING' || r.players.length >= r.maxPlayers)) {
+      return false;
+    }
+
+    return true;
   });
 
   return (
@@ -712,7 +784,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 text-xs font-bold rounded-xl transition shadow-xs cursor-pointer"
           >
             <Tag className="w-3.5 h-3.5 text-slate-500" />
-            <span>Join Code</span>
+            <span>Play with Friends</span>
           </button>
           <button
             onClick={() => {
@@ -723,14 +795,18 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 setCreateSportsSearch('');
                 setEntryFee(100);
                 setSportsCapacity(10);
+              } else if (filterGame === 'TWENTY_NINE') {
+                setSelectedGameType('TWENTY_NINE');
+                setEntryFee(25);
+                setMaxPlayers(4);
               } else if (filterGame === 'TEEN_PATTI') {
                 setSelectedGameType('TEEN_PATTI');
                 setEntryFee(20);
                 setMaxPlayers(6);
               } else {
-                setSelectedGameType('TEEN_PATTI');
-                setEntryFee(20);
-                setMaxPlayers(6);
+                setSelectedGameType('TWENTY_NINE');
+                setEntryFee(25);
+                setMaxPlayers(4);
               }
               setError(null);
             }}
@@ -741,6 +817,43 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Sticky / Hero Active Game Resumption Card */}
+      {activeUserRoom && (
+        <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-5 text-white border border-indigo-500/40 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-12 h-12 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center shrink-0 text-2xl">
+              {activeUserRoom.gameType === 'TWENTY_NINE' ? '🃏' : activeUserRoom.gameType === 'TEEN_PATTI' ? '🎴' : activeUserRoom.gameType === 'SPORTS_MATCH' ? '🏏' : '🎲'}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Match In Progress</span>
+                <span className="text-xs font-mono font-bold bg-white/10 px-2 py-0.5 rounded">#{activeUserRoom.roomCode}</span>
+              </div>
+              <h3 className="text-base font-extrabold text-white mt-0.5">
+                {activeUserRoom.gameType === 'TWENTY_NINE'
+                  ? '29 Card Game (Partnership)'
+                  : activeUserRoom.gameType === 'TEEN_PATTI'
+                  ? 'Teen Patti'
+                  : activeUserRoom.gameType === 'SPORTS_MATCH'
+                  ? 'Sports Match Pool'
+                  : 'Dice Guess'}
+              </h3>
+              <p className="text-xs text-slate-300">
+                Entry Stake ₹{activeUserRoom.entryFee} · Seated: {activeUserRoom.players.length}/{activeUserRoom.maxPlayers === 1000 ? 'Unlimited' : activeUserRoom.maxPlayers} players
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onSelectRoom(activeUserRoom.id)}
+            className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs sm:text-sm rounded-xl transition shadow-md flex items-center justify-center gap-2 cursor-pointer self-stretch sm:self-auto"
+          >
+            <span>Resume Game</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Game Filter Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -755,6 +868,28 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           All Tables ({rooms.length})
         </button>
         <button
+          onClick={() => setFilterGame('TWENTY_NINE')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+            filterGame === 'TWENTY_NINE'
+              ? 'bg-indigo-900 text-white shadow-xs ring-1 ring-indigo-400'
+              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <span>🃏</span>
+          <span>29 Cards ({rooms.filter((r) => r.gameType === 'TWENTY_NINE').length})</span>
+        </button>
+        <button
+          onClick={() => setFilterGame('TEEN_PATTI')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+            filterGame === 'TEEN_PATTI'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <span>🎴</span>
+          <span>Teen Patti ({rooms.filter((r) => r.gameType === 'TEEN_PATTI').length})</span>
+        </button>
+        <button
           onClick={() => setFilterGame('SPORTS_MATCH')}
           className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
             filterGame === 'SPORTS_MATCH'
@@ -767,17 +902,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
         </button>
         <button
-          onClick={() => setFilterGame('TEEN_PATTI')}
-          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-            filterGame === 'TEEN_PATTI'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <span>🃏</span>
-          <span>Teen Patti ({rooms.filter((r) => r.gameType === 'TEEN_PATTI').length})</span>
-        </button>
-        <button
           onClick={() => setFilterGame('GUESS_NUMBER')}
           className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
             filterGame === 'GUESS_NUMBER'
@@ -788,6 +912,68 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           <span>🎲</span>
           <span>Dice Guess ({rooms.filter((r) => r.gameType === 'GUESS_NUMBER').length})</span>
         </button>
+      </div>
+
+      {/* Secondary Filter Bar: Stake & Available Seats */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+        {/* Stake Filter */}
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-slate-400 font-medium flex items-center gap-1">
+            <Filter className="w-3.5 h-3.5" /> Stake:
+          </span>
+          <button
+            onClick={() => setFilterStake('ALL')}
+            className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+              filterStake === 'ALL' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setFilterStake('LOW')}
+            className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+              filterStake === 'LOW' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            Low (≤₹50)
+          </button>
+          <button
+            onClick={() => setFilterStake('MID')}
+            className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+              filterStake === 'MID' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            Mid (₹51-200)
+          </button>
+          <button
+            onClick={() => setFilterStake('HIGH')}
+            className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+              filterStake === 'HIGH' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            High (&gt;₹200)
+          </button>
+        </div>
+
+        {/* Available Seats Filter */}
+        <div className="flex items-center gap-1.5 text-xs">
+          <button
+            onClick={() => setFilterSeats('ALL')}
+            className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+              filterSeats === 'ALL' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            All Tables
+          </button>
+          <button
+            onClick={() => setFilterSeats('AVAILABLE')}
+            className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+              filterSeats === 'AVAILABLE' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            Open Seats Only
+          </button>
+        </div>
       </div>
 
       {/* Featured / Live Sports Marquee Banner (Visible when on SPORTS_MATCH) */}
@@ -912,10 +1098,34 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       {/* Tables Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {loading && rooms.length === 0 ? (
-          <div className="col-span-full py-16 flex flex-col items-center justify-center text-slate-400">
-            <Loader2 className="w-6 h-6 animate-spin text-emerald-600 mb-2" />
-            <span className="text-xs">Loading active tables...</span>
-          </div>
+          <>
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div
+                key={i}
+                className="rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4 border border-slate-200 bg-white animate-pulse"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-5 w-20 bg-slate-200 rounded-md" />
+                      <div className="h-5 w-14 bg-slate-200 rounded-md" />
+                    </div>
+                    <div className="h-5 w-14 bg-slate-200 rounded-md" />
+                  </div>
+                  <div className="h-4 w-2/3 bg-slate-200 rounded mb-2" />
+                  <div className="h-3 w-1/3 bg-slate-200 rounded" />
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    <div className="h-12 bg-slate-100 rounded-xl" />
+                    <div className="h-12 bg-slate-100 rounded-xl" />
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <div className="h-3 w-24 bg-slate-200 rounded" />
+                  <div className="h-9 w-full bg-slate-200 rounded-xl" />
+                </div>
+              </div>
+            ))}
+          </>
         ) : filteredRooms.length === 0 ? (
           <div className="col-span-full py-16 bg-white border border-slate-200 rounded-2xl text-center space-y-3">
             <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mx-auto text-slate-400">
@@ -942,8 +1152,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             const isFull = room.players.length >= room.maxPlayers;
             const isSports = room.gameType === 'SPORTS_MATCH';
             const isTeenPatti = room.gameType === 'TEEN_PATTI';
+            const isTwentyNine = room.gameType === 'TWENTY_NINE';
             const totalPot = isSports
               ? room.entryFee * room.players.length
+              : isTwentyNine
+              ? room.entryFee * 4
               : room.entryFee * room.maxPlayers;
 
             const cfg = parseCustomConfig(room.customConfig);
@@ -958,8 +1171,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             const team1Count = room.players.filter((p) => p.guessNumber === 1).length;
             const team2Count = room.players.filter((p) => p.guessNumber === 2).length;
 
-            const isEven = index % 2 === 0;
-
             return (
               <div
                 key={room.id}
@@ -971,21 +1182,34 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               >
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span
                         className={`text-[10px] font-extrabold px-2 py-0.5 rounded border ${
                           isSports
                             ? 'bg-slate-100 text-slate-800 border-slate-300'
+                            : isTwentyNine
+                            ? 'bg-indigo-50 text-indigo-800 border-indigo-300'
                             : isTeenPatti
                             ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                             : 'bg-emerald-50 text-emerald-700 border-emerald-300'
                         }`}
                       >
-                        {isSports ? '🏏 LIVE SPORTS' : isTeenPatti ? '🃏 3 PATTI' : '🎲 DICE GUESS'}
+                        {isSports ? '🏏 LIVE SPORTS' : isTwentyNine ? '🃏 29 CARDS' : isTeenPatti ? '🎴 3 PATTI' : '🎲 DICE GUESS'}
                       </span>
                       <span className="font-mono text-xs font-bold px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded">
                         #{room.roomCode}
                       </span>
+                      {room.isPrivate && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" />
+                          <span>PRIVATE</span>
+                        </span>
+                      )}
+                      {room.gameType === 'GUESS_NUMBER' && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                          10x Payout
+                        </span>
+                      )}
                       {isPlayerInRoom && (
                         <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
                           JOINED
@@ -1000,9 +1224,28 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                           : 'bg-amber-50 text-amber-800 border border-amber-200'
                       }`}
                     >
-                      {room.status === 'WAITING' ? 'OPEN' : room.status === 'PLAYING' ? 'LOCKED (LIVE)' : room.status}
+                      {room.status === 'WAITING'
+                        ? isTwentyNine
+                          ? `${4 - room.players.length} SEATS LEFT`
+                          : 'OPEN'
+                        : room.status === 'PLAYING'
+                        ? 'IN PROGRESS'
+                        : room.status}
                     </span>
                   </div>
+
+                  {/* 29 Card Game Partnership Overview */}
+                  {isTwentyNine && (
+                    <div className="mb-2 p-2.5 bg-indigo-50/60 border border-indigo-100 rounded-xl flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5 font-semibold text-indigo-950">
+                        <span>🤝</span>
+                        <span>2v2 Partnership</span>
+                      </div>
+                      <span className="text-[11px] font-bold text-indigo-700 font-mono">
+                        32 Cards · 8 Tricks
+                      </span>
+                    </div>
+                  )}
 
                   {/* Sports Match Title & Horizontal Picks Bar */}
                   {isSports && (() => {
@@ -1066,14 +1309,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="p-2.5 bg-slate-50 rounded-xl">
                       <span className="text-[11px] text-slate-500 font-semibold block">Entry Stake</span>
-                      <span className="font-bold text-slate-900 font-mono text-sm">₹{room.entryFee}</span>
+                      <span className="font-bold text-slate-900 font-mono tabular-nums text-sm">₹{room.entryFee}</span>
                     </div>
 
                     <div className="p-2.5 bg-slate-50 rounded-xl">
                       <span className="text-[11px] text-slate-500 font-semibold block">
-                        {isSports ? 'Current Pot' : 'Winner Prize'}
+                        {isSports ? 'Current Pot' : isTwentyNine ? 'Winning Team Pot' : 'Winner Prize'}
                       </span>
-                      <span className="font-bold text-emerald-700 font-mono text-sm">
+                      <span className="font-bold text-emerald-700 font-mono tabular-nums text-sm">
                         ₹{totalPot.toFixed(2)}
                       </span>
                     </div>
@@ -1085,9 +1328,29 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     <div className="flex items-center gap-1.5 font-medium">
                       <Users className="w-3.5 h-3.5" />
                       <span>
-                        {room.players.length} / {isUnlimited ? 'Unlimited' : room.maxPlayers} players
+                        {room.players.length} / {isUnlimited ? 'Unlimited' : room.maxPlayers} {isTwentyNine ? 'seats' : 'players'}
                       </span>
                     </div>
+
+                    {/* Clickable player avatar badges */}
+                    {room.players && room.players.length > 0 && (
+                      <div className="flex items-center -space-x-1">
+                        {room.players.slice(0, 4).map((p) => (
+                          <button
+                            key={p.userId}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedPublicUserId(p.userId);
+                            }}
+                            title={`View player card: ${p.user?.displayName || p.user?.username || 'Player'}`}
+                            className="w-5 h-5 rounded-full bg-white border border-slate-300 flex items-center justify-center text-[10px] hover:scale-125 transition shadow-2xs cursor-pointer"
+                          >
+                            {AVATAR_ICONS[p.user?.avatar || 'avatar_1'] || '🦁'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <button
@@ -1098,10 +1361,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         ? 'bg-slate-900 hover:bg-slate-800 text-white'
                         : isFull
                         ? 'bg-slate-100 text-slate-400 border border-slate-200'
+                        : isTwentyNine
+                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
                         : isSports
                         ? 'bg-slate-900 hover:bg-slate-800 text-white'
-                        : isTeenPatti
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                         : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                     }`}
                   >
@@ -1114,6 +1377,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       <>
                         <Lock className="w-3.5 h-3.5" />
                         <span>Table Full</span>
+                      </>
+                    ) : isTwentyNine ? (
+                      <>
+                        <span>Take a Seat (29 Cards)</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
                       </>
                     ) : (
                       <>
@@ -1435,7 +1703,47 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               {/* Game Selector Cards */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">Select Arena / Game</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedGameType('TWENTY_NINE');
+                      setEntryFee(25);
+                      setMaxPlayers(4);
+                    }}
+                    className={`py-2 px-2.5 rounded-xl border text-left transition flex items-center gap-2 cursor-pointer ${
+                      selectedGameType === 'TWENTY_NINE'
+                        ? 'bg-indigo-50 border-indigo-600 text-indigo-900 ring-2 ring-indigo-600/20'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="text-xl shrink-0">🃏</span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold leading-tight truncate">29 Cards</div>
+                      <div className="text-[10px] text-slate-500 font-medium truncate">2v2 Trick (4p)</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedGameType('TEEN_PATTI');
+                      setEntryFee(20);
+                      setMaxPlayers(6);
+                    }}
+                    className={`py-2 px-2.5 rounded-xl border text-left transition flex items-center gap-2 cursor-pointer ${
+                      selectedGameType === 'TEEN_PATTI'
+                        ? 'bg-slate-900 border-slate-900 text-white'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="text-xl shrink-0">🎴</span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold leading-tight truncate">Teen Patti</div>
+                      <div className="text-[10px] text-slate-500 font-medium truncate">3 Cards (2-6p)</div>
+                    </div>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1453,26 +1761,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     <div className="min-w-0">
                       <div className="text-xs font-bold leading-tight truncate">Live Sports</div>
                       <div className="text-[10px] text-slate-500 font-medium truncate">Cricket, Football...</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedGameType('TEEN_PATTI');
-                      setEntryFee(20);
-                      setMaxPlayers(6);
-                    }}
-                    className={`py-2 px-2.5 rounded-xl border text-left transition flex items-center gap-2 cursor-pointer ${
-                      selectedGameType === 'TEEN_PATTI'
-                        ? 'bg-slate-900 border-slate-900 text-white'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <span className="text-xl shrink-0">🃏</span>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold leading-tight truncate">Teen Patti</div>
-                      <div className="text-[10px] text-slate-500 font-medium truncate">3 Cards (2-6p)</div>
                     </div>
                   </button>
 
@@ -1707,6 +1995,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 <div className="flex flex-wrap gap-2">
                   {(selectedGameType === 'SPORTS_MATCH'
                     ? sportsStakes
+                    : selectedGameType === 'TWENTY_NINE'
+                    ? twentyNineStakes
                     : selectedGameType === 'TEEN_PATTI'
                     ? teenPattiStakes
                     : diceStakes
@@ -1730,7 +2020,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               {/* Capacity Chips */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">Room Capacity</label>
-                {selectedGameType === 'SPORTS_MATCH' ? (
+                {selectedGameType === 'TWENTY_NINE' ? (
+                  <div className="p-2.5 bg-indigo-50/70 border border-indigo-200 rounded-lg text-xs font-semibold text-indigo-950 flex items-center justify-between">
+                    <span>4 Players (Fixed 2v2 Partnership)</span>
+                    <span className="font-mono text-indigo-700 font-bold bg-white px-2 py-0.5 rounded border border-indigo-200">4 Seats</span>
+                  </div>
+                ) : selectedGameType === 'SPORTS_MATCH' ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {sportsCapacities.map((item) => (
                       <button
@@ -1793,6 +2088,25 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Private Table Toggle */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-slate-800 block">Private Table</span>
+                  <span className="text-[11px] text-slate-500 block">
+                    Only players with invitation link or code can join. Hidden from lobby.
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isPrivate}
+                    onChange={(e) => setIsPrivate(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
@@ -1947,11 +2261,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <div className="flex justify-between items-center text-slate-700">
                     <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Game</span>
                     <span className="font-bold text-slate-900 flex items-center gap-1">
-                      {codeTargetRoom.gameType === 'SPORTS_MATCH'
+                      {codeTargetRoom.gameType === 'TWENTY_NINE'
+                        ? '🃏 29 Card Game'
+                        : codeTargetRoom.gameType === 'SPORTS_MATCH'
                         ? '🏏 Live Sports Pool'
                         : codeTargetRoom.gameType === 'GUESS_NUMBER'
                         ? '🎲 Dice Guess'
-                        : '🃏 Teen Patti'}
+                        : '🎴 Teen Patti'}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-slate-700">
@@ -1971,6 +2287,20 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 </div>
 
                 <form onSubmit={handleConfirmCodeJoin} className="space-y-4">
+                  {/* Next Info Asked: 29 Card Game Confirmation */}
+                  {codeTargetRoom.gameType === 'TWENTY_NINE' && (
+                    <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs text-indigo-950 space-y-1">
+                      <p className="font-semibold flex items-center gap-1.5">
+                        <span>🤝</span>
+                        <span>2 vs 2 Partnership Table · single deal</span>
+                        <a href="/rules/29.html" target="_blank" rel="noreferrer" className="underline">House rules</a>
+                      </p>
+                      <p className="text-[11px] text-indigo-800">
+                        Confirming will reserve your seat and deduct the ₹{codeTargetRoom.entryFee} entry fee.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Next Info Asked: Sports Match Team Pick */}
                   {codeTargetRoom.gameType === 'SPORTS_MATCH' && (() => {
                     const resolved = resolveSportsMatch(codeTargetRoom, sportsMatches);
@@ -2095,7 +2425,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         </>
                       ) : (
                         <span>
-                          {codeTargetRoom.gameType === 'SPORTS_MATCH'
+                          {codeTargetRoom.gameType === 'TWENTY_NINE'
+                            ? `Lock ₹${codeTargetRoom.entryFee} & Take Seat`
+                            : codeTargetRoom.gameType === 'SPORTS_MATCH'
                             ? `Lock ₹${codeTargetRoom.entryFee} & Back Team`
                             : codeTargetRoom.gameType === 'TEEN_PATTI'
                             ? `Lock ₹${codeTargetRoom.entryFee} & Sit`
@@ -2110,6 +2442,96 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* ─── MODAL: 29 CARD GAME JOIN CONFIRMATION ─── */}
+      {selectedTwentyNineRoom && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-sm bg-white border border-slate-200 rounded-2xl p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🃏</span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Take a Seat (29 Cards)</h3>
+                  <p className="text-[11px] text-slate-500 font-mono">Table #{selectedTwentyNineRoom.roomCode}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedTwentyNineRoom(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+              <div className="flex justify-between font-semibold text-slate-800">
+                <span>Entry Stake</span>
+                <a href="/rules/29.html" target="_blank" rel="noreferrer" className="text-xs underline">single-deal-v1 rules</a> <span className="font-mono font-bold text-slate-900">₹{selectedTwentyNineRoom.entryFee}</span>
+              </div>
+              <div className="flex justify-between font-semibold text-slate-800">
+                <span>Winner Team Prize Pool</span>
+                <span className="font-mono font-bold text-emerald-700">₹{(selectedTwentyNineRoom.entryFee * 4).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between font-semibold text-slate-800">
+                <span>Your Available Balance</span>
+                <span className="font-mono font-bold text-slate-900">₹{balance.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-slate-600 pt-1 border-t border-slate-200">
+                <span>Current Seats</span>
+                <span className="font-medium">{selectedTwentyNineRoom.players.length} / 4 occupied</span>
+              </div>
+            </div>
+
+            <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl text-indigo-950 text-[11px] space-y-1">
+              <p className="font-bold flex items-center gap-1">
+                <span>🤝</span>
+                <span>Partnership Game Rules</span>
+              </p>
+              <p className="text-indigo-800 leading-relaxed">
+                4 players play in 2 teams. First 4 cards dealt → Bidding (16-28) → Highest bidder sets secret trump → Deal second 4 cards → 8 tricks played. Winning pair splits the pool equally!
+              </p>
+            </div>
+
+            {error && (
+              <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setSelectedTwentyNineRoom(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={handleConfirmTwentyNineJoin}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Joining Table...</span>
+                  </>
+                ) : (
+                  <span>Lock ₹{selectedTwentyNineRoom.entryFee} & Take Seat</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Public Profile Modal */}
+      <PublicProfileModal
+        userId={selectedPublicUserId}
+        onClose={() => setSelectedPublicUserId(null)}
+      />
     </div>
   );
 };

@@ -1,11 +1,30 @@
 package com.moneygame.user
 
+import android.content.Intent
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 import android.os.Build
 import android.os.Bundle
 import android.view.Display
 import io.flutter.embedding.android.FlutterActivity
 
 class MainActivity : FlutterActivity() {
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "moneygame/share").setMethodCallHandler { call, result ->
+            if (call.method != "share") { result.notImplemented() }
+            else {
+                val text = call.argument<String>("text")
+                if (text.isNullOrBlank()) result.error("INVALID", "Invitation text is required", null)
+                else try {
+                    val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text) }
+                    startActivity(Intent.createChooser(intent, "Invite friends"))
+                    result.success(null)
+                } catch (error: Exception) { result.error("SHARE_FAILED", error.message, null) }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         force120Hz()

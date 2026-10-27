@@ -550,15 +550,19 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
             {isPlaying && (
               <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1.5 transition ${
                 isMyTurn
-                  ? 'bg-amber-400 text-slate-950 font-bold shadow-md animate-pulse'
+                  ? timeLeft <= 5
+                    ? 'bg-rose-500 text-white font-extrabold shadow-lg animate-pulse ring-2 ring-rose-300'
+                    : 'bg-amber-400 text-slate-950 font-bold shadow-md animate-pulse'
                   : 'bg-emerald-900/70 text-emerald-300'
               }`}>
                 <Clock className="w-3.5 h-3.5" />
-                {isMyTurn
-                  ? `Your Turn (${timeLeft}s)`
-                  : myPlayerState?.isPacked
-                  ? 'You Folded (Waiting)'
-                  : 'Opponent Thinking...'}
+                <span className="font-mono tabular-nums">
+                  {isMyTurn
+                    ? `Your Turn (${timeLeft}s)`
+                    : myPlayerState?.isPacked
+                    ? 'You Folded (Waiting)'
+                    : 'Opponent Thinking...'}
+                </span>
               </span>
             )}
             {isCompleted && !isCancelled && (
@@ -845,12 +849,19 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
               </div>
 
               {/* Action Buttons (Turn Controls with Steppers & Side Show) */}
-              <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
+              <div className="flex flex-col items-end gap-1.5 w-full lg:w-auto">
+                {isMyTurn && timeLeft <= 5 && (
+                  <div className="w-full bg-rose-500 text-white text-[11px] font-bold py-1 px-3 rounded-lg flex items-center justify-between animate-pulse shadow-sm">
+                    <span>⚠️ Turn about to fold!</span>
+                    <span className="font-mono tabular-nums font-black">{timeLeft}s</span>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
                 {/* Pack / Fold */}
                 <button
                   disabled={!isMyTurn || submittingAction}
                   onClick={() => handleAction('PACK')}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white border border-red-700 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-xs cursor-pointer"
+                  className="px-4 py-2.5 min-h-[44px] bg-red-600 hover:bg-red-700 text-white border border-red-700 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-xs cursor-pointer"
                 >
                   Pack (Fold)
                 </button>
@@ -860,7 +871,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                   <button
                     disabled={submittingAction || !hasEnoughForShow}
                     onClick={() => handleAction('SHOW')}
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 border border-amber-600 rounded-xl text-xs font-extrabold transition shadow-xs disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1 cursor-pointer"
+                    className="px-4 py-2.5 min-h-[44px] bg-amber-500 hover:bg-amber-600 text-slate-950 border border-amber-600 rounded-xl text-xs font-extrabold transition shadow-xs disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1 cursor-pointer font-mono tabular-nums"
                     title={!hasEnoughForShow ? `Insufficient balance. Required: ₹${showCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
                   >
                     <span>Show (₹{showCost.toFixed(2)})!</span>
@@ -872,7 +883,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                   <button
                     disabled={!canSideShow || submittingAction}
                     onClick={() => handleAction('SIDE_SHOW')}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs border ${
+                    className={`px-3.5 py-2.5 min-h-[44px] rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs border font-mono tabular-nums ${
                       canSideShow
                         ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-600 cursor-pointer'
                         : 'bg-slate-900/60 text-slate-500 border-slate-800 opacity-40 cursor-not-allowed'
@@ -895,7 +906,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                   type="button"
                   disabled={!isMyTurn || submittingAction || betMultiplier <= 1}
                   onClick={() => setBetMultiplier(1)}
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm border transition ${
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm border transition ${
                     isMyTurn && betMultiplier > 1
                       ? 'bg-slate-700 hover:bg-slate-600 text-white border-slate-400 shadow-xs cursor-pointer'
                       : 'bg-slate-900/60 text-slate-500 border-slate-800 cursor-not-allowed opacity-40'
@@ -910,24 +921,24 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                   <button
                     disabled={!isMyTurn || submittingAction || myBalance < activeBlindCost}
                     onClick={() => handleAction('BLIND', { multiplier: betMultiplier })}
-                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="px-5 py-2.5 min-h-[44px] bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-xs flex items-center justify-center gap-1.5 cursor-pointer font-mono tabular-nums"
                     title={myBalance < activeBlindCost ? `Insufficient balance. Required: ₹${activeBlindCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
                   >
                     <span>Blind (₹{activeBlindCost.toFixed(2)})</span>
                     {betMultiplier === 2 && (
-                      <span className="text-[10px] bg-amber-400 text-slate-950 px-1 rounded font-bold">2x</span>
+                      <span className="text-[10px] bg-amber-400 text-slate-950 px-1 rounded font-bold font-sans">2x</span>
                     )}
                   </button>
                 ) : (
                   <button
                     disabled={!isMyTurn || submittingAction || myBalance < activeChaalCost}
                     onClick={() => handleAction('CHAAL', { multiplier: betMultiplier })}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="px-5 py-2.5 min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500 rounded-xl text-xs font-bold transition disabled:opacity-30 disabled:cursor-not-allowed shadow-xs flex items-center justify-center gap-1.5 cursor-pointer font-mono tabular-nums"
                     title={myBalance < activeChaalCost ? `Insufficient balance. Required: ₹${activeChaalCost.toFixed(2)}, Available: ₹${myBalance.toFixed(2)}` : undefined}
                   >
                     <span>Chaal (₹{activeChaalCost.toFixed(2)})</span>
                     {betMultiplier === 2 && (
-                      <span className="text-[10px] bg-amber-300 text-slate-950 px-1 rounded font-bold">2x</span>
+                      <span className="text-[10px] bg-amber-300 text-slate-950 px-1 rounded font-bold font-sans">2x</span>
                     )}
                   </button>
                 )}
@@ -937,7 +948,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                   type="button"
                   disabled={!isMyTurn || submittingAction || betMultiplier >= 2 || myBalance < nextMultiplierCost}
                   onClick={() => setBetMultiplier(2)}
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm border transition ${
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm border transition ${
                     isMyTurn && betMultiplier === 1 && myBalance >= nextMultiplierCost
                       ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-300 shadow-md cursor-pointer'
                       : 'bg-slate-900/60 text-slate-500 border-slate-800 cursor-not-allowed opacity-40'
@@ -946,6 +957,7 @@ export const TeenPattiTableView: React.FC<TeenPattiTableViewProps> = ({
                 >
                   <Plus className="w-4 h-4" />
                 </button>
+                </div>
               </div>
             </div>
           )}

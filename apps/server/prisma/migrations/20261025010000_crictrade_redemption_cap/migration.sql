@@ -1,0 +1,1 @@
+ALTER TABLE "TradingMarket" ADD COLUMN "platformSurplus" BIGINT NOT NULL DEFAULT 0;

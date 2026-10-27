@@ -1,6 +1,6 @@
 # MoneyGame product implementation plan
 
-Prepared 24 October 2026. The lobby/profile/invitation/29 work remains deferred. CricTrade implementation and its 25 October ODI/Test/Draw extension are documented in [the implementation runbook](CRICTRADE.md); the research notes below preserve the original planning context.
+Prepared 24 October 2026; implementation updated 26 October 2026. Lobby, profiles, invitations, and 29 are implemented in the workspace. The 26 October fixes add private recovery storage, serialized durable actions, retryable settlement, invitation expiry/revocation, and client integration corrections. See [the versioned 29 rules](TWENTY_NINE_RULES.md). CricTrade implementation and its 25 October ODI/Test/Draw extension are documented in [the implementation runbook](CRICTRADE.md); the research notes below preserve the original planning context.
 
 ## Agreed scope
 
@@ -16,10 +16,10 @@ Target both Flutter user-app and React user-web, with shared server behavior. De
 ## Current foundations and gaps
 
 - Room creation, joining by code, authenticated sessions, Socket.IO updates, wallet locking and game registration already exist.
-- `apps/server/src/modules/game/engines/twenty-nine/twenty-nine.engine.ts` is disabled and contains placeholder methods. It needs a complete implementation, not just enabling a flag.
-- `packages/shared-types/src/game.types.ts` includes `TWENTY_NINE`, but has no dedicated 29 actions or state types.
-- Flutter already displays account information in its home screen; expand it into a player profile rather than duplicating account settings.
-- Room persistence has one `winnerId`. Team wins require explicit team results and per-player payouts so statistics and history remain accurate.
+- The 29 engine implements bidding, hidden trump, eight tricks, partnership settlement, durable recovery, and deterministic timeouts. `product_regression.test.ts` exercises HTTP/socket privacy, restart, failure injection, invitations, and results.
+- Shared 29 action/state types include room identity, action sequence, settlement phase, and participant-specific state.
+- Flutter and React expose editable display names, curated avatars, restricted public profiles, and completed-game statistics.
+- Room `winnerId` remains a compatibility field. Team settlement records both winners and individual payouts. The server-only `engineState`/`engineSequence` fields never enter room DTOs.
 - The sports service polls every 30 seconds and caches match data for 45 seconds. It currently consumes ESPN scoreboard endpoints and settles prediction pools; it does not provide a trading engine or an independently verified low-latency delivery feed.
 
 ## Stage 1: lobby and invitation flow
@@ -142,3 +142,21 @@ Fetch centrally on the server and fan out to clients via Socket.IO. One four-hou
 5. Review liquidity, collateral, settlement rules, data rights and deployment feasibility before adding real-money exposure.
 
 Do not bolt positions onto the current sports prediction pool. Introduce dedicated market, outcome, order, trade, position, collateral and market-event records while reusing authenticated sessions and established ledger conventions.
+
+## Development deployment and verification
+
+- Share `https://mgame-1.web.app/join/<room-code>`. The installed app or browser opens the join preview with the code supplied. Login preserves the pending invitation; a paid join still requires confirmation. See [app-link setup](APP_LINKS.md).
+- Android App Links now have manifest and website association configuration for the available local certificates. Deploy the website and install the updated app to activate them. iOS Universal Links still require an Apple Team ID and association; the browser offers Open installed app using the registered custom URL scheme.
+- Apply `20261026000000_room_recovery_invitation_lifecycle` using the schema for the selected database before running this server build. Both SQLite and PostgreSQL migration files are provided. Regenerate the Prisma client for that schema.
+- Run `npm run build`, `npm --prefix apps/server test`, `npm run test:web-sessions`, `npm run test:migrations`, and Flutter tests. The product regression suite uses temporary databases and real local HTTP/socket connections; it never modifies a development or production wallet.
+- Native iOS share presentation requires validation on an Apple simulator/device; verified domain association and release signing are deployment tasks, not prerequisites for the selected development browser/code flow.
+
+### Verification completed 26 October 2026
+
+- All 19 server suites passed across the regression runs. Sports settlement uses deterministic provider fixtures so an upstream feed outage cannot invalidate ledger tests.
+- Product regressions cover private HTTP/socket authorization, hand/trump isolation, invitation lifecycle, serialized actions, failed-save rollback, first-deal retries, restart/offline recovery, settlement outages, exact team payouts, duplicate protection, and refunds.
+- The 36 user-app tests and 8 admin-app tests passed. The 16 web-session/migration checks passed. Server and both web production builds passed; Android debug APK compilation passed.
+- Flutter analysis reports informational lint findings only. iOS native sharing remains uncompiled on this Linux workstation. Tests do not certify a deployed service or eliminate every possible defect.
+- No live database migration or hosting deployment was performed by this verification.
+- Rechecked 27 October: production builds, the isolated HTTP/socket product regression suite, and the Flutter 29-screen/website-share tests passed again.
+- Added installed-app invitations on 27 October: shared `/join/<code>` URLs, Android domain association for the available signing certificates, browser/app fallback, and code-prefilled join screens across cold start, warm start, and login. All 39 user-app tests, the Android debug APK build, and the web build passed. OS domain verification still requires deployment and device testing; see [activation steps](APP_LINKS.md).

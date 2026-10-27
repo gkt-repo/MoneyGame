@@ -13,9 +13,14 @@ const cases = {
   'trading-http': 'trading_http.test.ts',
   'trading-formats': 'trading_formats.test.ts',
   'trading-cash': 'trading_cash.test.ts',
+  'trading-redemption': 'trading_redemption.test.ts',
   notifications: 'notifications.test.ts',
   moderator: 'moderator.test.ts',
   float: 'moderator_float.test.ts',
+  'twenty-nine': 'twenty_nine.test.ts',
+  invitations: 'lobby_invitation.test.ts',
+  profile: 'profile.test.ts',
+  product: 'product_regression.test.ts',
 };
 const generated = spawnSync(process.execPath, [require.resolve('prisma'), 'generate', '--schema', 'prisma/schema.prisma'], { cwd: serverDir, stdio: 'inherit' });
 if (generated.status !== 0) throw new Error('Prisma client generation failed');

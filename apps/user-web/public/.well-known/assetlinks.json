@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.moneygame.user",
+      "sha256_cert_fingerprints": [
+        "7D:72:74:0D:55:35:A5:86:60:EB:CE:31:78:03:92:3E:6C:BF:66:AF:45:E1:83:B4:AA:94:16:E3:71:30:A6:4D",
+        "40:10:79:A0:83:17:04:66:7A:4A:07:24:8A:3E:F9:4C:FF:A2:B4:56:02:45:7E:F5:4E:5C:A8:E4:90:40:EA:1E"
+      ]
+    }
+  }
+]

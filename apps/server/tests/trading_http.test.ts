@@ -146,13 +146,13 @@ async function main() {
     }
     const liveList = (await request('/trading/markets', token(a.id))).body;
     assert.deepEqual(
-      liveList.map((m: any) => m.id),
-      [fixtures.live],
+      liveList.map((m: any) => m.id).sort(),
+      [fixtures.live, fixtures.stale, fixtures.expired, fixtures.paused].sort(),
     );
     assert.equal(liveList[0].mode, 'CASH', 'Live markets use actual wallet conversion');
     await tradingService.fund(fixtures.live, a.id, 1000, 'fund-live-fixture');
     await tradingService.settle(fixtures.live, null, 'Live fixture ended');
-    assert.equal((await request('/trading/markets', token(a.id))).body.length, 0);
+    assert.equal((await request('/trading/markets', token(a.id))).body.length, 3);
     const history = (await request('/trading/markets?view=positions', token(a.id))).body;
     assert.deepEqual(
       history.map((m: any) => m.id),
@@ -225,6 +225,13 @@ async function main() {
       ).status,
       200,
     );
+    const tradeHistory = await request('/trading/history', token(a.id));
+    assert.equal(tradeHistory.status, 200);
+    assert.equal(tradeHistory.body.items.length, 2);
+    assert(tradeHistory.body.items.every((e: any) => e.marketId === testId && e.outcomeName === 'Draw'));
+    assert.equal((await request('/trading/history', token(b.id))).body.items.length, 0);
+    assert.equal((await request('/trading/history')).status, 401);
+    assert.equal((await request(`/trading/history?cursor=${tradeHistory.body.items[0].id}`, token(b.id))).status, 400);
     const drawSettlement = `/admin/trading/markets/${testId}/settle`;
     assert.equal(
       (

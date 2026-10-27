@@ -5,13 +5,13 @@ Implemented 24 October 2026; extended to ODI and Test/first-class on 25 October 
 ## What is available
 
 - A CricTrade navigation tab in both user clients and admin web. User clients replace the MoneyGame header with match credits, Withdraw and a + action. Withdraw sits to the left of the credit button.
-- The Home match picker shows supported real T20, ODI/List A and Test/first-class matches currently available for trading, with fresh quotes, CASH mode and a recently observed feed. Simulations, finished matches, paused matches and stale quotes are excluded. If none are available, it shows an empty state and refreshes automatically. My positions lists only the caller's funded real matches, retaining paused/finished matches and their settlement receipts.
-- Two user pages: Home and My positions. Home has team selection, current prices, a candlestick chart and Buy. T20 candle intervals switch automatically from sampled overs to one minute at 18 legal balls remaining in either innings. ODI and Test candles remain per over throughout. No interval selector, chart-style selector or zoom slider.
+- The Home match picker shows supported real T20, ODI/List A and Test/first-class matches currently available for trading, with CASH mode and a published quote. Unfinished matches remain visible when trading is suspended, a quote expires, or probability crosses 90%; their last chart stays available with an explicit reason. Simulations and settled/voided matches are excluded. A match awaiting a delayed final feed result may remain listed as paused until the result is confirmed. If none are available, it shows an empty state and refreshes automatically. My positions lists only the caller's funded real matches, retaining paused/finished matches and their settlement receipts.
+- Three user pages: Home, My positions and History. Home has team selection, current prices, a candlestick chart and Buy. T20 candle intervals switch automatically from sampled overs to one minute at 18 legal balls remaining in either innings. ODI and Test candles remain per over throughout. No interval selector, chart-style selector or zoom slider.
 - Players explicitly choose a match before funding or trading. Funding/conversion opens from the header credit button and names the selected match; switching matches loads that match's separate balance and positions. Team selection is a compact horizontal rate row (`IND 60.00 | NZ 40.00`), with no duplicate win-percentage label. Test/first-class adds a third compact Draw button. Prices retain the existing 0.1-credit precision, displayed with two decimal places; all outcomes sum to 100 credits.
 - The + action shows available wallet money, the exact debit and credits received. Conversion deducts available wallet money and locks it in the selected match atomically. Insufficient funds are rejected; retrying a successful request does not debit twice. Wallet updates are sent privately after committed funding and settlement.
-- Whole-share buys have an order ticket; owned shares are managed through Exit position, including partial exits. There is no standalone sell/short action. Confirmation and changed/expired quote rejection are preserved.
-- New buys and additional funding pause for **all outcomes whenever any published outcome probability exceeds 90%**, including Draw in a Test. Exactly 90% permits entry; entry resumes when every outcome returns to 90% or below. The server checks the latest quote inside the funding/order transaction, before changing any balances. Existing positions can still exit at valid quotes. There is no over-based entry cutoff or artificial time-decay charge.
-- My positions shows average entry, last price, invested/current values and green/red credit P&L. Order history and settlement receipts are collapsed. Market rules are behind an information action. Drag the price axis vertically to scale candle height, or the time axis horizontally to scale spacing; double-click/tap resets the axis.
+- Whole-share buys have an order ticket; owned shares are managed through Exit position, including partial exits. Tapping an active position opens Home with the same match and outcome chart selected, including Draw or a paused market. Exit position retains its separate action. There is no standalone sell/short action. Confirmation and changed/expired quote rejection are preserved.
+- New buys and additional funding pause for **all outcomes whenever any published outcome probability exceeds 90%**, including Draw in a Test. Exactly 90% permits entry; entry resumes when every outcome returns to 90% or below. The server checks the latest quote inside the funding/order transaction, before changing any balances. Existing positions can still exit at valid quotes. At 85–90%, both clients warn that new buys/funding will pause above 90%. The threshold does not block exits. A suspended market or expired quote blocks both buys and exits and now shows the reason on both Home and My positions. There is no over-based entry cutoff or artificial time-decay charge.
+- My positions shows average entry, last price, invested/current values and green/red credit P&L. History lists the user’s executed buys/exits across real matches, with team/outcome, match, quantity, execution price, credits and full local date/time. Load more fetches older trades in pages of 50, without the snapshot’s 100-execution limit. Settlement receipts remain in My positions. Market rules are behind an information action. Drag the price axis vertically to scale candle height, or the time axis horizontally to scale spacing; double-click/tap resets the axis.
 - Persisted request IDs and retry recovery, authenticated ownership checks, integer accounting and serializable mutations.
 - Admin simulation creation, pause/resume, result confirmation and void/refund with a recorded actor and reason.
 - SQLite and PostgreSQL migrations. Existing card games and sports pools use their existing accounting paths.
@@ -26,15 +26,18 @@ Final balance is available credits plus open winning shares valued at 100 credit
 gain      = max(finalBalance - deposit, 0)
 loss      = max(deposit - finalBalance, 0)
 principal = min(deposit, finalBalance)
-reward    = gain / sum(all gains) * sum(all losses)
+rewardPool = min(sum(all gains), sum(all losses))
+reward    = gain / sum(all gains) * rewardPool
 payout    = principal + reward
 ```
 
-Largest-remainder allocation distributes residual paise deterministically. Total payouts equal total deposits. No fees are charged. A void, or a pool without any positive participants, refunds all deposits. Positive participants with no loss pool receive no reward. All unused principal returns at settlement; there is no early withdrawal. Both clients display these exceptions.
+For new `pooled-capped-v2` matches, profit redemption is capped at **₹1 per 10 profit credits** (at most one paise per stored unit), and can be lower if losses are insufficient. Largest-remainder allocation distributes residual paise deterministically without exceeding that cap. `platformSurplus = totalDeposits - totalPayouts`; payouts plus surplus equal deposits. Surplus is persisted on the market and in its settlement audit, inside the same transaction as wallet payouts, and shown to administrators. It is retained platform revenue, not an automatic transfer to an administrator’s personal wallet. Test-mode surplus is only an equivalent value.
+
+Example: one user gains 1,000 credits (₹100 maximum) and another loses 5,000 credits (₹500). The winner receives ₹100 profit plus principal; the platform retains ₹400. Existing `pooled-v1` matches keep their original uncapped proportional rules and completed receipts are never rewritten. A void, or a pool without any positive participants, refunds all deposits. Positive participants with no loss pool receive no reward. All unused principal returns at settlement; there is no early withdrawal. Both clients display these exceptions.
 
 Settlement remains automatic **per match after its result is confirmed**, not a daily 5 PM batch. Every deposit, position and profit/loss allocation belongs to one match; another running match's credits cannot fund its payout. Settlement returns each wallet-funded match’s final payout to the wallet atomically. The header Withdraw action explains locks before settlement, then opens the existing wallet withdrawal flow after cash settlement without issuing another payout. Test credits cannot be withdrawn as money. The header shows zero spendable match credits after settlement; the final accounting remains in the receipt.
 
-Example: deposit 10,000 credits, buy 100 India shares at 60 and sell at 80 → 12,000 final credits. Principal is ₹1,000; 2,000 positive credits determine the share of the loss pool. They do not guarantee ₹200 profit. Test-mode receipts express the equivalent amounts but never change the wallet.
+Example: deposit 10,000 credits, buy 100 India shares at 60 and sell at 80 → 12,000 final credits. Principal is ₹1,000; 2,000 positive credits determine the share of the loss pool. For capped matches, ₹200 is the maximum profit payout; the actual amount can be lower. Test-mode receipts express the equivalent amounts but never change the wallet.
 
 Funding is capped at ₹100,000 equivalent per account per match; orders and each outcome holding are capped at 1,000,000 shares. Additional integer bounds prevent account value overflow. These are implementation limits, not approved cash-product limits.
 
@@ -72,7 +75,8 @@ All routes require authenticated users or administrators. `/api/trading/markets/
 
 | Method | Route below `/api` | Purpose |
 | --- | --- | --- |
-| GET | `/trading/markets` | Up to 100 real-feed markets with OPEN status, a valid quote and feed observation within two minutes |
+| GET | `/trading/markets` | Up to 100 unfinished CASH real-feed markets with published quotes, including suspended/expired markets |
+| GET | `/trading/history?cursor=...` | Caller’s real-match executions, newest first; 50 rows and nextCursor; cursor ownership validated |
 | GET | `/trading/markets?view=positions` | Caller's funded real matches, including paused/settled matches; simulations excluded |
 | GET | `/trading/markets/:id` | Account and market snapshot |
 | GET | `/trading/markets/:id/candles?outcome=0&interval=auto` | Up to 3,000 observed quotes; `auto` selects over/1m from the latest state; optional `before` in epoch milliseconds |
@@ -119,13 +123,13 @@ In separate terminals, run `npm run dev:user-web` and `npm run dev:admin-web`, o
 
 The 25 October format extension was checked against a captured live New Zealand A v India A first-class snapshot: innings 3, New Zealand A 317, India A 113 & 92/2 (29.1 overs), day 2 session 3 of a four-day match. The adapter correctly retained batting identity and both innings aggregates, and produced three prices summing to 100 credits. This is parsing evidence, not model-accuracy or deployed-backend evidence. Availability changes with the provider feed.
 
-The initial migration is `20261024000000_crictrade`; the required format-extension migration is `20261025000000_crictrade_draw` in both migration directories. Apply the Draw migration and regenerate Prisma before running the updated backend. It adds `TradingQuote.priceDraw` with a zero default and preserves existing quotes, balances and positions. PostgreSQL deployments must use the repository's PostgreSQL schema/migration selection in `docker-entrypoint.sh`; do not apply SQLite migrations to PostgreSQL. This wallet-conversion update needs no additional schema migration beyond those two migrations. Verification used disposable databases; no existing user funds were moved.
+The initial migration is `20261024000000_crictrade`; the required format-extension migration is `20261025000000_crictrade_draw` in both migration directories. Apply the Draw migration and regenerate Prisma before running the updated backend. It adds `TradingQuote.priceDraw` with a zero default and preserves existing quotes, balances and positions. PostgreSQL deployments must use the repository's PostgreSQL schema/migration selection in `docker-entrypoint.sh`; do not apply SQLite migrations to PostgreSQL. The redemption cap additionally requires `20261025010000_crictrade_redemption_cap`, adding `TradingMarket.platformSurplus` with a zero default. The database’s existing `pooled-v1` default is retained for old records; application creation explicitly assigns `pooled-capped-v2` to new pools. Verification used disposable databases; no existing user funds were moved.
 
 ## Verification
 
 ```bash
 npm run build
-npm --prefix apps/server test -- trading trading-http trading-formats trading-cash security sports
+npm --prefix apps/server test -- trading trading-http trading-formats trading-cash trading-redemption security sports
 npm run test:migrations
 npm run test:web-sessions
 cd apps/user-app
@@ -148,3 +152,5 @@ Probability-cutoff checks cover both teams, exact 90% boundaries, reopening, exi
 Further production qualification: measure provider latency, calibrate the probability models, finalize published product rules and qualify settlement at the intended pool size. The other lobby/profile/invitation/29 plan remains deferred as requested.
 
 The wallet-conversion checks cover real-mode discovery, fractional-rupee conversion, wallet locking, insufficient funds, duplicate and concurrent requests, separate legacy pools, private wallet notifications, disabled-entry exits, confirmed-result cash payouts, void refunds and total-pool conservation. Browser tests use mocked wallets; backend integration tests use isolated fixture accounts, not real users’ money.
+
+The cap/visibility/History update verifies the ₹100/₹500/₹400 example, legacy rule preservation, capped rounding, payouts-plus-surplus conservation, and private history beyond 100 rows with no duplicates. Phone/browser tests cover expired quotes at 89.9%, visibility above 90%, valid exits above the cutoff, explicit disabled reasons, three adjacent tabs and older-history loading. These reproduce the screenshot scenario without claiming a production log diagnosis of the exact 19:41 event.

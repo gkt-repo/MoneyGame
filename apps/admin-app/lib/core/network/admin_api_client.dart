@@ -680,6 +680,7 @@ class AdminRoomModel {
   final double totalPot;
   final String createdAt;
   final List<AdminRoomPlayerModel> players;
+  final Map<String, dynamic>? customConfig;
 
   AdminRoomModel({
     required this.id,
@@ -695,6 +696,7 @@ class AdminRoomModel {
     this.totalPot = 0.0,
     required this.createdAt,
     required this.players,
+    this.customConfig,
   });
 
   factory AdminRoomModel.fromJson(Map<String, dynamic> json) {
@@ -718,6 +720,7 @@ class AdminRoomModel {
       totalPot: pot,
       createdAt: json['createdAt'] ?? '',
       players: playersList,
+      customConfig: json['customConfig'] is Map<String, dynamic> ? json['customConfig'] : null,
     );
   }
 }

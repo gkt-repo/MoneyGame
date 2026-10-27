@@ -26,6 +26,12 @@ tradingRouter.use(
   }),
 );
 tradingRouter.get(
+  '/history',
+  wrap(async (req, res) => res.json(await tradingService.tradeHistory(
+    req.user!.id, typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
+  ))),
+);
+tradingRouter.get(
   '/markets',
   wrap(async (req, res) =>
     res.json(await tradingService.listForUser(req.user!.id, req.query.view === 'positions')),

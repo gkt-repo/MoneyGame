@@ -1,3 +1,4 @@
+import { publicRoomConfig } from '../game/room-presentation';
 import { availableFloat } from '../moderator/cash-desk.service';
 import { prisma } from '../../db';
 import { serializable } from '../../transaction';
@@ -980,7 +981,7 @@ export class AdminService {
         winnerUsername: room.winner?.username,
         winnerPrize: room.winnerPrize,
         totalPot,
-        customConfig: configObj,
+        customConfig: publicRoomConfig(configObj),
         createdAt: room.createdAt,
         players: playersWithStakes,
       };
@@ -1052,7 +1053,7 @@ export class AdminService {
 
     return {
       ...room,
-      customConfig: configObj,
+      customConfig: publicRoomConfig(configObj),
       gameState: liveState?.gameState || null,
       transactions,
       auditLogs,

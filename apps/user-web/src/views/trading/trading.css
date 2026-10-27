@@ -318,10 +318,25 @@
   justify-content: space-between;
   gap: 14px;
 }
-.ct-position-main h2 {
+.ct-position-name {
+  display: block;
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 8px;
+}
+.crictrade .ct-position-chart {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ct-text);
+  text-align: left;
+  cursor: pointer;
+}
+.ct-position-chart:focus-visible {
+  outline: 2px solid var(--ct-green);
+  outline-offset: 6px;
 }
 .ct-position-main small {
   display: block;

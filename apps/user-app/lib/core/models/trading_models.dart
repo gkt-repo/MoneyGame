@@ -1,11 +1,20 @@
 class TradingMarket {
-  final String id, title, team0, team1, source, status, reason, mode;
+  final String id,
+      title,
+      team0,
+      team1,
+      source,
+      status,
+      reason,
+      mode,
+      rulesVersion;
   final Map<String, dynamic>? quote;
   final String? feedReceivedAt;
   final int pollingMs;
   final bool _serverEntryClosed;
   TradingMarket.fromJson(Map<String, dynamic> j)
-    : id = j['id'] as String,
+    : rulesVersion = j['rulesVersion'] as String? ?? 'pooled-v1',
+      id = j['id'] as String,
       title = j['title'] as String,
       team0 = j['team0'] as String,
       team1 = j['team1'] as String,
@@ -48,6 +57,11 @@ class TradingMarket {
   bool get entryClosed =>
       _serverEntryClosed ||
       (quote != null && outcomes.any((o) => price(o) > 900));
+  bool get nearingCutoff =>
+      !entryClosed && quote != null && outcomes.any((o) => price(o) >= 850);
+  String get redemptionNote => rulesVersion == 'pooled-capped-v2'
+      ? 'Profit redemption is capped at ₹1 per 10 credits and may be lower if the loss pool is insufficient. Any surplus is retained by the platform.'
+      : 'This match uses the original pooled payout rules, without a profit redemption cap.';
   bool get canEnter =>
       open && !entryClosed && (mode == 'CASH' || source == 'SIMULATION');
 }

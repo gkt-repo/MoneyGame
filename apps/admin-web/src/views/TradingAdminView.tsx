@@ -86,6 +86,11 @@ export function TradingAdminView() {
                 {m.status} · {m.mode} · {m.source}
               </p>
               <p className="text-sm text-zinc-400">{m.reason}</p>
+              {['SETTLED', 'VOIDED'].includes(m.status) && (
+                <p className="text-sm">
+                  {m.mode === 'CASH' ? 'Platform surplus' : 'Test surplus (equivalent)'}: ₹{((m.platformSurplus ?? 0) / 100).toFixed(2)}
+                </p>
+              )}
               <p className="text-xs text-zinc-400">
                 Last source check: {m.feedReceivedAt ? new Date(m.feedReceivedAt).toLocaleString() : 'None'} ·{' '}
                 {m.pollingMs / 1000}s cadence

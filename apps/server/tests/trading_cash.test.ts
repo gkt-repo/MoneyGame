@@ -130,10 +130,10 @@ async function main() {
   const one = await service.snapshot(id, a.id),
     two = await service.snapshot(id, b.id);
   assert.equal(one.account.receipt!.mode, 'CASH');
-  assert.equal(one.account.receipt!.payout + two.account.receipt!.payout, 50050);
+  assert.equal(one.account.receipt!.payout + two.account.receipt!.payout + one.market.platformSurplus!, 50050);
   wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: a.id } });
   const other = await prisma.wallet.findUniqueOrThrow({ where: { userId: b.id } });
-  assert.equal(Math.round((wallet.balance + other.balance) * 100), 200000);
+  assert.equal(Math.round((wallet.balance + other.balance) * 100) + one.market.platformSurplus!, 200000);
   assert.equal(wallet.lockedBalance + other.lockedBalance, 0);
   assert(
     notifications.some(

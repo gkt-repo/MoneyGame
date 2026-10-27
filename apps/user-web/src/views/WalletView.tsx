@@ -204,13 +204,32 @@ export const WalletView: React.FC<WalletViewProps> = ({
         </div>
 
         <div>
-          <div className="text-3xl sm:text-4xl font-extrabold mono-num text-slate-900">
+          <span className="text-xs text-slate-500 font-medium">Available Cash</span>
+          <div className="text-3xl sm:text-4xl font-extrabold mono-num tabular-nums text-slate-900 tracking-tight">
             ₹{balance.toFixed(2)}
           </div>
+
+          {/* Detailed Balance Status Grid */}
+          <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100 text-xs">
+            <div className="p-2.5 bg-slate-50 rounded-xl">
+              <span className="text-[11px] text-slate-500 block mb-0.5">Active / Ready to Play</span>
+              <span className="font-mono tabular-nums font-bold text-slate-900 text-sm">₹{balance.toFixed(2)}</span>
+            </div>
+            <div className="p-2.5 bg-amber-50/60 rounded-xl border border-amber-200/60">
+              <span className="text-[11px] text-amber-800 flex items-center gap-1 mb-0.5">
+                <Lock className="w-3 h-3 text-amber-600" />
+                <span>Locked in Play / Payout</span>
+              </span>
+              <span className="font-mono tabular-nums font-bold text-amber-950 text-sm">₹{lockedBalance.toFixed(2)}</span>
+            </div>
+          </div>
+
           {lockedBalance > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-amber-700 font-semibold mt-1">
-              <Lock className="w-3.5 h-3.5" />
-              <span>₹{lockedBalance.toFixed(2)} currently locked in pending withdrawal</span>
+            <div className="mt-2.5 p-2.5 bg-amber-50/80 border border-amber-200/70 rounded-xl text-[11px] text-amber-900 leading-relaxed flex items-start gap-2">
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+              <span>
+                <strong>Locked Balance:</strong> Funds currently in ongoing games, active prediction pools, or undergoing withdrawal dispatch. Automatically unlocked once the room or payout concludes.
+              </span>
             </div>
           )}
         </div>

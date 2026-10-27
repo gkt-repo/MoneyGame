@@ -429,7 +429,9 @@ export const RoomsView: React.FC<RoomsViewProps> = ({ onSelectUser }) => {
                     <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
                       {room.players && room.players.length > 0 ? (
                         room.players.map((p) => {
-                          const isWinner = room.winnerId === p.userId;
+                          const isWinner = room.gameType === 'TWENTY_NINE' && Array.isArray(room.customConfig?.winnerUserIds)
+                            ? room.customConfig.winnerUserIds.includes(p.userId)
+                            : room.winnerId === p.userId;
                           return (
                             <div
                               key={p.id}
@@ -490,7 +492,20 @@ export const RoomsView: React.FC<RoomsViewProps> = ({ onSelectUser }) => {
                     <div className="p-2.5 bg-emerald-950/30 border border-emerald-800/40 rounded-lg text-xs flex items-center justify-between">
                       <div className="flex items-center gap-1.5 text-emerald-400">
                         <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Winner: <strong>{room.winnerUsername || 'Player'}</strong></span>
+                        <span>
+                          {room.gameType === 'TWENTY_NINE' && room.customConfig?.winnerUserIds ? (
+                            <>
+                              Winning Team: <strong>Team {room.customConfig.winningTeamIndex + 1}</strong>
+                              {room.customConfig.explanation ? (
+                                <span className="block text-[11px] text-zinc-400 font-normal mt-0.5">
+                                  {room.customConfig.explanation}
+                                </span>
+                              ) : null}
+                            </>
+                          ) : (
+                            <>Winner: <strong>{room.winnerUsername || 'Player'}</strong></>
+                          )}
+                        </span>
                       </div>
                       {room.winnerPrize != null && (
                         <span className="font-mono font-bold text-amber-300">

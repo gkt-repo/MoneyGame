@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { CricketFormat, CricketState } from '@moneygame/shared-types';
 import { prisma } from '../../db';
 import { serializable } from '../../transaction';
-import { formatOf, parseScore, pollInterval, validateState } from './domain';
+import { formatOf, parseScore, pollInterval, RULES, validateState } from './domain';
 import { tradingService } from './trading.service';
 
 const ENDPOINT = 'https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=cricket';
@@ -250,6 +250,7 @@ export class TradingWorker {
                   id,
                   source: 'ESPN',
                   mode: 'CASH',
+                  rulesVersion: RULES,
                   title: event.name,
                   team0: event.competitors[0].displayName || event.competitors[0].name,
                   team1: event.competitors[1].displayName || event.competitors[1].name,

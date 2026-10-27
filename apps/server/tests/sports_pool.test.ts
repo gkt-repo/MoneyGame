@@ -36,7 +36,20 @@ async function run() {
     create: { key: 'platform_commission', value: '0' },
   });
 
-  // Test 1: Fetch Live & Upcoming Matches from real APIs
+  // Exercise feed aggregation and settlement with deterministic provider data.
+  // External provider availability is not a prerequisite for a financial regression test.
+  sportsService.fetchEspnCricket = async () => [{
+    id: 'test-fixture-1', sport: 'Cricket', league: 'Test League',
+    name: 'Team Alpha vs Team Beta',
+    startTime: new Date(Date.now() + 3600000).toISOString(), status: 'SCHEDULED',
+    team1: { id: 't1', name: 'Team Alpha', shortName: 'ALP' },
+    team2: { id: 't2', name: 'Team Beta', shortName: 'BET' },
+  }];
+  sportsService.fetchEspnSoccer = async () => [];
+  sportsService.fetchEspnBasketball = async () => [];
+  sportsService.fetchCricketDataOrg = async () => [];
+
+  // Test 1: Fetch Live & Upcoming Matches from the provider fixtures
   console.log('Test 1: Fetch Live & Upcoming Sports Matches');
   const matches = await sportsService.getAllMatches();
   assert(matches.length > 0, 'Matches array should not be empty');

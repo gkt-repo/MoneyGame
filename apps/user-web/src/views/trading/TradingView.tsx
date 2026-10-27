@@ -16,6 +16,8 @@ import {
   TradingCandleDTO,
   TradingExecutionDTO,
   TradingOutcome,
+  TradingHistoryDTO,
+  TradingHistoryItemDTO,
 } from '@moneygame/shared-types';
 import { userApi } from '../../services/api';
 import { connectSocket } from '../../services/socket';
@@ -203,7 +205,7 @@ export function TradingView({
   const [snapshot, setSnapshot] = useState<TradingSnapshotDTO | null>(null),
     [bars, setBars] = useState<TradingCandleDTO[]>([]);
   const [outcome, setOutcome] = useState<TradingOutcome>(0),
-    [page, setPage] = useState<'home' | 'positions'>('home');
+    [page, setPage] = useState<'home' | 'positions' | 'history'>('home');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY'),
     [quantity, setQuantity] = useState('10'),
     [funding, setFunding] = useState('1000');
@@ -215,6 +217,28 @@ export function TradingView({
   const [pending, setPending] = useState<Pending | null>(null);
   const [now, setNow] = useState(Date.now()),
     [loading, setLoading] = useState(true);
+  const [tradeHistory, setTradeHistory] = useState<TradingHistoryItemDTO[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const historyEpoch = useRef(0);
+  async function loadTradeHistory(cursor?: string) {
+    const current = ++historyEpoch.current;
+    setHistoryLoading(true);
+    try {
+      const data = await userApi.trading<TradingHistoryDTO>(`/history${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
+      if (current !== historyEpoch.current) return;
+      setTradeHistory((old) => cursor ? [...old, ...data.items] : data.items);
+      setHistoryCursor(data.nextCursor);
+    } catch (e: any) {
+      if (current === historyEpoch.current) setError(e.message);
+    } finally {
+      if (current === historyEpoch.current) setHistoryLoading(false);
+    }
+  }
+  useEffect(() => {
+    if (page === 'history') { setTradeHistory([]); setHistoryCursor(null); void loadTradeHistory(); }
+    return () => { historyEpoch.current++; };
+  }, [page]);
   const epoch = useRef(0),
     listEpoch = useRef(0),
     inflight = useRef(false),
@@ -228,6 +252,7 @@ export function TradingView({
   }, [storageKey]);
   const loadMarkets = useCallback(async () => {
     const current = ++listEpoch.current;
+    if (page === 'history') { setMarketId(''); setLoading(false); return; }
     try {
       const response = await userApi.trading<TradingMarketDTO[]>(
         page === 'positions' ? '/markets?view=positions' : '/markets',
@@ -237,10 +262,7 @@ export function TradingView({
         (m) =>
           ['ESPN', 'VERIFIED'].includes(m.source) &&
           (page === 'positions' ||
-            (m.mode === 'CASH' &&
-              m.status === 'OPEN' &&
-              !!m.quote &&
-              new Date(m.quote.expiresAt).getTime() > Date.now())),
+            (m.mode === 'CASH' && ['OPEN', 'SUSPENDED'].includes(m.status) && !!m.quote)),
       );
       setMarkets(list);
       setMarketId((id) => (list.some((m) => m.id === id) ? id : ''));
@@ -343,6 +365,10 @@ export function TradingView({
   const entryClosed =
     !!m?.entryClosed ||
     (!!q && Math.max(q.price0, 1000 - q.price0 - (q.priceDraw ?? 0), q.priceDraw ?? 0) > 900);
+  const nearingCutoff = !entryClosed && !!q && Math.max(q.price0, 1000 - q.price0 - (q.priceDraw ?? 0), q.priceDraw ?? 0) >= 850;
+  const redemptionNote = m?.rulesVersion === 'pooled-capped-v2'
+    ? 'Profit redemption is capped at ₹1 per 10 credits and may be lower if the loss pool is insufficient. Any surplus is retained by the platform.'
+    : 'This match uses the original pooled payout rules, without a profit redemption cap.';
   const canEnter = open && !entryClosed && (m?.mode === 'CASH' || m?.source === 'SIMULATION');
   const priceFor = (o: number) =>
     q ? (o === 0 ? q.price0 : o === 2 ? (q.priceDraw ?? 0) : 1000 - q.price0 - (q.priceDraw ?? 0)) : 0;
@@ -379,7 +405,7 @@ export function TradingView({
       <header className="ct-header">
         <div className="ct-header-inner">
           <div className="ct-brand">
-            <button aria-label="Back to MoneyGame" onClick={onBack}>
+            <button aria-label="Back to Tables" title="Back to Tables / Lobby" onClick={onBack}>
               ←
             </button>
             <strong>
@@ -423,6 +449,7 @@ export function TradingView({
           >
             My positions{positions.length > 0 && <span>{positions.length}</span>}
           </button>
+          <button aria-current={page === 'history' ? 'page' : undefined} onClick={() => setPage('history')}>History</button>
         </nav>
       </header>
       <div className="ct-content">
@@ -450,6 +477,23 @@ export function TradingView({
             </button>
           </div>
         )}
+        {page === 'history' ? (
+          <section aria-label="Trade history">
+            <div className="ct-position-heading"><h2>History</h2><button disabled={historyLoading} onClick={() => void loadTradeHistory()}>Refresh</button></div>
+            {!historyLoading && !tradeHistory.length && <p className="ct-empty">No trades yet.</p>}
+            {tradeHistory.map((e) => (
+              <article className="ct-history" key={e.id}>
+                <span><b>{e.side === 'BUY' ? 'Buy' : 'Exit'} · {e.outcomeName}</b>
+                  <small>{e.marketTitle}{e.mode === 'TEST' ? ' · Test credits' : ''}</small>
+                  <small>{new Date(e.createdAt).toLocaleString()} · Executed</small>
+                  <small>{e.quantity} shares × {credits(e.price)} cr</small>
+                </span><b>{credits(e.total)} cr</b>
+              </article>
+            ))}
+            {historyLoading && <p role="status">Loading history…</p>}
+            {historyCursor && <button disabled={historyLoading} onClick={() => void loadTradeHistory(historyCursor)}>Load more</button>}
+          </section>
+        ) : (<>
         <div className="ct-match-row">
           <label className="ct-match-picker">
             <span>Match</span>
@@ -494,7 +538,7 @@ export function TradingView({
               ? 'Loading matches…'
               : page === 'positions'
                 ? 'No real-match positions yet.'
-                : 'No live matches available for trading right now. This list updates automatically.'}
+                : 'No live matches available right now. This list updates automatically.'}
           </div>
         )}
         {!!markets.length && !marketId && (
@@ -505,6 +549,12 @@ export function TradingView({
           </div>
         )}
         {marketId && !snapshot && <div className="ct-empty">Loading market…</div>}
+        {m && !open && !['SETTLED', 'VOIDED'].includes(m.status) && (
+          <p role="status" className="ct-entry-note">Trading paused: {m.status === 'OPEN' ? 'Quote expired; waiting for a fresh price.' : m.reason} Buying and exiting are unavailable until a valid quote returns.</p>
+        )}
+        {nearingCutoff && m && !['SETTLED', 'VOIDED'].includes(m.status) && (
+          <p className="ct-entry-note">Approaching 90% · Above 90%, new buys and funding pause. You can still exit with a valid quote.</p>
+        )}
         {entryClosed && m?.status !== 'SETTLED' && m?.status !== 'VOIDED' && (
           <p className="ct-entry-note">
             Outcome probability above 90% · New buys and funding paused. Exits require a valid quote.
@@ -595,9 +645,17 @@ export function TradingView({
                   {positions.length ? (
                     positions.map((p) => (
                       <article key={p.outcome} className="ct-position">
-                        <div className="ct-position-main">
+                        <button
+                          type="button"
+                          className="ct-position-main ct-position-chart"
+                          aria-label={`Open ${teamFor(p.outcome)} chart`}
+                          onClick={() => {
+                            setOutcome(p.outcome);
+                            setPage('home');
+                          }}
+                        >
                           <div>
-                            <h2>{teamFor(p.outcome)}</h2>
+                            <span className="ct-position-name">{teamFor(p.outcome)}</span>
                             <small>
                               {p.quantity} shares · Avg. {credits(p.averagePrice)} cr
                             </small>
@@ -614,7 +672,7 @@ export function TradingView({
                               {p.cost ? `${((p.unrealized / p.cost) * 100).toFixed(2)}%` : '0.00%'}
                             </small>
                           </div>
-                        </div>
+                        </button>
                         <div className="ct-position-bottom">
                           <span>
                             LTP <b>{credits(priceFor(p.outcome))} cr</b>
@@ -636,24 +694,6 @@ export function TradingView({
                     </div>
                   )}
                 </div>
-                {activeSnapshot.executions.length > 0 && (
-                  <details className="ct-details">
-                    <summary>Order history</summary>
-                    {activeSnapshot.executions.map((e) => (
-                      <div className="ct-history" key={e.id}>
-                        <span>
-                          <b>
-                            {e.side === 'BUY' ? 'Buy' : 'Exit'} · {teamFor(e.outcome)}
-                          </b>
-                          <small>
-                            {e.quantity} shares · {clock(e.createdAt)}
-                          </small>
-                        </span>
-                        <span>{credits(e.total)} cr</span>
-                      </div>
-                    ))}
-                  </details>
-                )}
                 {a.receipt && (
                   <details className="ct-details">
                     <summary>Settlement receipt</summary>
@@ -672,6 +712,7 @@ export function TradingView({
             )}
           </>
         )}
+        </>)}
       </div>
       {dialog && (
         <div className="ct-modal-backdrop" onClick={() => !busy && setDialog(null)}>
@@ -727,6 +768,7 @@ export function TradingView({
                 <p>{m?.title} · Credits for this match only</p>
                 <p>New buys and funding pause whenever any outcome’s probability exceeds 90%.</p>
                 <p>₹1 = 10 match credits</p>
+                <p className="ct-subtle">{redemptionNote}</p>
                 {activeSnapshot?.walletAvailable !== undefined && m?.mode === 'CASH' && (
                   <p>Available wallet balance: {rupees(activeSnapshot.walletAvailable)}</p>
                 )}
@@ -850,8 +892,10 @@ export function TradingView({
                   ₹1 = 10 credits. Remaining principal is returned at settlement. Positive net credits share
                   the actual loss pool. No guaranteed cash profit.
                 </p>
+                <p>{redemptionNote}
+                </p>
                 <p>
-                  Voided matches and pools with no positive participants refund deposits. No fees.{' '}
+                  Voided matches and pools with no positive participants refund deposits.{' '}
                   {m?.mode === 'TEST' ? 'This market uses test credits only.' : ''}
                 </p>
                 <p className="ct-subtle">

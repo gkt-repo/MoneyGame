@@ -85,13 +85,15 @@ INSERT INTO TradingPosition(id,accountId,outcome,quantity,cost) VALUES('position
 print(json.dumps({
  'quote': c.execute('SELECT price0,priceDraw FROM TradingQuote').fetchone(),
  'account': c.execute('SELECT deposit,balance FROM TradingAccount').fetchone(),
- 'position': c.execute('SELECT outcome,quantity,cost FROM TradingPosition').fetchone()
+ 'position': c.execute('SELECT outcome,quantity,cost FROM TradingPosition').fetchone(),
+ 'market': c.execute('SELECT rulesVersion,platformSurplus FROM TradingMarket').fetchone()
 }))
 `]);
   const data = JSON.parse(output);
   assert.deepEqual(data.quote, [600, 0]);
   assert.deepEqual(data.account, [100000, 94000]);
   assert.deepEqual(data.position, [0, 10, 6000]);
+  assert.deepEqual(data.market, ['pooled-v1', 0]);
 });
 
 test('production rejects default secrets and accepts deployment-specific secrets', () => {
