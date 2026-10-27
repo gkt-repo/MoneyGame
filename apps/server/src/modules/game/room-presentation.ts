@@ -8,6 +8,14 @@ export function publicRoomConfig(raw: unknown): Record<string, any> | null {
   } catch { return null; }
 }
 
+/** Remaining server-controlled card-table countdown, including reconnects. */
+export function roomCountdown(room: { status: string; customConfig: unknown }): number | null {
+  const endsAt = publicRoomConfig(room.customConfig)?.countdownEndsAt;
+  return room.status === 'COUNTDOWN' && typeof endsAt === 'number'
+    ? Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+    : null;
+}
+
 export function invitationUnavailable(room: {
   invitationExpiresAt: Date | null; invitationRevokedAt: Date | null;
 }): boolean {

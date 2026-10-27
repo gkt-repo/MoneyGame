@@ -8,6 +8,7 @@ import { TeenPattiTableView } from './games/teen-patti/TeenPattiTableView';
 import { GuessNumberTableView } from './games/guess-number/GuessNumberTableView';
 import { SportsMatchTableView } from './games/sports-match/SportsMatchTableView';
 import { TwentyNineTableView } from './games/twenty-nine/TwentyNineTableView';
+import { CardWaitingHall } from './games/CardWaitingHall';
 
 interface ActiveRoomViewProps {
   roomId: string;
@@ -61,6 +62,18 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
     socket.on('connect', onConnect);
     socket.emit('join_room_channel', roomId);
 
+    socket.on('game_countdown', (data: { roomId?: string; countdown: number }) => {
+      if (data?.roomId !== roomId) return;
+      setRoom(previous => previous && ['WAITING', 'COUNTDOWN'].includes(previous.status)
+        ? { ...previous, status: 'COUNTDOWN', countdown: data.countdown }
+        : previous);
+    });
+
+    // Recover room changes missed while connecting or briefly offline.
+    const poll = window.setInterval(() => {
+      if (!finished.current) void fetchRoom();
+    }, 3000);
+
     socket.on('room_updated', (data: RoomItem) => {
       if (data && data.id === roomId) {
         setRoom(previous => previous ? { ...previous, ...data } : data);
@@ -88,6 +101,7 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
     });
 
     return () => {
+      window.clearInterval(poll);
       socket.emit('leave_room_channel', roomId);
       socket.off('connect', onConnect);
       socket.disconnect();
@@ -103,9 +117,8 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
     );
   }
 
-  const isFull = room.players.length >= room.maxPlayers;
-  const isWinner = room.winnerId === user.id;
-  const prizePool = room.entryFee * room.maxPlayers;
+  const inWaitingHall = ['TEEN_PATTI', 'TWENTY_NINE'].includes(room.gameType)
+    && ['WAITING', 'COUNTDOWN', 'CANCELLED'].includes(room.status);
 
   return (
     <div className="max-w-xl mx-auto space-y-6">
@@ -148,7 +161,9 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
       )}
       <RoomInvitationControls room={room} userId={user.id} onChanged={() => { void fetchRoom(); }} />
       {/* Dynamic Game Table Rendering based on room.gameType */}
-      {room.gameType === 'TEEN_PATTI' ? (
+      {inWaitingHall ? (
+        <CardWaitingHall room={room} userId={user.id} />
+      ) : room.gameType === 'TEEN_PATTI' ? (
         <TeenPattiTableView
           room={room}
           user={user}

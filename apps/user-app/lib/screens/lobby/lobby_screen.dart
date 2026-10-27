@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'games_stage.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/services/room_invitations.dart';
 import 'package:flutter/material.dart';
@@ -6,14 +7,14 @@ import '../../core/constants/colors.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/socket_service.dart';
 import '../game/active_room_screen.dart';
-import '../game/teen_patti/teen_patti_table_screen.dart';
 import '../game/sports_match/sports_match_table_screen.dart';
-import '../game/twenty_nine/twenty_nine_table_screen.dart';
 import '../profile/profile_dialogs.dart';
 
 class LobbyScreen extends StatefulWidget {
   final UserProfileModel user;
   final VoidCallback onBalanceRefresh;
+  final bool gamesMode;
+  final VoidCallback? onOpenTrading;
   final String? pendingInvitation;
   final VoidCallback? onInvitationOpened;
 
@@ -21,6 +22,8 @@ class LobbyScreen extends StatefulWidget {
     super.key,
     required this.user,
     required this.onBalanceRefresh,
+    this.gamesMode = false,
+    this.onOpenTrading,
     this.pendingInvitation,
     this.onInvitationOpened,
   });
@@ -33,7 +36,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
   List<RoomModel> _rooms = [];
   bool _loading = true;
   String? _error;
-  String _filterGame = 'ALL';
+  String _filterGame = 'TWENTY_NINE';
+  double _swipeDistance = 0;
   String _filterStake = 'ALL';
   String _filterSeats = 'ALL';
   List<Map<String, dynamic>> _liveSportsMatches = [];
@@ -51,6 +55,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
   @override
   void didUpdateWidget(covariant LobbyScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!widget.gamesMode && _filterGame == 'CRICTRADE') _filterGame = 'TWENTY_NINE';
     if (widget.pendingInvitation != oldWidget.pendingInvitation) _openPendingInvitation();
   }
 
@@ -112,32 +117,19 @@ class _LobbyScreenState extends State<LobbyScreen> {
       (r) => r?.id == roomId,
       orElse: () => null,
     );
-    final isTwentyNine = gameType == 'TWENTY_NINE' || room?.gameType == 'TWENTY_NINE';
-    final isTeenPatti = gameType == 'TEEN_PATTI' || room?.gameType == 'TEEN_PATTI';
     final isSportsMatch = gameType == 'SPORTS_MATCH' || room?.gameType == 'SPORTS_MATCH';
 
-    final Widget targetScreen = isTwentyNine
-        ? TwentyNineTableScreen(
+    final Widget targetScreen = isSportsMatch
+        ? SportsMatchTableScreen(
             roomId: roomId,
             user: widget.user,
             onBalanceRefresh: widget.onBalanceRefresh,
           )
-        : isTeenPatti
-            ? TeenPattiTableScreen(
-                roomId: roomId,
-                user: widget.user,
-                onBalanceRefresh: widget.onBalanceRefresh,
-              )
-            : isSportsMatch
-                ? SportsMatchTableScreen(
-                    roomId: roomId,
-                    user: widget.user,
-                    onBalanceRefresh: widget.onBalanceRefresh,
-                  )
-                : ActiveRoomScreen(
-                    roomId: roomId,
-                    user: widget.user,
-                  );
+        : ActiveRoomScreen(
+            roomId: roomId,
+            user: widget.user,
+            onBalanceRefresh: widget.onBalanceRefresh,
+          );
 
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => targetScreen),
@@ -156,6 +148,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) => _CreateTableBottomSheet(
+        initialGame: _filterGame,
         user: widget.user,
         onRoomCreated: (room) {
           _navigateToRoom(room.id, gameType: room.gameType);
@@ -185,6 +178,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.gamesMode) return GamesStage(selected: _filterGame, onSelect: (game) => setState(() => _filterGame = game),
+      onCreate: _showCreateTableModal, onJoin: _showJoinCodeModal, onOpenTrading: widget.onOpenTrading ?? () {});
     RoomModel? activeUserRoom;
     try {
       activeUserRoom = _rooms.firstWhere(
@@ -204,14 +199,22 @@ class _LobbyScreenState extends State<LobbyScreen> {
     }).toList();
 
     return Scaffold(
-      backgroundColor: AppColors.slate50,
+      backgroundColor: Colors.white,
       body: RefreshIndicator(
         onRefresh: () async {
           await _fetchRooms();
           widget.onBalanceRefresh();
         },
-        color: AppColors.emerald600,
-        child: CustomScrollView(
+        color: Colors.black,
+        child: GestureDetector(onHorizontalDragStart: (_) => _swipeDistance = 0,
+          onHorizontalDragUpdate: (details) => _swipeDistance += details.delta.dx,
+          onHorizontalDragEnd: (details) {
+          if (_swipeDistance.abs() < 50 && (details.primaryVelocity ?? 0).abs() < 100) return;
+          final games = roomGames.where((g) => g.id != 'CRICTRADE').toList();
+          final next = (games.indexWhere((g) => g.id == _filterGame) + (_swipeDistance < 0 ? 1 : -1)) % games.length;
+          setState(() => _filterGame = games[next].id);
+        }, child: AnimatedSwitcher(duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 220),
+          child: CustomScrollView(key: ValueKey(_filterGame),
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
@@ -222,97 +225,18 @@ class _LobbyScreenState extends State<LobbyScreen> {
                     // Resume Game Hero Card (if user has active game)
                     if (activeUserRoom != null) _buildResumeHero(activeUserRoom),
 
-                    // Action Buttons (Create Table & Join Code)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: _showCreateTableModal,
-                            icon: const Icon(Icons.add_circle_outline, size: 18, color: AppColors.white),
-                            label: const Text(
-                              'Create Table',
-                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.white),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.emerald600,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _showJoinCodeModal,
-                            icon: const Icon(Icons.tag, size: 18, color: AppColors.slate800),
-                            label: const Text(
-                              'Play with Friends',
-                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.slate800),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              backgroundColor: AppColors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              side: const BorderSide(color: AppColors.slate200),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-
-                    // Section Heading
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'ACTIVE TABLES',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
-                            color: AppColors.slate500,
-                          ),
-                        ),
-                        Text(
-                          '${filtered.length} Tables',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.emerald600),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-
-                    // Game Filter Chips
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _buildFilterTab('ALL', 'All Tables (${_rooms.length})'),
-                          const SizedBox(width: 8),
-                          _buildFilterTab(
-                            'TWENTY_NINE',
-                            '🃏 29 Cards (${_rooms.where((r) => r.gameType == 'TWENTY_NINE').length})',
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterTab(
-                            'SPORTS_MATCH',
-                            '🏏 Live Sports (${_rooms.where((r) => r.gameType == 'SPORTS_MATCH').length})',
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterTab(
-                            'TEEN_PATTI',
-                            '🎴 Teen Patti (${_rooms.where((r) => r.gameType == 'TEEN_PATTI').length})',
-                          ),
-                          const SizedBox(width: 8),
-                          _buildFilterTab(
-                            'GUESS_NUMBER',
-                            '🎲 Dice Guess (${_rooms.where((r) => r.gameType == 'GUESS_NUMBER').length})',
-                          ),
-                        ],
-                      ),
-                    ),
                     const SizedBox(height: 8),
+                    Text(roomGames.firstWhere((g) => g.id == _filterGame).name, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, letterSpacing: -1)),
+                    const SizedBox(height: 6),
+                    Text('${filtered.length} tables · Swipe to explore games', style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                    const SizedBox(height: 20),
+                    SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: roomGames.where((g) => g.id != 'CRICTRADE').map((g) => Padding(
+                      padding: const EdgeInsets.only(right: 8), child: ChoiceChip(label: Text(g.name), selected: _filterGame == g.id,
+                        selectedColor: Colors.black, backgroundColor: Colors.white, showCheckmark: false,
+                        labelStyle: TextStyle(color: _filterGame == g.id ? Colors.white : Colors.black54),
+                        onSelected: (_) => setState(() => _filterGame = g.id)),
+                    )).toList())),
+                    const SizedBox(height: 18),
 
                     // Secondary Filter Chips (Stakes & Seats)
                     SingleChildScrollView(
@@ -345,7 +269,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
             if (_loading && _rooms.isEmpty)
               const SliverFillRemaining(
                 child: Center(
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.emerald600),
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
                 ),
               )
             else if (_error != null && _rooms.isEmpty)
@@ -360,7 +284,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: _fetchRooms,
-                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.emerald600),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
                         child: const Text('Retry', style: TextStyle(color: AppColors.white)),
                       )
                     ],
@@ -442,7 +366,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
             ],
           ],
         ),
-      ),
+      ))),
     );
   }
 
@@ -460,14 +384,14 @@ class _LobbyScreenState extends State<LobbyScreen> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF1E1B4B), Color(0xFF312E81)],
+          colors: [Color(0xFF252525), Color(0xFF252525)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF4338CA).withValues(alpha: 0.25),
+            color: const Color(0xFF252525).withValues(alpha: 0.25),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -482,17 +406,17 @@ class _LobbyScreenState extends State<LobbyScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE0E7FF).withValues(alpha: 0.2),
+                  color: const Color(0xFFF5F5F5).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.play_circle_fill, size: 13, color: Color(0xFFA5B4FC)),
+                    Icon(Icons.play_circle_fill, size: 13, color: Color(0xFFF1F1F1)),
                     SizedBox(width: 4),
                     Text(
                       'ACTIVE GAME IN PROGRESS',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFFA5B4FC), letterSpacing: 0.5),
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFFF1F1F1), letterSpacing: 0.5),
                     ),
                   ],
                 ),
@@ -518,7 +442,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
           const SizedBox(height: 3),
           Text(
             'Room #${room.roomCode} • Stake ₹${room.entryFee.toStringAsFixed(2)} • ${room.players.length}/${room.maxPlayers >= 1000 ? '∞' : room.maxPlayers} Seated',
-            style: const TextStyle(fontSize: 12, color: Color(0xFFC7D2FE)),
+            style: const TextStyle(fontSize: 12, color: Color(0xFFCCCCCC)),
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -526,10 +450,10 @@ class _LobbyScreenState extends State<LobbyScreen> {
             height: 36,
             child: ElevatedButton.icon(
               onPressed: () => _navigateToRoom(room.id, gameType: room.gameType),
-              icon: const Icon(Icons.arrow_forward_rounded, size: 16, color: Color(0xFF1E1B4B)),
-              label: const Text('Resume Active Table', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF1E1B4B))),
+              icon: const Icon(Icons.arrow_forward_rounded, size: 16, color: Color(0xFF252525)),
+              label: const Text('Resume Active Table', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF252525))),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFA5B4FC),
+                backgroundColor: const Color(0xFFF1F1F1),
                 elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
@@ -559,40 +483,6 @@ class _LobbyScreenState extends State<LobbyScreen> {
             fontSize: 11,
             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
             color: isSelected ? const Color(0xFF0F172A) : const Color(0xFF64748B),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilterTab(String type, String label) {
-    final isSel = _filterGame == type;
-    return InkWell(
-      onTap: () => setState(() => _filterGame = type),
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSel
-              ? (type == 'TWENTY_NINE'
-                  ? const Color(0xFF4338CA)
-                  : type == 'TEEN_PATTI'
-                      ? const Color(0xFF6B21A8)
-                      : type == 'SPORTS_MATCH'
-                          ? const Color(0xFF1E3A8A)
-                          : AppColors.slate900)
-              : AppColors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSel ? Colors.transparent : AppColors.slate200,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: isSel ? Colors.white : AppColors.slate700,
           ),
         ),
       ),
@@ -634,19 +524,19 @@ class _LobbyScreenState extends State<LobbyScreen> {
     // Distinguish cards with styling
     final isEven = index % 2 == 0;
     final cardBgColor = isTwentyNine
-        ? const Color(0xFFF5F3FF)
+        ? const Color(0xFFF5F5F5)
         : isTeenPatti
-            ? const Color(0xFFFAF5FF)
+            ? const Color(0xFFF5F5F5)
             : isSportsMatch
-                ? (isEven ? const Color(0xFFFAF5FF) : const Color(0xFFEFF6FF))
-                : (isEven ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC));
+                ? (isEven ? const Color(0xFFF5F5F5) : const Color(0xFFF5F5F5))
+                : (isEven ? const Color(0xFFF5F5F5) : const Color(0xFFF8FAFC));
     final cardBorderColor = isTwentyNine
-        ? const Color(0xFF6366F1)
+        ? const Color(0xFF252525)
         : isTeenPatti
-            ? const Color(0xFFC084FC)
+            ? const Color(0xFF252525)
             : isSportsMatch
-                ? (isEven ? const Color(0xFFC084FC) : const Color(0xFF3B82F6))
-                : (isEven ? const Color(0xFF34D399) : const Color(0xFF3B82F6));
+                ? (isEven ? const Color(0xFF252525) : const Color(0xFF252525))
+                : (isEven ? const Color(0xFF252525) : const Color(0xFF252525));
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -723,7 +613,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFDBEAFE),
+                              color: const Color(0xFFF5F5F5),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: const Text(
@@ -731,7 +621,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF2563EB),
+                                color: Color(0xFF252525),
                               ),
                             ),
                           ),
@@ -786,7 +676,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                         Expanded(
                           child: Text(
                             '2v2 Partnership • Team A (Seats 0, 2) vs Team B (Seats 1, 3)',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF4338CA)),
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF252525)),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -864,14 +754,14 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           children: [
                             Row(
                               children: [
-                                buildTeamLogo(team1Logo, const Color(0xFF2563EB), size: 16),
+                                buildTeamLogo(team1Logo, const Color(0xFF252525), size: 16),
                                 const SizedBox(width: 5),
                                 Text(
                                   '$team1Label: $team1Percent%',
                                   style: const TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w800,
-                                    color: Color(0xFF2563EB),
+                                    color: Color(0xFF252525),
                                   ),
                                 ),
                               ],
@@ -883,11 +773,11 @@ class _LobbyScreenState extends State<LobbyScreen> {
                                   style: const TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w800,
-                                    color: Color(0xFF9333EA),
+                                    color: Color(0xFF252525),
                                   ),
                                 ),
                                 const SizedBox(width: 5),
-                                buildTeamLogo(team2Logo, const Color(0xFF9333EA), size: 16),
+                                buildTeamLogo(team2Logo, const Color(0xFF252525), size: 16),
                               ],
                             ),
                           ],
@@ -903,9 +793,9 @@ class _LobbyScreenState extends State<LobbyScreen> {
                             child: (team1Count + team2Count == 0)
                                 ? Row(
                                     children: [
-                                      Expanded(child: Container(color: const Color(0xFF2563EB))),
+                                      Expanded(child: Container(color: const Color(0xFF252525))),
                                       const SizedBox(width: 1.5),
-                                      Expanded(child: Container(color: const Color(0xFF9333EA))),
+                                      Expanded(child: Container(color: const Color(0xFF252525))),
                                     ],
                                   )
                                 : Row(
@@ -913,14 +803,14 @@ class _LobbyScreenState extends State<LobbyScreen> {
                                       if (team1Count > 0)
                                         Expanded(
                                           flex: ((team1Count / (team1Count + team2Count)) * 1000).round(),
-                                          child: Container(color: const Color(0xFF2563EB)),
+                                          child: Container(color: const Color(0xFF252525)),
                                         ),
                                       if (team1Count > 0 && team2Count > 0)
                                         const SizedBox(width: 1.5),
                                       if (team2Count > 0)
                                         Expanded(
                                           flex: ((team2Count / (team1Count + team2Count)) * 1000).round(),
-                                          child: Container(color: const Color(0xFF9333EA)),
+                                          child: Container(color: const Color(0xFF252525)),
                                         ),
                                     ],
                                   ),
@@ -993,7 +883,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
-                                color: isSportsMatch ? const Color(0xFF2563EB) : AppColors.emerald600,
+                                color: isSportsMatch ? const Color(0xFF252525) : Colors.black,
                               ),
                             ),
                           ],
@@ -1058,7 +948,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                                         ? _showSportsJoinDialog(room)
                                         : _showQuickJoinDialog(room),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isTwentyNine ? const Color(0xFF4338CA) : const Color(0xFF0F172A),
+                      backgroundColor: isTwentyNine ? const Color(0xFF252525) : const Color(0xFF0F172A),
                       disabledBackgroundColor: const Color(0xFFF1F5F9),
                       elevation: 0,
                       padding: EdgeInsets.zero,
@@ -1126,7 +1016,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF5F3FF),
+                    color: const Color(0xFFF5F5F5),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: const Color(0xFFDDD6FE)),
                   ),
@@ -1138,7 +1028,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           const Text('Entry Fee:', style: TextStyle(fontSize: 13, color: AppColors.slate600)),
                           Text(
                             '₹${room.entryFee.toStringAsFixed(2)}',
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF4338CA)),
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF252525)),
                           ),
                         ],
                       ),
@@ -1149,7 +1039,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           const Text('Winning Partner Prize:', style: TextStyle(fontSize: 13, color: AppColors.slate600)),
                           Text(
                             '₹${prizePerPartner.toStringAsFixed(2)} each',
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.emerald700),
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.black),
                           ),
                         ],
                       ),
@@ -1163,7 +1053,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
-                              color: isBalanceSufficient ? AppColors.emerald600 : AppColors.red600,
+                              color: isBalanceSufficient ? Colors.black : AppColors.red600,
                             ),
                           ),
                         ],
@@ -1258,7 +1148,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                         }
                       },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4338CA),
+                  backgroundColor: const Color(0xFF252525),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 child: joining
@@ -1335,7 +1225,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
+                    color: const Color(0xFFF5F5F5),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: const Color(0xFFBFDBFE)),
                   ),
@@ -1391,10 +1281,10 @@ class _LobbyScreenState extends State<LobbyScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                           decoration: BoxDecoration(
-                            color: selectedTeam == 1 ? const Color(0xFFEFF6FF) : AppColors.white,
+                            color: selectedTeam == 1 ? const Color(0xFFF5F5F5) : AppColors.white,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: selectedTeam == 1 ? const Color(0xFF2563EB) : AppColors.slate200,
+                              color: selectedTeam == 1 ? const Color(0xFF252525) : AppColors.slate200,
                               width: selectedTeam == 1 ? 2 : 1,
                             ),
                           ),
@@ -1403,10 +1293,10 @@ class _LobbyScreenState extends State<LobbyScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  buildTeamLogo(team1Logo, const Color(0xFF2563EB), size: 20),
+                                  buildTeamLogo(team1Logo, const Color(0xFF252525), size: 20),
                                   const SizedBox(width: 6),
                                   if (selectedTeam == 1)
-                                    const Icon(Icons.check_circle, size: 16, color: Color(0xFF2563EB))
+                                    const Icon(Icons.check_circle, size: 16, color: Color(0xFF252525))
                                   else
                                     const Icon(Icons.radio_button_unchecked, size: 16, color: AppColors.slate400),
                                 ],
@@ -1523,7 +1413,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                         }
                       },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2563EB),
+                  backgroundColor: const Color(0xFF252525),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
@@ -1563,7 +1453,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFAF5FF),
+                    color: const Color(0xFFF5F5F5),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: const Color(0xFFE9D5FF)),
                   ),
@@ -1707,18 +1597,18 @@ class _LobbyScreenState extends State<LobbyScreen> {
                               if (sel) setDialogState(() => chosenNumber = numVal);
                             },
                       backgroundColor: isTaken ? AppColors.slate100 : AppColors.white,
-                      selectedColor: AppColors.emerald50,
+                      selectedColor: AppColors.slate50,
                       labelStyle: TextStyle(
                         fontFamily: 'monospace',
                         fontWeight: FontWeight.w700,
                         color: isTaken
                             ? AppColors.slate400
                             : isSelected
-                                ? AppColors.emerald700
+                                ? Colors.black
                                 : AppColors.slate900,
                       ),
                       side: BorderSide(
-                        color: isSelected ? AppColors.emerald600 : AppColors.slate200,
+                        color: isSelected ? Colors.black : AppColors.slate200,
                       ),
                     );
                   }),
@@ -1758,7 +1648,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                         }
                       },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.emerald600,
+                  backgroundColor: Colors.black,
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                 ),
@@ -2034,8 +1924,9 @@ Widget buildTeamLogo(String? logoUrl, Color fallbackColor, {double size = 14}) {
 class _CreateTableBottomSheet extends StatefulWidget {
   final UserProfileModel user;
   final Function(RoomModel room) onRoomCreated;
+  final String initialGame;
 
-  const _CreateTableBottomSheet({required this.user, required this.onRoomCreated});
+  const _CreateTableBottomSheet({required this.user, required this.onRoomCreated, this.initialGame = 'TWENTY_NINE'});
 
   @override
   State<_CreateTableBottomSheet> createState() => _CreateTableBottomSheetState();
@@ -2084,6 +1975,9 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
   @override
   void initState() {
     super.initState();
+    _selectedGameType = widget.initialGame;
+    _entryFee = _selectedGameType == 'TWENTY_NINE' ? 25 : _selectedGameType == 'SPORTS_MATCH' ? 100 : _selectedGameType == 'TEEN_PATTI' ? 20 : 50;
+    _maxPlayers = _selectedGameType == 'TWENTY_NINE' ? 4 : _selectedGameType == 'TEEN_PATTI' ? 6 : _selectedGameType == 'SPORTS_MATCH' ? 10 : 4;
     _loadMatches();
   }
 
@@ -2196,10 +2090,10 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                const Expanded(child: Text(
                   'Create Game Table',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.slate900),
-                ),
+                )),
                 IconButton(
                   icon: const Icon(Icons.close, size: 20, color: AppColors.slate500),
                   onPressed: () => Navigator.of(context).pop(),
@@ -2243,10 +2137,10 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
                       decoration: BoxDecoration(
-                        color: isSports ? const Color(0xFFEFF6FF) : AppColors.white,
+                        color: isSports ? const Color(0xFFF5F5F5) : AppColors.white,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: isSports ? const Color(0xFF2563EB) : AppColors.slate200,
+                          color: isSports ? const Color(0xFF252525) : AppColors.slate200,
                           width: isSports ? 1.5 : 1,
                         ),
                       ),
@@ -2284,10 +2178,10 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
                       decoration: BoxDecoration(
-                        color: isTwentyNine ? const Color(0xFFF5F3FF) : AppColors.white,
+                        color: isTwentyNine ? const Color(0xFFF5F5F5) : AppColors.white,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: isTwentyNine ? const Color(0xFF4338CA) : AppColors.slate200,
+                          color: isTwentyNine ? const Color(0xFF252525) : AppColors.slate200,
                           width: isTwentyNine ? 1.5 : 1,
                         ),
                       ),
@@ -2301,7 +2195,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                             style: TextStyle(
                               fontSize: 10.5,
                               fontWeight: FontWeight.w700,
-                              color: isTwentyNine ? const Color(0xFF4338CA) : AppColors.slate800,
+                              color: isTwentyNine ? const Color(0xFF252525) : AppColors.slate800,
                             ),
                           ),
                           const Text('4p (2v2)', style: TextStyle(fontSize: 8, color: AppColors.slate500)),
@@ -2325,10 +2219,10 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
                       decoration: BoxDecoration(
-                        color: isTeenPatti ? const Color(0xFFFAF5FF) : AppColors.white,
+                        color: isTeenPatti ? const Color(0xFFF5F5F5) : AppColors.white,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: isTeenPatti ? const Color(0xFF9333EA) : AppColors.slate200,
+                          color: isTeenPatti ? const Color(0xFF252525) : AppColors.slate200,
                           width: isTeenPatti ? 1.5 : 1,
                         ),
                       ),
@@ -2366,10 +2260,10 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
                       decoration: BoxDecoration(
-                        color: (!isTeenPatti && !isSports && !isTwentyNine) ? AppColors.emerald50 : AppColors.white,
+                        color: (!isTeenPatti && !isSports && !isTwentyNine) ? AppColors.slate50 : AppColors.white,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: (!isTeenPatti && !isSports && !isTwentyNine) ? AppColors.emerald600 : AppColors.slate200,
+                          color: (!isTeenPatti && !isSports && !isTwentyNine) ? Colors.black : AppColors.slate200,
                           width: (!isTeenPatti && !isSports && !isTwentyNine) ? 1.5 : 1,
                         ),
                       ),
@@ -2383,7 +2277,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                             style: TextStyle(
                               fontSize: 10.5,
                               fontWeight: FontWeight.w700,
-                              color: (!isTeenPatti && !isSports && !isTwentyNine) ? AppColors.emerald700 : AppColors.slate800,
+                              color: (!isTeenPatti && !isSports && !isTwentyNine) ? Colors.black : AppColors.slate800,
                             ),
                           ),
                           const Text('Number', style: TextStyle(fontSize: 8, color: AppColors.slate500)),
@@ -2436,10 +2330,10 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: isCatSel ? const Color(0xFF2563EB) : AppColors.white,
+                                  color: isCatSel ? const Color(0xFF252525) : AppColors.white,
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                    color: isCatSel ? const Color(0xFF2563EB) : AppColors.slate200,
+                                    color: isCatSel ? const Color(0xFF252525) : AppColors.slate200,
                                   ),
                                 ),
                                 child: Row(
@@ -2511,9 +2405,9 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                         if (_selectedMatch != null)
                           const Row(
                             children: [
-                              Icon(Icons.check_circle, size: 12, color: AppColors.emerald600),
+                              Icon(Icons.check_circle, size: 12, color: Colors.black),
                               SizedBox(width: 3),
-                              Text('Match Selected', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.emerald600)),
+                              Text('Match Selected', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.black)),
                             ],
                           ),
                       ],
@@ -2530,7 +2424,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                           ? const Center(
                               child: Padding(
                                 padding: EdgeInsets.all(16),
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF252525)),
                               ),
                             )
                           : _filteredMatches.isEmpty
@@ -2572,7 +2466,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                                       onTap: () => setState(() => _selectedMatch = m),
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                        color: isSel ? const Color(0xFFEFF6FF) : Colors.transparent,
+                                        color: isSel ? const Color(0xFFF5F5F5) : Colors.transparent,
                                         child: Row(
                                           children: [
                                             Text(sportIcon, style: const TextStyle(fontSize: 16)),
@@ -2603,7 +2497,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                               decoration: BoxDecoration(
-                                                color: const Color(0xFFEFF6FF),
+                                                color: const Color(0xFFF5F5F5),
                                                 borderRadius: BorderRadius.circular(4),
                                               ),
                                               child: Text(
@@ -2612,7 +2506,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                                                   fontFamily: 'monospace',
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.w600,
-                                                  color: Color(0xFF2563EB),
+                                                  color: Color(0xFF252525),
                                                 ),
                                               ),
                                             ),
@@ -2620,7 +2514,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                                             Icon(
                                               isSel ? Icons.check_circle : Icons.radio_button_unchecked,
                                               size: 16,
-                                              color: isSel ? const Color(0xFF2563EB) : AppColors.slate300,
+                                              color: isSel ? const Color(0xFF252525) : AppColors.slate300,
                                             ),
                                           ],
                                         ),
@@ -2652,7 +2546,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                                   ),
                                   InkWell(
                                     onTap: () => setState(() => _selectedMatch = null),
-                                    child: const Text('Change Match', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF2563EB))),
+                                    child: const Text('Change Match', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF252525))),
                                   ),
                                 ],
                               ),
@@ -2666,10 +2560,10 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                                         decoration: BoxDecoration(
-                                          color: _sportsPick == 1 ? const Color(0xFF2563EB) : AppColors.white,
+                                          color: _sportsPick == 1 ? const Color(0xFF252525) : AppColors.white,
                                           borderRadius: BorderRadius.circular(8),
                                           border: Border.all(
-                                            color: _sportsPick == 1 ? const Color(0xFF2563EB) : AppColors.slate200,
+                                            color: _sportsPick == 1 ? const Color(0xFF252525) : AppColors.slate200,
                                           ),
                                         ),
                                         child: Row(
@@ -2768,10 +2662,10 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                   },
                   backgroundColor: AppColors.white,
                   selectedColor: isSports
-                      ? const Color(0xFFEFF6FF)
+                      ? const Color(0xFFF5F5F5)
                       : isTeenPatti
                           ? const Color(0xFFF3E8FF)
-                          : AppColors.emerald50,
+                          : AppColors.slate50,
                   labelStyle: TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 13,
@@ -2781,16 +2675,16 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                             ? const Color(0xFF1D4ED8)
                             : isTeenPatti
                                 ? const Color(0xFF7E22CE)
-                                : AppColors.emerald700)
+                                : Colors.black)
                         : AppColors.slate800,
                   ),
                   side: BorderSide(
                     color: isSel
                         ? (isSports
-                            ? const Color(0xFF2563EB)
+                            ? const Color(0xFF252525)
                             : isTeenPatti
-                                ? const Color(0xFF9333EA)
-                                : AppColors.emerald600)
+                                ? const Color(0xFF252525)
+                                : Colors.black)
                         : AppColors.slate200,
                   ),
                 );
@@ -2820,14 +2714,14 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                           if (selected) setState(() => _sportsCapacity = val);
                         },
                         backgroundColor: AppColors.white,
-                        selectedColor: const Color(0xFFEFF6FF),
+                        selectedColor: const Color(0xFFF5F5F5),
                         labelStyle: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: isSel ? const Color(0xFF1D4ED8) : AppColors.slate700,
                         ),
                         side: BorderSide(
-                          color: isSel ? const Color(0xFF2563EB) : AppColors.slate200,
+                          color: isSel ? const Color(0xFF252525) : AppColors.slate200,
                         ),
                       ),
                     );
@@ -2838,7 +2732,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF5F3FF),
+                  color: const Color(0xFFF5F5F5),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: const Color(0xFFDDD6FE)),
                 ),
@@ -2847,13 +2741,14 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                     Text('👥 ', style: TextStyle(fontSize: 14)),
                     Text(
                       'Fixed 4 Players (2v2 Partnership)',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF4338CA)),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF252525)),
                     ),
                   ],
                 ),
               )
             else
-              Row(
+              Wrap(
+                runSpacing: 8,
                 children: maxPlayerOptions.map((count) {
                   final isSel = _maxPlayers == count;
                   return Padding(
@@ -2865,17 +2760,17 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                         if (selected) setState(() => _maxPlayers = count);
                       },
                       backgroundColor: AppColors.white,
-                      selectedColor: isTeenPatti ? const Color(0xFFF3E8FF) : AppColors.emerald50,
+                      selectedColor: isTeenPatti ? const Color(0xFFF3E8FF) : AppColors.slate50,
                       labelStyle: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: isSel
-                            ? (isTeenPatti ? const Color(0xFF7E22CE) : AppColors.emerald700)
+                            ? (isTeenPatti ? const Color(0xFF7E22CE) : Colors.black)
                             : AppColors.slate800,
                       ),
                       side: BorderSide(
                         color: isSel
-                            ? (isTeenPatti ? const Color(0xFF9333EA) : AppColors.emerald600)
+                            ? (isTeenPatti ? const Color(0xFF252525) : Colors.black)
                             : AppColors.slate200,
                       ),
                     ),
@@ -2904,13 +2799,13 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                       if (selected) setState(() => _chosenNumber = val);
                     },
                     backgroundColor: AppColors.white,
-                    selectedColor: AppColors.emerald50,
+                    selectedColor: AppColors.slate50,
                     labelStyle: TextStyle(
                       fontFamily: 'monospace',
                       fontWeight: FontWeight.w700,
-                      color: isSel ? AppColors.emerald700 : AppColors.slate900,
+                      color: isSel ? Colors.black : AppColors.slate900,
                     ),
-                    side: BorderSide(color: isSel ? AppColors.emerald600 : AppColors.slate200),
+                    side: BorderSide(color: isSel ? Colors.black : AppColors.slate200),
                   );
                 }),
               ),
@@ -2927,7 +2822,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
               ),
               child: Row(
                 children: [
-                  Icon(_isPrivate ? Icons.lock : Icons.lock_open, size: 20, color: _isPrivate ? const Color(0xFF4338CA) : AppColors.slate500),
+                  Icon(_isPrivate ? Icons.lock : Icons.lock_open, size: 20, color: _isPrivate ? const Color(0xFF252525) : AppColors.slate500),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -2949,7 +2844,7 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                   Switch(
                     value: _isPrivate,
                     onChanged: (val) => setState(() => _isPrivate = val),
-                    activeColor: const Color(0xFF4338CA),
+                    activeColor: const Color(0xFF252525),
                   ),
                 ],
               ),
@@ -3020,12 +2915,12 @@ class _CreateTableBottomSheetState extends State<_CreateTableBottomSheet> {
                       },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isTwentyNine
-                      ? const Color(0xFF4338CA)
+                      ? const Color(0xFF252525)
                       : isSports
-                          ? const Color(0xFF2563EB)
+                          ? const Color(0xFF252525)
                           : isTeenPatti
                               ? const Color(0xFF7E22CE)
-                              : AppColors.emerald600,
+                              : Colors.black,
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
@@ -3344,7 +3239,7 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                   child: ElevatedButton(
                     onPressed: _lookingUp ? null : _handleLookupCode,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.emerald600,
+                      backgroundColor: Colors.black,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -3447,7 +3342,7 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                       const Text('Entry Stake', style: TextStyle(fontSize: 11, color: AppColors.slate500)),
                       Text(
                         '₹${_targetRoom!.entryFee.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.emerald700, fontFamily: 'monospace'),
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.black, fontFamily: 'monospace'),
                       ),
                     ],
                   ),
@@ -3508,16 +3403,16 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                               decoration: BoxDecoration(
-                                color: _chosenSportsTeam == 1 ? AppColors.emerald50 : AppColors.white,
+                                color: _chosenSportsTeam == 1 ? AppColors.slate50 : AppColors.white,
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
-                                  color: _chosenSportsTeam == 1 ? AppColors.emerald600 : AppColors.slate200,
+                                  color: _chosenSportsTeam == 1 ? Colors.black : AppColors.slate200,
                                   width: _chosenSportsTeam == 1 ? 2 : 1,
                                 ),
                               ),
                               child: Column(
                                 children: [
-                                  buildTeamLogo(t1Logo, const Color(0xFF2563EB), size: 22),
+                                  buildTeamLogo(t1Logo, const Color(0xFF252525), size: 22),
                                   const SizedBox(height: 6),
                                   Text(
                                     t1Name,
@@ -3526,7 +3421,7 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                                     style: TextStyle(
                                       fontWeight: FontWeight.w700,
                                       fontSize: 13,
-                                      color: _chosenSportsTeam == 1 ? AppColors.emerald700 : AppColors.slate900,
+                                      color: _chosenSportsTeam == 1 ? Colors.black : AppColors.slate900,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -3612,7 +3507,7 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                           color: isTaken
                               ? AppColors.slate400
                               : isSel
-                                  ? AppColors.emerald700
+                                  ? Colors.black
                                   : AppColors.slate900,
                         ),
                       ),
@@ -3623,12 +3518,12 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                               if (selected) setState(() => _chosenNumber = val);
                             },
                       backgroundColor: isTaken ? AppColors.slate100 : AppColors.white,
-                      selectedColor: AppColors.emerald50,
+                      selectedColor: AppColors.slate50,
                       side: BorderSide(
                         color: isTaken
                             ? AppColors.slate200
                             : isSel
-                                ? AppColors.emerald600
+                                ? Colors.black
                                 : AppColors.slate200,
                       ),
                     );
@@ -3658,7 +3553,7 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF5F3FF),
+                  color: const Color(0xFFF5F5F5),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: const Color(0xFFDDD6FE)),
                 ),
@@ -3666,7 +3561,7 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                   '🃏 29 Card Game (Partnership 2v2)\n\n'
                   '• Team A (Seats 0, 2) vs Team B (Seats 1, 3)\n'
                   '• Confirming will lock your entry stake and seat you at this table.',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF4338CA), height: 1.4),
+                  style: TextStyle(fontSize: 12, color: Color(0xFF252525), height: 1.4),
                 ),
               ),
             ],
@@ -3694,7 +3589,7 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                   child: ElevatedButton(
                     onPressed: _submitting ? null : _handleConfirmJoin,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _targetRoom!.gameType == 'TWENTY_NINE' ? const Color(0xFF4338CA) : AppColors.emerald600,
+                      backgroundColor: _targetRoom!.gameType == 'TWENTY_NINE' ? const Color(0xFF252525) : Colors.black,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -3796,7 +3691,7 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                             color: const Color(0xFFEDE9FE),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text('PRIVATE TABLE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Color(0xFF4338CA))),
+                          child: const Text('PRIVATE TABLE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Color(0xFF252525))),
                         ),
                     ],
                   ),
@@ -3805,7 +3700,7 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Host: @${_invitationPreview!.hostUsername}', style: const TextStyle(fontSize: 12, color: AppColors.slate600)),
-                      Text('Stake: ₹${_invitationPreview!.entryFee.toStringAsFixed(2)}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.emerald700, fontFamily: 'monospace')),
+                      Text('Stake: ₹${_invitationPreview!.entryFee.toStringAsFixed(2)}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.black, fontFamily: 'monospace')),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -3859,7 +3754,7 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                       style: TextStyle(
                         fontFamily: 'monospace',
                         fontWeight: FontWeight.w700,
-                        color: isSel ? AppColors.emerald700 : AppColors.slate900,
+                        color: isSel ? Colors.black : AppColors.slate900,
                       ),
                     ),
                     selected: isSel,
@@ -3867,9 +3762,9 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                       if (selected) setState(() => _chosenNumber = val);
                     },
                     backgroundColor: AppColors.white,
-                    selectedColor: AppColors.emerald50,
+                    selectedColor: AppColors.slate50,
                     side: BorderSide(
-                      color: isSel ? AppColors.emerald600 : AppColors.slate200,
+                      color: isSel ? Colors.black : AppColors.slate200,
                     ),
                   );
                 }),
@@ -3892,10 +3787,10 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                         decoration: BoxDecoration(
-                          color: _chosenSportsTeam == 1 ? AppColors.emerald50 : AppColors.white,
+                          color: _chosenSportsTeam == 1 ? AppColors.slate50 : AppColors.white,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: _chosenSportsTeam == 1 ? AppColors.emerald600 : AppColors.slate200,
+                            color: _chosenSportsTeam == 1 ? Colors.black : AppColors.slate200,
                             width: _chosenSportsTeam == 1 ? 2 : 1,
                           ),
                         ),
@@ -3965,7 +3860,7 @@ class _JoinCodeBottomSheetState extends State<_JoinCodeBottomSheet> {
                   child: ElevatedButton(
                     onPressed: _submitting || !_invitationPreview!.available ? null : _handleJoinInvitation,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4338CA),
+                      backgroundColor: const Color(0xFF252525),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

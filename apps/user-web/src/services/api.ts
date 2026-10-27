@@ -75,6 +75,7 @@ export interface WithdrawalItem {
 }
 
 export interface RoomItem {
+  countdown?: number | null;
   id: string;
   roomCode: string;
   invitationToken?: string;
@@ -323,6 +324,10 @@ class UserApiService {
   async getMyTransactions(): Promise<TransactionItem[]> {
     const res = await this.request<{ success: boolean; transactions: TransactionItem[] }>('/user/transactions');
     return res.transactions || [];
+  }
+
+  async getTransactionPage(cursor?: string): Promise<{transactions: TransactionItem[]; nextCursor: string | null}> {
+    return this.request(`/user/transactions?limit=30${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
   }
 
   async requestWithdrawal(userId: string, amount: number, upiId: string): Promise<any> {

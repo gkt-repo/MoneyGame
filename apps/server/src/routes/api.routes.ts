@@ -189,10 +189,15 @@ router.get('/user/deposits/my', authenticateUser, async (req: AuthenticatedReque
 
 router.get('/user/transactions', authenticateUser, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const transactions = await walletService.getUserTransactions(req.user!.id);
-    res.json({ success: true, transactions });
+    const limit = Number(req.query.limit ?? 50);
+    const cursor = req.query.cursor;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (cursor !== undefined && typeof cursor !== 'string')) {
+      res.status(400).json({ error: 'Invalid history pagination' }); return;
+    }
+    const page = await walletService.getTransactionPage(req.user!.id, limit, cursor as string | undefined);
+    res.json({ success: true, ...page });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.message === 'Invalid history cursor' ? 400 : 500).json({ error: err.message });
   }
 });
 

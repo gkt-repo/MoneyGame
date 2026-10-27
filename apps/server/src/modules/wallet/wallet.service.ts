@@ -35,6 +35,19 @@ export class WalletService {
     });
   }
 
+  async getTransactionPage(userId: string, limit = 30, cursor?: string) {
+    const after = cursor ? await prisma.transaction.findFirst({ where: { id: cursor, userId } }) : null;
+    if (cursor && !after) throw new Error('Invalid history cursor');
+    const rows = await prisma.transaction.findMany({
+      where: { userId, ...(after ? { OR: [
+        { createdAt: { lt: after.createdAt } },
+        { createdAt: after.createdAt, id: { lt: after.id } },
+      ] } : {}) },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit + 1,
+    });
+    return { transactions: rows.slice(0, limit), nextCursor: rows.length > limit ? rows[limit - 1].id : null };
+  }
+
   /**
    * Fetch or auto-create a user and initialize their zero-balance wallet
    */

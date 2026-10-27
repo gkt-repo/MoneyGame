@@ -14,6 +14,7 @@ class UserProfileModel {
   final String role;
   final String status;
   final double balance;
+  final double lockedBalance;
   final DateTime? createdAt;
 
   UserProfileModel({
@@ -26,6 +27,7 @@ class UserProfileModel {
     required this.role,
     required this.status,
     this.balance = 0.0,
+    this.lockedBalance = 0.0,
     this.createdAt,
   });
 
@@ -51,6 +53,7 @@ class UserProfileModel {
       role: role ?? this.role,
       status: status ?? this.status,
       balance: balance ?? this.balance,
+      lockedBalance: lockedBalance,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -76,6 +79,7 @@ class UserProfileModel {
       role: json['role'] ?? 'USER',
       status: json['status'] ?? 'ACTIVE',
       balance: bal,
+      lockedBalance: (json['wallet']?['lockedBalance'] as num?)?.toDouble() ?? 0,
       createdAt: created,
     );
   }
@@ -377,6 +381,7 @@ class DepositResponseModel {
 }
 
 class RoomModel {
+  final int? countdown;
   final String id;
   final String roomCode;
   final String gameType;
@@ -394,6 +399,7 @@ class RoomModel {
   final dynamic customConfig;
 
   RoomModel({
+    this.countdown,
     required this.id,
     required this.roomCode,
     this.gameType = 'GUESS_NUMBER',
@@ -427,6 +433,7 @@ class RoomModel {
     }
 
     return RoomModel(
+      countdown: (json['countdown'] as num?)?.toInt(),
       id: json['id'] ?? '',
       roomCode: json['roomCode'] ?? '',
       gameType: json['gameType'] ?? 'GUESS_NUMBER',
@@ -795,6 +802,11 @@ class ApiClient {
     } on DioException catch (e) {
       throw e.response?.data['error'] ?? 'Failed to load transaction history';
     }
+  }
+
+  static Future<({List<TransactionModel> items, String? nextCursor})> getTransactionPage({String? cursor}) async {
+    final res = await _dio.get('/user/transactions', queryParameters: {'limit': 30, if (cursor != null) 'cursor': cursor});
+    return (items: (res.data['transactions'] as List).map((t) => TransactionModel.fromJson(t)).toList(), nextCursor: res.data['nextCursor'] as String?);
   }
 
   static Future<List<Map<String, dynamic>>> getMyDeposits() async {

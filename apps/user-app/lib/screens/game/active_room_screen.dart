@@ -8,15 +8,18 @@ import 'teen_patti/teen_patti_table_screen.dart';
 import 'sports_match/sports_match_table_screen.dart';
 import 'twenty_nine/twenty_nine_table_screen.dart';
 import 'widgets/dice_3d_widget.dart';
+import 'widgets/card_waiting_hall.dart';
 
 class ActiveRoomScreen extends StatefulWidget {
   final String roomId;
   final UserProfileModel user;
+  final VoidCallback? onBalanceRefresh;
 
   const ActiveRoomScreen({
     super.key,
     required this.roomId,
     required this.user,
+    this.onBalanceRefresh,
   });
 
   @override
@@ -71,14 +74,20 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
     SocketService.joinRoom(widget.roomId);
     _listenSocket('connect', (_) {
       SocketService.joinRoom(widget.roomId);
-      _loadRoom();
+      _loadRoom(silent: true);
     });
 
     _listenSocket('room_updated', (data) {
       if (mounted && data != null) {
         if (data['id'] != null && data['id'] != widget.roomId) return;
+        // Some engine updates are partial; load their full room before parsing.
+        if (data['players'] == null || data['entryFee'] == null) {
+          _loadRoom(silent: true);
+          return;
+        }
         setState(() {
           _room = RoomModel.fromJson(data);
+          if (_isCardGame) _countdown = _room!.countdown;
           if (['COMPLETED', 'CANCELLED'].contains(_room?.status)) {
             _isRolling = false;
             _isRolling3D = false;
@@ -91,6 +100,7 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
     _listenSocket('game_countdown', (data) {
       if (mounted && data != null && data['countdown'] != null) {
         if (data['roomId'] != null && data['roomId'] != widget.roomId) return;
+        if (_isCardGame && !['WAITING', 'COUNTDOWN'].contains(_room?.status)) return;
         setState(() {
           _countdown = (data['countdown'] as num).toInt();
         });
@@ -171,6 +181,8 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
         _loadRoom(silent: true);
       }
     });
+    // Close the gap between the initial HTTP request and channel subscription.
+    _loadRoom(silent: true);
   }
 
   Future<void> _loadRoom({bool silent = false}) async {
@@ -180,6 +192,7 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
       if (mounted) {
         setState(() {
           _room = room;
+          if (_isCardGame) _countdown = room.countdown;
           if (['COMPLETED', 'CANCELLED'].contains(room.status)) { _isRolling = false; _countdown = null; }
           _error = null;
         });
@@ -207,21 +220,29 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
     );
   }
 
+  bool get _isCardGame => ['TEEN_PATTI', 'TWENTY_NINE'].contains(_room?.gameType);
+  bool get _inWaitingHall => _isCardGame && ['WAITING', 'COUNTDOWN', 'CANCELLED'].contains(_room?.status);
+
+  void _refreshBalance() {
+    widget.onBalanceRefresh?.call();
+    _loadRoom(silent: true);
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (!_loading && _error == null && _room?.gameType == 'TEEN_PATTI') {
+    if (!_loading && _error == null && !_inWaitingHall && _room?.gameType == 'TEEN_PATTI') {
       return TeenPattiTableScreen(
         roomId: widget.roomId,
         user: widget.user,
-        onBalanceRefresh: () => _loadRoom(silent: true),
+        onBalanceRefresh: _refreshBalance,
       );
     }
 
-    if (!_loading && _error == null && _room?.gameType == 'TWENTY_NINE') {
+    if (!_loading && _error == null && !_inWaitingHall && _room?.gameType == 'TWENTY_NINE') {
       return TwentyNineTableScreen(
         roomId: widget.roomId,
         user: widget.user,
-        onBalanceRefresh: () => _loadRoom(silent: true),
+        onBalanceRefresh: _refreshBalance,
       );
     }
 
@@ -237,7 +258,7 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
       backgroundColor: AppColors.slate50,
       appBar: AppBar(
         title: Text(
-          _room != null ? 'Table #${_room!.roomCode}' : 'Game Table',
+          _inWaitingHall ? 'Waiting hall' : _room != null ? 'Table #${_room!.roomCode}' : 'Game Table',
           style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w700,
@@ -257,7 +278,7 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
               icon: const Icon(Icons.cancel_outlined),
               tooltip: 'Cancel table and refund all entries',
               onPressed: () async {
-                try { await ApiClient.cancelRoom(widget.roomId); await _loadRoom(); }
+                try { await ApiClient.cancelRoom(widget.roomId); _refreshBalance(); }
                 catch (error) { if (mounted) setState(() => _error = error.toString()); }
               },
             ),
@@ -292,7 +313,9 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
                     ],
                   ),
                 )
-              : _buildRoomContent(),
+              : _inWaitingHall
+                  ? CardWaitingHall(room: _room!, userId: widget.user.id, countdown: _countdown)
+                  : _buildRoomContent(),
     );
   }
 

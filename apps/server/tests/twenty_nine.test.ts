@@ -1,4 +1,5 @@
 import './test-env';
+import { waitForCardStart } from './wait-for-card-start';
 import assert from 'node:assert/strict';
 import { prisma } from '../src/db';
 import { createTwentyNineDeck, getCardPoints, getCardPower, compareCards } from '../src/modules/game/engines/twenty-nine/deck';
@@ -69,7 +70,10 @@ async function main() {
 
   await gameManager.joinRoom(users[1].id, room!.roomCode, null, 1);
   await gameManager.joinRoom(users[2].id, room!.roomCode, null, 2);
-  const activeRoom = await gameManager.joinRoom(users[3].id, room!.roomCode, null, 3);
+  const countdownRoom = await gameManager.joinRoom(users[3].id, room!.roomCode, null, 3);
+  assert.equal(countdownRoom?.status, 'COUNTDOWN');
+  assert.equal(countdownRoom?.gameState, null, 'No cards dealt during countdown');
+  const activeRoom = await waitForCardStart(room!.id);
 
   assert.equal(activeRoom?.status, 'PLAYING');
   assert.equal(activeRoom?.players.length, 4);

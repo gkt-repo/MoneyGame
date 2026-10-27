@@ -1,4 +1,5 @@
 import './test-env';
+import { waitForCardStart } from './wait-for-card-start';
 import http from 'http';
 import express from 'express';
 import { prisma, initDbDefaults } from '../src/db';
@@ -134,6 +135,7 @@ async function runAdminTableControlTests() {
       roomCode: tpRoom.roomCode,
     }, p2Token);
     if (!tpJoin.data.room?.id) throw new Error('P2 failed to join: ' + JSON.stringify(tpJoin.data));
+    await waitForCardStart(tpRoom.id);
 
     // Both players have ₹100 locked
     let p1W = await prisma.wallet.findUnique({ where: { userId: p1Id } });

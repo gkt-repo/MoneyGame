@@ -13,6 +13,7 @@ import { createDeck, shuffleDeck } from './deck';
 import { evaluateTeenPattiHand } from './hand-evaluator';
 import { prisma } from '../../../../db';
 import { config } from '../../../../config';
+import { roomCountdown } from '../../room-presentation';
 import { walletService, getEffectiveCommissionPercent } from '../../../wallet/wallet.service';
 
 interface InternalPlayerState extends TeenPattiPlayerState {
@@ -119,13 +120,16 @@ export class TeenPattiEngine implements IGameEngine {
       },
     });
 
-    if (!room || room.players.length < 2) return;
+    if (!room || room.players.length !== room.maxPlayers ||
+        !['WAITING', 'COUNTDOWN'].includes(room.status) || this.games.has(roomId)) return;
+    if ((roomCountdown(room) ?? 0) > 0) return;
 
     // Transition status to PLAYING in DB
-    await prisma.room.update({
-      where: { id: roomId },
+    const started = await prisma.room.updateMany({
+      where: { id: roomId, status: room.status },
       data: { status: 'PLAYING' },
     });
+    if (started.count !== 1) return;
 
     // Shuffle and deal
     const deck = shuffleDeck(createDeck());

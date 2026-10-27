@@ -1,4 +1,5 @@
 import './test-env';
+import { waitForCardStart } from './wait-for-card-start';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import express from 'express';
@@ -37,10 +38,29 @@ async function main() {
   const create29 = async (fee = 1.02) => {
     const room = (await gameManager.createRoom(users[0].id, fee, 4, null, 'TWENTY_NINE'))!;
     for (let i = 1; i < 4; i++) await gameManager.joinRoom(users[i].id, room.roomCode, null, i);
+    await waitForCardStart(room.id);
     return room;
   };
   const snapshot = async (id: string) => JSON.parse((await prisma.room.findUniqueOrThrow({where:{id}})).engineState!);
   try {
+    const historyRows = await Promise.all(Array.from({length: 65}, (_, index) => prisma.transaction.create({data: {
+      userId: users[4].id, type: 'MANUAL_ADJUST', amount: 0, description: `History fixture ${index}`, createdAt: new Date('2020-01-01'),
+    }})));
+    const firstHistory = await get('/user/transactions?limit=30', users[4].id);
+    assert.equal(firstHistory.body.transactions.length, 30);
+    assert.equal((await get('/user/transactions?limit=101', users[4].id)).status, 400);
+    assert.equal((await get(`/user/transactions?cursor=${firstHistory.body.nextCursor}`, users[0].id)).status, 400);
+    const historyIds = firstHistory.body.transactions.map((t: any) => t.id);
+    let historyCursor = firstHistory.body.nextCursor;
+    while (historyCursor) {
+      const page = (await get(`/user/transactions?limit=30&cursor=${historyCursor}`, users[4].id)).body;
+      assert(page.transactions.every((t: any) => t.userId === users[4].id));
+      historyIds.push(...page.transactions.map((t: any) => t.id)); historyCursor = page.nextCursor;
+    }
+    assert.equal(historyIds.length, 65);
+    assert.equal(new Set(historyIds).size, 65);
+    assert(historyRows.every(row => historyIds.includes(row.id)));
+    console.log('PASS: complete transaction history beyond 50 rows, stable same-time pagination, and account isolation.');
     const received: any[][] = users.map(() => []);
     for (let i = 0; i < users.length; i++) {
       const socket = connect(origin, {auth: {token: token(users[i].id)}, transports: ['websocket'], forceNew: true});
@@ -189,6 +209,8 @@ async function main() {
     };
     try {
       await gameManager.joinRoom(users[3].id, recovering.roomCode, null, 3);
+      const deadline = Date.now() + 7000;
+      while (!failedInitialization && Date.now() < deadline) await pause(50);
       assert(failedInitialization);
       assert.equal(engine.getClientState(recovering.id), null);
       await pause(3200);

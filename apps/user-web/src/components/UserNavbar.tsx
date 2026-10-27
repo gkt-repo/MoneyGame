@@ -3,7 +3,7 @@ import { UserProfile } from '../services/api';
 import { AVATAR_ICONS } from './ProfileModal';
 import { Wallet, Gamepad2, LogOut, HelpCircle, Trophy, RotateCw, Bell, User } from 'lucide-react';
 
-export type UserTab = 'lobby' | 'sports' | 'wallet' | 'support' | 'trading';
+export type UserTab = 'profile' | 'history' | 'lobby' | 'sports' | 'wallet' | 'support' | 'trading';
 
 interface UserNavbarProps {
   user: UserProfile;

@@ -145,6 +145,16 @@ Do not bolt positions onto the current sports prediction pool. Introduce dedicat
 
 ## Development deployment and verification
 
+### Flutter home and personal profile, 27 October 2026
+
+- Flutter home has a single profile action and two bottom destinations: Join Tables and Games. Tables are grouped by swipeable game categories, with stake and seat filters retained.
+- Games uses an animated, mainly black-and-white layout with a vertical stack of pill-shaped selectors on the right and create/join actions on the left. CricTrade opens its existing market screen. The layout scrolls when larger accessibility text needs extra space.
+- The personal profile contains account details, available and reserved balances, deposit/withdraw entry points, transaction history, profile editing, notifications, and game results.
+- Both clients can load the complete wallet ledger in pages. The authenticated API uses stable date/ID ordering and rejects cursors belonging to another user. Existing transaction clients retain the default 50-row response.
+- Website changes are limited to personal profile and transaction-history access; its existing home and navigation layout is retained.
+- Verification: all 45 Flutter tests passed, including phone navigation, larger accessibility text, selected-game creation defaults, and paginated history. The isolated server product regression suite passed, including a 65-transaction same-timestamp pagination case and cross-account cursor rejection. Server and both web production builds passed; Flutter analysis reported informational lints only.
+- This UI work is local source implementation; hosting deployment and device verification of installed-app links remain separate steps described below.
+
 - Share `https://mgame-1.web.app/join/<room-code>`. The installed app or browser opens the join preview with the code supplied. Login preserves the pending invitation; a paid join still requires confirmation. See [app-link setup](APP_LINKS.md).
 - Android App Links now have manifest and website association configuration for the available local certificates. Deploy the website and install the updated app to activate them. iOS Universal Links still require an Apple Team ID and association; the browser offers Open installed app using the registered custom URL scheme.
 - Apply `20261026000000_room_recovery_invitation_lifecycle` using the schema for the selected database before running this server build. Both SQLite and PostgreSQL migration files are provided. Regenerate the Prisma client for that schema.

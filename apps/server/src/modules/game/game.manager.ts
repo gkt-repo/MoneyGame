@@ -8,10 +8,49 @@ import { walletService } from '../wallet/wallet.service';
 import { notificationService } from '../notification/notification.service';
 import { gameRegistry } from './game.registry';
 import { RoomWithPlayers } from './engine.interface';
-import { publicRoomConfig, invitationUnavailable } from './room-presentation';
+import { publicRoomConfig, invitationUnavailable, roomCountdown } from './room-presentation';
 
 export class GameManager {
   private io: Server | null = null;
+  private cardCountdowns = new Map<string, NodeJS.Timeout>();
+
+  private clearCardCountdown(roomId: string) {
+    const timer = this.cardCountdowns.get(roomId);
+    if (timer) clearInterval(timer);
+    this.cardCountdowns.delete(roomId);
+  }
+
+  private startCardCountdown(roomId: string, endsAt: number) {
+    if (this.cardCountdowns.has(roomId)) return;
+    const tick = () => {
+      const countdown = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      this.io?.to(`room:${roomId}`).emit('game_countdown', { roomId, countdown });
+      if (countdown === 0) {
+        this.clearCardCountdown(roomId);
+        void this.startCardMatch(roomId).catch(async error => {
+          console.error('[GameManager] Card table failed to start:', error);
+          try { await this.refundRoom(roomId); }
+          catch (refundError) { console.error('[GameManager] Start refund failed:', refundError); }
+        });
+      }
+    };
+    const timer = setInterval(tick, 1000);
+    timer.unref?.();
+    this.cardCountdowns.set(roomId, timer);
+    tick();
+  }
+
+  private async startCardMatch(roomId: string) {
+    const room = await prisma.room.findUnique({ where: { id: roomId }, include: { players: true } });
+    if (!room || room.status !== 'COUNTDOWN') return;
+    if (room.players.length !== room.maxPlayers) {
+      await this.refundRoom(roomId);
+      return;
+    }
+    await gameRegistry.get(room.gameType).startGame(roomId, this.io);
+    await this.broadcastRoomUpdate(roomId);
+    await this.broadcastLobbyUpdate();
+  }
 
   setSocketServer(io: Server) {
     this.io = io;
@@ -152,8 +191,14 @@ export class GameManager {
 
       const full = room.players.length + 1 === room.maxPlayers;
       if (full) {
-        const nextStatus = room.gameType === 'GUESS_NUMBER' ? 'COUNTDOWN' : 'PLAYING';
-        await tx.room.update({ where: { id: room.id }, data: { status: nextStatus } });
+        const isCardGame = ['TEEN_PATTI', 'TWENTY_NINE'].includes(room.gameType);
+        const nextStatus = room.gameType === 'GUESS_NUMBER' || isCardGame ? 'COUNTDOWN' : 'PLAYING';
+        await tx.room.update({ where: { id: room.id }, data: {
+          status: nextStatus,
+          ...(isCardGame ? { customConfig: JSON.stringify({
+            ...publicRoomConfig(room.customConfig), countdownEndsAt: Date.now() + 5000,
+          }) } : {}),
+        } });
       }
 
       return { id: room.id, gameType: room.gameType, full };
@@ -163,7 +208,9 @@ export class GameManager {
 
     // Trigger engine hooks if table is full or for ongoing sports pool tracking
     if (result.full) {
-      if (result.gameType === 'GUESS_NUMBER') {
+      if (['TEEN_PATTI', 'TWENTY_NINE'].includes(result.gameType)) {
+        this.startCardCountdown(result.id, updatedRoom!.customConfig!.countdownEndsAt);
+      } else if (result.gameType === 'GUESS_NUMBER') {
         const legacyEngine = gameRegistry.get('GUESS_NUMBER');
         void legacyEngine.startGame(result.id, this.io);
       } else {
@@ -193,6 +240,7 @@ export class GameManager {
   }
 
   stopTimers() {
+    for (const roomId of this.cardCountdowns.keys()) this.clearCardCountdown(roomId);
     for (const desc of gameRegistry.listGames()) {
       const engine = gameRegistry.get(desc.id);
       if ('stopAllTimers' in engine && typeof (engine as any).stopAllTimers === 'function') {
@@ -313,6 +361,7 @@ export class GameManager {
     });
 
     // Cleanup engine in-memory state and stop any active timers
+    this.clearCardCountdown(roomId);
     const engine = gameRegistry.get(existing.gameType);
     if (engine) {
       engine.cleanupRoom(roomId);
@@ -407,6 +456,7 @@ export class GameManager {
       return room.players;
     });
 
+    this.clearCardCountdown(roomId);
     const room = await prisma.room.findUnique({ where: { id: roomId }, select: { gameType: true } });
     if (room) {
       const engine = gameRegistry.get(room.gameType);
@@ -489,6 +539,7 @@ export class GameManager {
     const { engineState, engineSequence, ...publicRoom } = room;
     return {
       ...publicRoom,
+      countdown: roomCountdown(room),
       invitationToken: isHost ? room.invitationToken : undefined,
       customConfig: publicRoomConfig(room.customConfig),
       gameState,
@@ -525,6 +576,7 @@ export class GameManager {
     const { engineState, engineSequence, ...publicRoom } = room;
     return {
       ...publicRoom,
+      countdown: roomCountdown(room),
       invitationToken: isHost ? room.invitationToken : undefined,
       customConfig: publicRoomConfig(room.customConfig),
       gameState,
@@ -678,7 +730,7 @@ export class GameManager {
     } });
     if (!room) return;
     const { engineState, engineSequence, invitationToken, ...publicRoom } = room;
-    this.io.to(`room:${roomId}`).emit('room_updated', { ...publicRoom, customConfig: publicRoomConfig(room.customConfig) });
+    this.io.to(`room:${roomId}`).emit('room_updated', { ...publicRoom, countdown: roomCountdown(room), customConfig: publicRoomConfig(room.customConfig) });
   }
 
   /** General events never contain private tables. Clients refresh their authenticated listing. */

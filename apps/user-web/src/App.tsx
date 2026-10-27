@@ -7,6 +7,7 @@ import { ProfileModal } from './components/ProfileModal';
 import { InvitationPreviewModal } from './components/InvitationPreviewModal';
 import { LobbyView } from './views/LobbyView';
 import { ActiveRoomView } from './views/ActiveRoomView';
+import { PersonalProfileView, TransactionHistoryView } from './views/PersonalProfileView';
 import { WalletView } from './views/WalletView';
 import { SupportFeedbackView } from './views/SupportFeedbackView';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -20,7 +21,7 @@ export const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [currentTab, setCurrentTab] = useState<UserTab>('lobby');
-  const [walletEntry, setWalletEntry] = useState<'overview' | 'withdraw'>('overview');
+  const [walletEntry, setWalletEntry] = useState<'overview' | 'deposit' | 'withdraw'>('overview');
   useEffect(() => {
     if (currentTab !== 'wallet') setWalletEntry('overview');
   }, [currentTab]);
@@ -283,7 +284,7 @@ export const App: React.FC = () => {
         isRefreshing={isRefreshing || loadingRooms}
         onOpenNotifications={() => setNotificationsOpen(true)}
         unreadNotificationsCount={unreadNotificationsCount}
-        onOpenProfile={() => setProfileOpen(true)}
+        onOpenProfile={() => { setActiveRoomId(null); setCurrentTab('profile'); void refreshBalance(); }}
       />
 
       <NotificationDrawer
@@ -349,6 +350,13 @@ export const App: React.FC = () => {
                 onOpenInvitationModal={(token) => setInvitationToken(token)}
               />
             )}
+            {currentTab === 'profile' && <PersonalProfileView user={user} balance={balance} lockedBalance={lockedBalance}
+              version={`${user.displayName}:${user.avatar}`} onBack={() => setCurrentTab('lobby')} onEdit={() => setProfileOpen(true)}
+              onDeposit={() => {setWalletEntry('deposit'); setCurrentTab('wallet');}}
+              onWithdraw={() => {setWalletEntry('withdraw'); setCurrentTab('wallet');}}
+              onHistory={() => setCurrentTab('history')} onNotifications={() => setNotificationsOpen(true)}
+              onSupport={() => setCurrentTab('support')} onLogout={() => {userApi.logout(); setUser(null); setCurrentTab('lobby'); setNotifications([]); setNotificationsOpen(false);}} />}
+            {currentTab === 'history' && <TransactionHistoryView onBack={() => setCurrentTab('profile')}/>}
             {currentTab === 'sports' && (
               <LobbyView
                 rooms={rooms}
@@ -362,13 +370,14 @@ export const App: React.FC = () => {
               />
             )}
             {currentTab === 'wallet' && (
-              <WalletView
+              <div><button className="mono-secondary mb-5" onClick={() => setCurrentTab('profile')}>← Back to profile</button><WalletView
+                key={walletEntry}
                 initialSubView={walletEntry}
                 user={user}
                 balance={balance}
                 lockedBalance={lockedBalance}
                 onRefreshBalance={refreshBalance}
-              />
+              /></div>
             )}
             {currentTab === 'trading' && (
               <Suspense fallback={<p>Loading CricTrade…</p>}>

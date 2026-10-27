@@ -1,5 +1,5 @@
 import { Server } from 'socket.io';
-import { publicRoomConfig } from '../../room-presentation';
+import { publicRoomConfig, roomCountdown } from '../../room-presentation';
 import {
   GameDescriptor,
   GameType,
@@ -119,10 +119,11 @@ export class TwentyNineEngine implements IGameEngine {
       },
     });
 
-    if (!room || room.players.length !== 4 || !['WAITING', 'PLAYING'].includes(room.status)) {
+    if (!room || room.players.length !== 4 || !['WAITING', 'COUNTDOWN', 'PLAYING'].includes(room.status)) {
       this.cleanupRoom(roomId); return;
     }
     if (room.engineState) { await this.restoreRoom(roomId, io); return; }
+    if ((roomCountdown(room) ?? 0) > 0) return;
 
     const playerOrder = room.players.map(p => p.userId);
     const players: Record<string, InternalPlayerState> = {};
@@ -149,7 +150,7 @@ export class TwentyNineEngine implements IGameEngine {
     this.restoreConnections(state, io);
     this.gameStates.delete(roomId);
     const saved = await prisma.room.updateMany({
-      where: { id: roomId, status: { in: ['WAITING', 'PLAYING'] }, engineState: null },
+      where: { id: roomId, status: { in: ['WAITING', 'COUNTDOWN', 'PLAYING'] }, engineState: null },
       data: { status: 'PLAYING', engineState: JSON.stringify(state), customConfig: JSON.stringify(publicRoomConfig(room.customConfig) || {}) },
     });
     if (saved.count !== 1) { this.cleanupRoom(roomId); throw new Error('Room changed while starting'); }
