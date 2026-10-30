@@ -137,6 +137,7 @@ export const RoomsView: React.FC<RoomsViewProps> = ({ onSelectUser }) => {
 
   const getGameBadge = (gameType: string) => {
     switch (gameType) {
+      case 'SEEP': return 'Seep';
       case 'TEEN_PATTI':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-950/70 text-amber-300 border border-amber-800/50">
@@ -336,6 +337,7 @@ export const RoomsView: React.FC<RoomsViewProps> = ({ onSelectUser }) => {
             className="px-2.5 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-zinc-300 focus:outline-hidden focus:border-emerald-500"
           >
             <option value="ALL">All Game Types</option>
+            <option value="SEEP">Seep</option>
             <option value="TEEN_PATTI">Teen Patti</option>
             <option value="GUESS_NUMBER">Guess Number</option>
             <option value="SPORTS_MATCH">Sports Pool</option>
@@ -429,7 +431,7 @@ export const RoomsView: React.FC<RoomsViewProps> = ({ onSelectUser }) => {
                     <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
                       {room.players && room.players.length > 0 ? (
                         room.players.map((p) => {
-                          const isWinner = room.gameType === 'TWENTY_NINE' && Array.isArray(room.customConfig?.winnerUserIds)
+                          const isWinner = ['TWENTY_NINE', 'SEEP'].includes(room.gameType) && Array.isArray(room.customConfig?.winnerUserIds)
                             ? room.customConfig.winnerUserIds.includes(p.userId)
                             : room.winnerId === p.userId;
                           return (
@@ -493,7 +495,7 @@ export const RoomsView: React.FC<RoomsViewProps> = ({ onSelectUser }) => {
                       <div className="flex items-center gap-1.5 text-emerald-400">
                         <Trophy className="w-3.5 h-3.5 text-amber-400" />
                         <span>
-                          {room.gameType === 'TWENTY_NINE' && room.customConfig?.winnerUserIds ? (
+                          {['TWENTY_NINE', 'SEEP'].includes(room.gameType) && room.customConfig?.winnerUserIds ? (
                             <>
                               Winning Team: <strong>Team {room.customConfig.winningTeamIndex + 1}</strong>
                               {room.customConfig.explanation ? (

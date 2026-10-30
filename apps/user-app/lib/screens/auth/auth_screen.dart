@@ -1,3 +1,4 @@
+import '../../core/constants/app_theme.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/colors.dart';
 import '../../core/network/api_client.dart';
@@ -122,7 +123,7 @@ class _AuthScreenState extends State<AuthScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.white,
+      backgroundColor: context.palette.adapt(AppColors.white),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -140,18 +141,18 @@ class _AuthScreenState extends State<AuthScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Reset Password via Email OTP',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.slate900,
+                      color: context.palette.adapt(AppColors.slate900),
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'We will send a 6-digit recovery code to your registered backup email.',
-                    style: TextStyle(fontSize: 12, color: AppColors.slate500),
+                    style: TextStyle(fontSize: 12, color: context.palette.adapt(AppColors.slate500)),
                   ),
                   const SizedBox(height: 16),
                   if (!_otpDispatched) ...[
@@ -262,7 +263,7 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.slate50,
+      backgroundColor: context.palette.adapt(AppColors.slate50),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -271,38 +272,29 @@ class _AuthScreenState extends State<AuthScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Brand Header
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: AppColors.emerald600,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      '₹',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.white,
-                      ),
-                    ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Image.asset(
+                    'assets/icon/app_icon.png',
+                    width: 60,
+                    height: 60,
+                    fit: BoxFit.cover,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'MoneyGame',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.slate900,
+                    color: context.palette.adapt(AppColors.slate900),
                     letterSpacing: -0.5,
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Multiplayer Skill Games & Instant UPI Payouts',
-                  style: TextStyle(fontSize: 12, color: AppColors.slate500),
+                  style: TextStyle(fontSize: 12, color: context.palette.adapt(AppColors.slate500)),
                 ),
                 const SizedBox(height: 28),
 
@@ -310,9 +302,9 @@ class _AuthScreenState extends State<AuthScreen> {
                 Container(
                   padding: const EdgeInsets.all(22),
                   decoration: BoxDecoration(
-                    color: AppColors.white,
+                    color: context.palette.adapt(AppColors.white),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.slate200),
+                    border: Border.all(color: context.palette.adapt(AppColors.slate200)),
                   ),
                   child: Column(
                     children: [
@@ -332,7 +324,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.bold,
-                                      color: _isLoginTab ? AppColors.emerald600 : AppColors.slate400,
+                                      color: _isLoginTab ? AppColors.emerald600 : context.palette.adapt(AppColors.slate400),
                                     ),
                                   ),
                                   const SizedBox(height: 8),
@@ -357,7 +349,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.bold,
-                                      color: !_isLoginTab ? AppColors.emerald600 : AppColors.slate400,
+                                      color: !_isLoginTab ? AppColors.emerald600 : context.palette.adapt(AppColors.slate400),
                                     ),
                                   ),
                                   const SizedBox(height: 8),
@@ -379,13 +371,13 @@ class _AuthScreenState extends State<AuthScreen> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: AppColors.red50,
+                            color: context.palette.adapt(AppColors.red50),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: AppColors.red600.withValues(alpha: 0.3)),
                           ),
                           child: Text(
                             _errorMessage!,
-                            style: const TextStyle(fontSize: 12, color: AppColors.red700),
+                            style: TextStyle(fontSize: 12, color: context.palette.adapt(AppColors.red700)),
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -396,13 +388,13 @@ class _AuthScreenState extends State<AuthScreen> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: AppColors.emerald50,
+                            color: context.palette.adapt(AppColors.emerald50),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: AppColors.emerald600.withValues(alpha: 0.3)),
                           ),
                           child: Text(
                             _successMessage!,
-                            style: const TextStyle(fontSize: 12, color: AppColors.emerald800),
+                            style: TextStyle(fontSize: 12, color: context.palette.adapt(AppColors.emerald800)),
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -512,16 +504,16 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.shield_outlined, size: 13, color: AppColors.slate400),
+                      Icon(Icons.shield_outlined, size: 13, color: context.palette.adapt(AppColors.slate400)),
                       SizedBox(width: 4),
                       Text(
                         'MoneyGame • Secure & Fair Play',
-                        style: TextStyle(fontSize: 11, color: AppColors.slate400),
+                        style: TextStyle(fontSize: 11, color: context.palette.adapt(AppColors.slate400)),
                       ),
                     ],
                   ),

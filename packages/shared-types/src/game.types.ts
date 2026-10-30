@@ -1,4 +1,4 @@
-export type GameType = 'GUESS_NUMBER' | 'TEEN_PATTI' | 'TWENTY_NINE' | 'SPORTS_MATCH';
+export type GameType = 'GUESS_NUMBER' | 'TEEN_PATTI' | 'TWENTY_NINE' | 'SPORTS_MATCH' | 'SEEP';
 
 export type RoomStatus = 'WAITING' | 'COUNTDOWN' | 'PLAYING' | 'ROLLING' | 'COMPLETED' | 'CANCELLED';
 
@@ -97,6 +97,54 @@ export interface PlayingCard {
   suit: CardSuit;
   rank: number; // 2..14 (14 = Ace)
   label: string; // "A", "K", "Q", "J", "10"... "2"
+}
+
+export interface SeepCard extends PlayingCard { id: string }
+export interface SeepFloorItem {
+  id: string;
+  value: number;
+  cards: SeepCard[];
+  isHouse: boolean;
+  cemented: boolean;
+  owners: string[];
+}
+export interface SeepMove {
+  id: string;
+  type: 'CAPTURE' | 'BUILD' | 'THROW';
+  cardId: string;
+  floorIds: string[];
+  houseValue?: number;
+  label: string;
+}
+export interface SeepPlayer {
+  userId: string;
+  username: string;
+  seatIndex: number;
+  teamIndex: number;
+  cardCount: number;
+  cards?: SeepCard[];
+}
+export interface SeepGameState {
+  roomId: string;
+  sequence: number;
+  rulesVersion: 'seep-single-deal-v1';
+  phase: 'BIDDING' | 'PLAYING' | 'SETTLING' | 'COMPLETED';
+  maxPlayers: number;
+  currentTurnUserId: string | null;
+  turnExpiresAt: number | null;
+  bid: number | null;
+  dealNumber: number;
+  stockCount: number;
+  floor: SeepFloorItem[];
+  players: Record<string, SeepPlayer>;
+  teams: Array<{ points: number; cardPoints: number; sweepPoints: number; capturedCount: number; sweeps: number }>;
+  legalMoves?: SeepMove[];
+  bidOptions?: number[];
+  lastMove?: { sequence: number; userId: string; card: SeepCard; type: string; floorIds: string[]; cards: SeepCard[]; sweep: number; label: string };
+  winningTeamIndex?: number | null;
+  winningUserIds?: string[];
+  payouts?: Array<{ userId: string; amount: number }>;
+  explanation?: string;
 }
 
 // ─── Teen Patti Specific Types ────────────────────────────────────────────────

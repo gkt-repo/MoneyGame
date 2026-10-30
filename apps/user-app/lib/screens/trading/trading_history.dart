@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/app_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:dio/dio.dart';
 
@@ -78,9 +79,12 @@ class _TradingHistoryState extends State<TradingHistory> {
           ),
         ..._items.map(
           (e) => Container(
-            padding: const EdgeInsets.symmetric(vertical: 18),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Color(0xff26303d))),
+            margin: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: context.palette.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: context.palette.outline),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -96,16 +100,16 @@ class _TradingHistoryState extends State<TradingHistory> {
                       const SizedBox(height: 6),
                       Text(
                         '${e['marketTitle']}${e['mode'] == 'TEST' ? ' · Test credits' : ''}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xffa4b5cb),
+                          color: context.palette.muted,
                         ),
                       ),
                       Text(
                         '${DateFormat('dd MMM yyyy, HH:mm:ss').format(DateTime.parse(e['createdAt'] as String).toLocal())} · Executed',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
-                          color: Color(0xffa4b5cb),
+                          color: context.palette.muted,
                         ),
                       ),
                       Text(

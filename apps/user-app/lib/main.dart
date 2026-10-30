@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core/constants/colors.dart';
+import 'core/constants/app_theme.dart';
+import 'core/services/theme_preferences.dart';
 import 'core/constants/api_constants.dart';
 import 'core/network/api_client.dart';
 import 'core/storage/secure_storage_service.dart';
@@ -27,6 +29,8 @@ void main() async {
   if (savedUrl != null && savedUrl.isNotEmpty) {
     ApiConstants.setRuntimeUrl(savedUrl);
   }
+
+  await ThemePreferences.instance.load();
 
   ApiClient.init();
 
@@ -72,9 +76,14 @@ class _MoneyGameUserAppState extends State<MoneyGameUserApp>
   }
 
   @override
-  Future<bool> didPushRouteInformation(RouteInformation routeInformation) async {
-    final target = RoomInvitations.targetFromLink(routeInformation.uri.toString());
-    if (target == null) return true; // Ignore unsupported links without routing them.
+  Future<bool> didPushRouteInformation(
+    RouteInformation routeInformation,
+  ) async {
+    final target = RoomInvitations.targetFromLink(
+      routeInformation.uri.toString(),
+    );
+    if (target == null)
+      return true; // Ignore unsupported links without routing them.
     _navigatorKey.currentState?.popUntil((route) => route.isFirst);
     setState(() => _pendingInvitation = target);
     return true;
@@ -123,97 +132,36 @@ class _MoneyGameUserAppState extends State<MoneyGameUserApp>
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: _navigatorKey,
-      // Invitations wait for authentication rather than creating a second root.
-      initialRoute: '/',
-      title: 'MoneyGame',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: AppColors.slate50,
-        colorScheme: const ColorScheme.light(
-          primary: AppColors.emerald600,
-          onPrimary: AppColors.white,
-          secondary: AppColors.slate800,
-          onSecondary: AppColors.white,
-          surface: AppColors.white,
-          onSurface: AppColors.slate900,
-          error: AppColors.red600,
-          onError: AppColors.white,
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: AppColors.white,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          iconTheme: IconThemeData(color: AppColors.slate900),
-          titleTextStyle: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: AppColors.slate900,
-          ),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.emerald600,
-            foregroundColor: AppColors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            textStyle: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        outlinedButtonTheme: OutlinedButtonThemeData(
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.slate900,
-            side: const BorderSide(color: AppColors.slate200),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            textStyle: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        cardTheme: CardThemeData(
-          color: AppColors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: AppColors.slate200),
-          ),
-        ),
-        dividerTheme: const DividerThemeData(
-          color: AppColors.slate200,
-          thickness: 1,
-          space: 1,
-        ),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemePreferences.instance,
+      builder: (context, mode, child) => MaterialApp(
+        themeMode: mode,
+        darkTheme: AppTheme.dark,
+        navigatorKey: _navigatorKey,
+        // Invitations wait for authentication rather than creating a second root.
+        initialRoute: '/',
+        title: 'MoneyGame',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        home: _initializing
+            ? const Scaffold(
+                body: Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.emerald600,
+                  ),
+                ),
+              )
+            : _currentUser != null
+            ? HomeScreen(
+                user: _currentUser!,
+                onLogout: _onLogout,
+                pendingInvitation: _pendingInvitation,
+                onInvitationOpened: () =>
+                    setState(() => _pendingInvitation = null),
+              )
+            : AuthScreen(onAuthSuccess: _onAuthSuccess),
       ),
-      home: _initializing
-          ? const Scaffold(
-              backgroundColor: AppColors.slate50,
-              body: Center(
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppColors.emerald600,
-                ),
-              ),
-            )
-          : _currentUser != null
-              ? HomeScreen(
-                  user: _currentUser!,
-                  onLogout: _onLogout,
-                  pendingInvitation: _pendingInvitation,
-                  onInvitationOpened: () => setState(() => _pendingInvitation = null),
-                )
-              : AuthScreen(
-                  onAuthSuccess: _onAuthSuccess,
-                ),
     );
   }
 }

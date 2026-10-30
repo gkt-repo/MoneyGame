@@ -44,7 +44,7 @@ class CardWaitingHall extends StatelessWidget {
               child: Column(
                 children: [
                   Text(
-                    isTwentyNine ? '29 CARD GAME · 2 vs 2' : 'TEEN PATTI',
+                    room.gameType == 'SEEP' ? 'SEEP · ${room.maxPlayers == 4 ? '2 vs 2' : 'HEAD TO HEAD'}' : isTwentyNine ? '29 CARD GAME · 2 vs 2' : 'TEEN PATTI',
                     style: const TextStyle(
                       color: purple,
                       fontWeight: FontWeight.w700,
@@ -128,7 +128,7 @@ class CardWaitingHall extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    '${room.players.length} / ${room.maxPlayers} players  ·  ₹${room.entryFee.toStringAsFixed(0)} ${isTwentyNine ? 'entry' : 'boot'}',
+                    '${room.players.length} / ${room.maxPlayers} players  ·  ₹${room.entryFee.toStringAsFixed(0)} ${room.gameType != 'TEEN_PATTI' ? 'entry' : 'boot'}',
                     style: const TextStyle(color: purple),
                   ),
                   const SizedBox(height: 8),
@@ -178,7 +178,7 @@ class CardWaitingHall extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Text(
-                    'Seat ${index + 1}${isTwentyNine ? ' · Team ${index.isEven ? 'A' : 'B'}' : ''}',
+                    'Seat ${index + 1}${(isTwentyNine || (room.gameType == 'SEEP' && room.maxPlayers == 4)) ? ' · Team ${index.isEven ? 'A' : 'B'}' : ''}',
                   ),
                   trailing: player == null
                       ? null

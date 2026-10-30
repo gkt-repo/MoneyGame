@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// Strict Fintech & Non-Vibe-Coded Color Palette
-/// (Solid Emerald Green, Crisp Slate, White, Zero Gradients, Zero Purple)
+/// Brand accents and legacy colors. AppPalette supplies themed surfaces.
 class AppColors {
+  // Quiet, neutral surfaces for the home and lobby.
+  static const Color canvas = Color(0xFFF3F0FC);
+  static const Color ink = Color(0xFF1B2422);
+  static const Color muted = Color(0xFF61716A);
+  static const Color outline = Color(0xFFDCE4DF);
+
   // Emerald Financial Accent
   static const Color emerald900 = Color(0xFF064E3B);
   static const Color emerald800 = Color(0xFF065F46);
@@ -24,8 +29,8 @@ class AppColors {
   static const Color slate300 = Color(0xFFCBD5E1);
   static const Color slate200 = Color(0xFFE2E8F0); // Subtle Border
   static const Color slate100 = Color(0xFFF1F5F9);
-  static const Color slate50 = Color(0xFFF8FAFC);  // Canvas Background
-  static const Color white = Color(0xFFFFFFFF);    // Surface Card
+  static const Color slate50 = Color(0xFFF8FAFC); // Canvas Background
+  static const Color white = Color(0xFFFFFFFF); // Surface Card
 
   // Status Colors
   static const Color amber900 = Color(0xFF78350F);
@@ -35,6 +40,6 @@ class AppColors {
   static const Color amber50 = Color(0xFFFFFBEB);
 
   static const Color red700 = Color(0xFFB91C1C);
-  static const Color red600 = Color(0xFFDC2626);   // Error / Reject
+  static const Color red600 = Color(0xFFDC2626); // Error / Reject
   static const Color red50 = Color(0xFFFEF2F2);
 }

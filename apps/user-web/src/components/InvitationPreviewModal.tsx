@@ -146,7 +146,7 @@ export const InvitationPreviewModal: React.FC<InvitationPreviewModalProps> = ({
               <div className="p-4 bg-gradient-to-br from-emerald-50/50 to-emerald-100/30 rounded-xl border border-emerald-200/60 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-slate-800">
-                    {preview.gameType === 'TWENTY_NINE'
+                    {preview.gameType === 'SEEP' ? '♠ Seep' : preview.gameType === 'TWENTY_NINE'
                       ? '29 Card Game'
                       : preview.gameType === 'TEEN_PATTI'
                       ? 'Teen Patti'

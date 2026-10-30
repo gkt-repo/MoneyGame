@@ -136,7 +136,7 @@ export class ProfileService {
       let prize = 0;
 
       // Special handling for 29 Card Game partnership team wins
-      if (gameType === 'TWENTY_NINE' && room.customConfig) {
+      if (['TWENTY_NINE', 'SEEP'].includes(gameType) && room.customConfig) {
         try {
           const config = JSON.parse(room.customConfig);
           if (Array.isArray(config.winnerUserIds) && config.winnerUserIds.includes(userId)) {

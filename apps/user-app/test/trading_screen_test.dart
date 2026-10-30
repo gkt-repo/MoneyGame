@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:moneygame_user/core/constants/app_theme.dart';
 import 'package:moneygame_user/screens/trading/trading_screen.dart';
 
 void main() {
@@ -127,15 +128,37 @@ void main() {
         };
       }
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: TradingScreen(
-            userId: 'fixture-user',
-            request: request,
-            onWithdraw: () => withdrawals++,
-          ),
+      Widget screen(ThemeMode mode) => MaterialApp(
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: mode,
+        home: TradingScreen(
+          userId: 'fixture-user',
+          request: request,
+          onWithdraw: () => withdrawals++,
         ),
       );
+      await tester.pumpWidget(screen(ThemeMode.light));
+      await tester.pumpAndSettle();
+      expect(
+        Theme.of(tester.element(find.text('CricTrade'))).brightness,
+        Brightness.light,
+      );
+      expect(
+        tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
+        const AppPalette(Brightness.light).canvas,
+      );
+      await tester.pumpWidget(screen(ThemeMode.dark));
+      await tester.pumpAndSettle();
+      expect(
+        Theme.of(tester.element(find.text('CricTrade'))).brightness,
+        Brightness.dark,
+      );
+      expect(
+        tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
+        const AppPalette(Brightness.dark).canvas,
+      );
+      await tester.pumpWidget(screen(ThemeMode.light));
       await tester.pumpAndSettle();
       expect(find.text('Buy India'), findsNothing);
       expect(find.text('Hidden simulation'), findsNothing);
@@ -352,6 +375,9 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            theme: AppTheme.light,
+            darkTheme: AppTheme.dark,
+            themeMode: format == 'TEST' ? ThemeMode.dark : ThemeMode.light,
             home: TradingScreen(userId: 'format-user', request: request),
           ),
         );

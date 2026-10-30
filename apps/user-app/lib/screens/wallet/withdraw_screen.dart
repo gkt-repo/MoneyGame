@@ -1,3 +1,4 @@
+import '../../core/constants/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/constants/colors.dart';
@@ -78,26 +79,26 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.slate50,
+      backgroundColor: context.palette.adapt(AppColors.slate50),
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Withdraw Earnings',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w700,
-            color: AppColors.slate900,
+            color: context.palette.adapt(AppColors.slate900),
           ),
         ),
-        backgroundColor: AppColors.white,
+        backgroundColor: context.palette.adapt(AppColors.white),
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.slate900),
+          icon: Icon(Icons.arrow_back_ios_new, size: 18, color: context.palette.adapt(AppColors.slate900)),
           onPressed: () => Navigator.of(context).pop(),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(color: AppColors.slate200, height: 1),
+          child: Container(color: context.palette.adapt(AppColors.slate200), height: 1),
         ),
       ),
       body: SafeArea(
@@ -113,9 +114,9 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: context.palette.adapt(AppColors.white),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.slate200),
+        border: Border.all(color: context.palette.adapt(AppColors.slate200)),
       ),
       child: Column(
         children: [
@@ -123,49 +124,49 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: AppColors.amber50,
+              color: context.palette.adapt(AppColors.amber50),
               shape: BoxShape.circle,
-              border: Border.all(color: AppColors.amber600),
+              border: Border.all(color: context.palette.adapt(AppColors.amber600)),
             ),
-            child: const Icon(Icons.hourglass_top_rounded, color: AppColors.amber600, size: 28),
+            child: Icon(Icons.hourglass_top_rounded, color: context.palette.adapt(AppColors.amber600), size: 28),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'Withdrawal Initiated',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: AppColors.slate900,
+              color: context.palette.adapt(AppColors.slate900),
             ),
           ),
           const SizedBox(height: 8),
           Text(
             '₹${_submittedAmount.toStringAsFixed(2)}',
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'monospace',
               fontSize: 28,
               fontWeight: FontWeight.w700,
-              color: AppColors.slate900,
+              color: context.palette.adapt(AppColors.slate900),
             ),
           ),
           const SizedBox(height: 4),
           Text(
             'Destination: $_submittedUpi',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
-              color: AppColors.slate600,
+              color: context.palette.adapt(AppColors.slate600),
             ),
           ),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: AppColors.slate50,
+              color: context.palette.adapt(AppColors.slate50),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.slate200),
+              border: Border.all(color: context.palette.adapt(AppColors.slate200)),
             ),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
@@ -174,38 +175,38 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                     SizedBox(width: 8),
                     Text(
                       '1. Withdrawal Initiated',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate900)),
                     ),
                   ],
                 ),
                 SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.radio_button_checked, size: 15, color: AppColors.amber600),
+                    Icon(Icons.radio_button_checked, size: 15, color: context.palette.adapt(AppColors.amber600)),
                     SizedBox(width: 8),
                     Text(
                       '2. Processing & IMPS Clearance',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.amber700),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.amber700)),
                     ),
                   ],
                 ),
                 SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.circle_outlined, size: 15, color: AppColors.slate400),
+                    Icon(Icons.circle_outlined, size: 15, color: context.palette.adapt(AppColors.slate400)),
                     SizedBox(width: 8),
                     Text(
                       '3. Paid (Dispatched with Bank UTR)',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.slate500),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: context.palette.adapt(AppColors.slate500)),
                     ),
                   ],
                 ),
                 SizedBox(height: 10),
-                Divider(height: 1, color: AppColors.slate200),
+                Divider(height: 1, color: context.palette.adapt(AppColors.slate200)),
                 SizedBox(height: 8),
                 Text(
                   'Your payout has been initiated. Once approved by Super Admin, the status will automatically update to Paid with your bank IMPS UTR.',
-                  style: TextStyle(fontSize: 11, color: AppColors.slate600, height: 1.4),
+                  style: TextStyle(fontSize: 11, color: context.palette.adapt(AppColors.slate600), height: 1.4),
                 ),
               ],
             ),
@@ -241,20 +242,20 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.white,
+            color: context.palette.adapt(AppColors.white),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.slate200),
+            border: Border.all(color: context.palette.adapt(AppColors.slate200)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'AVAILABLE WITHDRAWABLE BALANCE',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.5,
-                  color: AppColors.slate500,
+                  color: context.palette.adapt(AppColors.slate500),
                 ),
               ),
               const SizedBox(height: 6),
@@ -263,11 +264,11 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                 children: [
                   Text(
                     '₹${widget.user.balance.toStringAsFixed(2)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 26,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.slate900,
+                      color: context.palette.adapt(AppColors.slate900),
                     ),
                   ),
                   if (widget.user.balance >= 10)
@@ -280,7 +281,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: AppColors.emerald50,
+                          color: context.palette.adapt(AppColors.emerald50),
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(color: AppColors.emerald600),
                         ),
@@ -306,18 +307,18 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           margin: const EdgeInsets.only(bottom: 8),
           decoration: BoxDecoration(
-            color: AppColors.emerald50,
+            color: context.palette.adapt(AppColors.emerald50),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: AppColors.emerald600.withValues(alpha: 0.3)),
           ),
-          child: const Row(
+          child: Row(
             children: [
               Icon(Icons.bolt, size: 16, color: AppColors.emerald600),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Fast IMPS Transfer: Typically processed and dispatched within 5–15 minutes.',
-                  style: TextStyle(fontSize: 11, color: AppColors.emerald900, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 11, color: context.palette.adapt(AppColors.emerald900), fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -330,7 +331,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
             padding: const EdgeInsets.all(12),
             margin: const EdgeInsets.only(bottom: 16),
             decoration: BoxDecoration(
-              color: AppColors.red50,
+              color: context.palette.adapt(AppColors.red50),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: AppColors.red600.withValues(alpha: 0.3)),
             ),
@@ -350,39 +351,39 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
         ],
 
         // Amount Field
-        const Text(
+        Text(
           'Withdrawal Amount (₹)',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900),
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: context.palette.adapt(AppColors.slate900)),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: _amountController,
           keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'monospace',
             fontSize: 20,
             fontWeight: FontWeight.w700,
-            color: AppColors.slate900,
+            color: context.palette.adapt(AppColors.slate900),
           ),
           decoration: InputDecoration(
-            prefixIcon: const Padding(
+            prefixIcon: Padding(
               padding: EdgeInsets.only(left: 14, right: 8),
               child: Center(
                 widthFactor: 0,
-                child: Text('₹', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.slate400)),
+                child: Text('₹', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: context.palette.adapt(AppColors.slate400))),
               ),
             ),
             filled: true,
-            fillColor: AppColors.white,
+            fillColor: context.palette.adapt(AppColors.white),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: AppColors.slate200),
+              borderSide: BorderSide(color: context.palette.adapt(AppColors.slate200)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: AppColors.slate200),
+              borderSide: BorderSide(color: context.palette.adapt(AppColors.slate200)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -402,15 +403,15 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                   onSelected: (selected) {
                     if (selected) setState(() => _amountController.text = p);
                   },
-                  backgroundColor: AppColors.white,
-                  selectedColor: AppColors.emerald50,
+                  backgroundColor: context.palette.adapt(AppColors.white),
+                  selectedColor: context.palette.adapt(AppColors.emerald50),
                   labelStyle: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: _amountController.text == p ? AppColors.emerald700 : AppColors.slate700,
+                    color: _amountController.text == p ? AppColors.emerald700 : context.palette.adapt(AppColors.slate700),
                   ),
                   side: BorderSide(
-                    color: _amountController.text == p ? AppColors.emerald600 : AppColors.slate200,
+                    color: _amountController.text == p ? AppColors.emerald600 : context.palette.adapt(AppColors.slate200),
                   ),
                 )),
             ChoiceChip(
@@ -421,39 +422,39 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                   setState(() => _amountController.text = widget.user.balance.toInt().toString());
                 }
               },
-              backgroundColor: AppColors.white,
-              selectedColor: AppColors.emerald50,
+              backgroundColor: context.palette.adapt(AppColors.white),
+              selectedColor: context.palette.adapt(AppColors.emerald50),
               labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.emerald700),
-              side: const BorderSide(color: AppColors.slate200),
+              side: BorderSide(color: context.palette.adapt(AppColors.slate200)),
             ),
           ],
         ),
         const SizedBox(height: 20),
 
         // UPI ID Field
-        const Text(
+        Text(
           'Beneficiary UPI ID',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900),
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: context.palette.adapt(AppColors.slate900)),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: _upiController,
           keyboardType: TextInputType.emailAddress,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.slate900),
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: context.palette.adapt(AppColors.slate900)),
           decoration: InputDecoration(
             hintText: 'e.g. 9876543210@paytm or user@okhdfcbank',
-            hintStyle: const TextStyle(fontSize: 13, color: AppColors.slate400),
+            hintStyle: TextStyle(fontSize: 13, color: context.palette.adapt(AppColors.slate400)),
             filled: true,
-            fillColor: AppColors.white,
+            fillColor: context.palette.adapt(AppColors.white),
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            prefixIcon: const Icon(Icons.account_balance_wallet_outlined, size: 18, color: AppColors.slate400),
+            prefixIcon: Icon(Icons.account_balance_wallet_outlined, size: 18, color: context.palette.adapt(AppColors.slate400)),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: AppColors.slate200),
+              borderSide: BorderSide(color: context.palette.adapt(AppColors.slate200)),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: AppColors.slate200),
+              borderSide: BorderSide(color: context.palette.adapt(AppColors.slate200)),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -467,19 +468,19 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: AppColors.slate100,
+            color: context.palette.adapt(AppColors.slate100),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.slate200),
+            border: Border.all(color: context.palette.adapt(AppColors.slate200)),
           ),
-          child: const Row(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.shield_outlined, size: 16, color: AppColors.slate600),
+              Icon(Icons.shield_outlined, size: 16, color: context.palette.adapt(AppColors.slate600)),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Minimum withdrawal is ₹10. Ensure your VPA/UPI ID is entered accurately. Funds sent to an incorrect UPI ID cannot be reversed.',
-                  style: TextStyle(fontSize: 12, color: AppColors.slate600, height: 1.4),
+                  style: TextStyle(fontSize: 12, color: context.palette.adapt(AppColors.slate600), height: 1.4),
                 ),
               ),
             ],

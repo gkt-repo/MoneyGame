@@ -1,3 +1,4 @@
+import { SeepTableView } from './games/seep/SeepTableView';
 import React, { useEffect, useState, useRef } from 'react';
 import { RoomItem, userApi, UserProfile } from '../services/api';
 import { connectSocket } from '../services/socket';
@@ -117,11 +118,11 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
     );
   }
 
-  const inWaitingHall = ['TEEN_PATTI', 'TWENTY_NINE'].includes(room.gameType)
+  const inWaitingHall = ['TEEN_PATTI', 'TWENTY_NINE', 'SEEP'].includes(room.gameType)
     && ['WAITING', 'COUNTDOWN', 'CANCELLED'].includes(room.status);
 
   return (
-    <div className="max-w-xl mx-auto space-y-6">
+    <div className={`${room.gameType === 'SEEP' ? 'max-w-3xl' : 'max-w-xl'} mx-auto space-y-6`}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <button
@@ -163,6 +164,8 @@ export const ActiveRoomView: React.FC<ActiveRoomViewProps> = ({
       {/* Dynamic Game Table Rendering based on room.gameType */}
       {inWaitingHall ? (
         <CardWaitingHall room={room} userId={user.id} />
+      ) : room.gameType === 'SEEP' ? (
+        <SeepTableView room={room} user={user} onRefreshBalance={onRefreshBalance} />
       ) : room.gameType === 'TEEN_PATTI' ? (
         <TeenPattiTableView
           room={room}

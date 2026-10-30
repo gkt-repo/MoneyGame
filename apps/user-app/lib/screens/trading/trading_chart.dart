@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../core/constants/app_theme.dart';
+import '../../core/constants/colors.dart';
 import 'package:intl/intl.dart' show DateFormat;
 import '../../core/models/trading_models.dart';
 
@@ -35,7 +37,7 @@ class _TradingChartState extends State<TradingChart> {
             selected == null
                 ? 'Price · credits per share'
                 : 'O ${selected.open}  H ${selected.high}  L ${selected.low}  C ${selected.close}',
-            style: const TextStyle(color: Color(0xff8e9daf), fontSize: 10),
+            style: TextStyle(color: context.palette.muted, fontSize: 10),
           ),
         ),
         LayoutBuilder(
@@ -58,6 +60,7 @@ class _TradingChartState extends State<TradingChart> {
                           widget.average,
                           _selected,
                           widget.trades,
+                          context.palette,
                         ),
                       ),
                     ),
@@ -153,14 +156,14 @@ class _TradingChartState extends State<TradingChart> {
           },
         ),
         if (widget.candles.isEmpty)
-          const Text(
+          Text(
             'Waiting for price snapshots.',
-            style: TextStyle(color: Color(0xff8e9daf), fontSize: 11),
+            style: TextStyle(color: context.palette.muted, fontSize: 11),
           ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Drag price ↕ to scale · drag time ↔ to zoom',
-          style: TextStyle(color: Color(0xff8e9daf), fontSize: 10),
+          style: TextStyle(color: context.palette.muted, fontSize: 10),
         ),
       ],
     );
@@ -206,17 +209,20 @@ class _ChartPainter extends CustomPainter {
   final double average;
   final int? selected;
   final List<TradingExecution> trades;
-  _ChartPainter(this.data, this.view, this.average, this.selected, this.trades);
-  void text(
-    Canvas canvas,
-    String value,
-    Offset offset, {
-    Color color = const Color(0xff8e9daf),
-  }) {
+  final AppPalette palette;
+  _ChartPainter(
+    this.data,
+    this.view,
+    this.average,
+    this.selected,
+    this.trades,
+    this.palette,
+  );
+  void text(Canvas canvas, String value, Offset offset, {Color? color}) {
     final painter = TextPainter(
       text: TextSpan(
         text: value,
-        style: TextStyle(fontSize: 10, color: color),
+        style: TextStyle(fontSize: 10, color: color ?? palette.muted),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -230,7 +236,7 @@ class _ChartPainter extends CustomPainter {
     double y(double price) =>
         8 + (view.high - price) / (view.high - view.low) * (height - 16);
     final grid = Paint()
-      ..color = const Color(0xff26303d)
+      ..color = palette.outline
       ..strokeWidth = .7;
     for (var i = 0; i <= 4; i++) {
       final value = view.low + (view.high - view.low) * i / 4, cy = y(value);
@@ -262,8 +268,8 @@ class _ChartPainter extends CustomPainter {
       if (cx < -candleWidth || cx > width + candleWidth) continue;
       final paint = Paint()
         ..color = c.close >= c.open
-            ? const Color(0xff34d399)
-            : const Color(0xfff87171)
+            ? palette.accent
+            : palette.adapt(AppColors.red600)
         ..strokeWidth = 1.3;
       canvas.drawLine(Offset(cx, y(c.high)), Offset(cx, y(c.low)), paint);
       canvas.drawRect(
@@ -278,7 +284,7 @@ class _ChartPainter extends CustomPainter {
     }
     if (average > 0 && average >= view.low && average <= view.high) {
       final paint = Paint()
-        ..color = const Color(0xffc9af72)
+        ..color = palette.adapt(AppColors.amber700)
         ..strokeWidth = .8;
       for (double dx = 0; dx < width; dx += 8) {
         canvas.drawLine(
@@ -291,7 +297,7 @@ class _ChartPainter extends CustomPainter {
         canvas,
         'Avg. ${average.toStringAsFixed(1)}',
         Offset(5, y(average) - 14),
-        color: const Color(0xffc9af72),
+        color: palette.adapt(AppColors.amber700),
       );
     }
     for (final t in trades) {
@@ -301,8 +307,8 @@ class _ChartPainter extends CustomPainter {
         3,
         Paint()
           ..color = t.side == 'BUY'
-              ? const Color(0xff34d399)
-              : const Color(0xfff87171),
+              ? palette.accent
+              : palette.adapt(AppColors.red600),
       );
     }
     if (selected != null && selected! < data.length) {
@@ -310,12 +316,12 @@ class _ChartPainter extends CustomPainter {
       canvas.drawLine(
         Offset(x(c.time), 0),
         Offset(x(c.time), height),
-        Paint()..color = Colors.white38,
+        Paint()..color = palette.muted.withValues(alpha: .55),
       );
       canvas.drawLine(
         Offset(0, y(c.close)),
         Offset(width, y(c.close)),
-        Paint()..color = Colors.white38,
+        Paint()..color = palette.muted.withValues(alpha: .55),
       );
     }
     canvas.restore();

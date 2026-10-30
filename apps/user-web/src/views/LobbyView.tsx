@@ -32,7 +32,7 @@ interface LobbyViewProps {
   loading: boolean;
   onRefresh: () => void;
   onSelectRoom: (roomId: string) => void;
-  defaultFilter?: 'ALL' | 'TWENTY_NINE' | 'TEEN_PATTI' | 'GUESS_NUMBER' | 'SPORTS_MATCH';
+  defaultFilter?: 'ALL' | 'SEEP' | 'TWENTY_NINE' | 'TEEN_PATTI' | 'GUESS_NUMBER' | 'SPORTS_MATCH';
   onOpenInvitationModal?: (token: string) => void;
 }
 
@@ -256,7 +256,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const [selectedPublicUserId, setSelectedPublicUserId] = useState<string | null>(null);
 
   // Selected filters
-  const [filterGame, setFilterGame] = useState<'ALL' | 'TWENTY_NINE' | 'TEEN_PATTI' | 'GUESS_NUMBER' | 'SPORTS_MATCH'>(
+  const [filterGame, setFilterGame] = useState<'ALL' | 'SEEP' | 'TWENTY_NINE' | 'TEEN_PATTI' | 'GUESS_NUMBER' | 'SPORTS_MATCH'>(
     defaultFilter || 'ALL'
   );
   const [filterStake, setFilterStake] = useState<'ALL' | 'LOW' | 'MID' | 'HIGH'>('ALL');
@@ -269,11 +269,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   }, [defaultFilter]);
 
   // Create Room fields
-  const [selectedGameType, setSelectedGameType] = useState<'TWENTY_NINE' | 'TEEN_PATTI' | 'GUESS_NUMBER' | 'SPORTS_MATCH'>(
-    defaultFilter === 'SPORTS_MATCH' ? 'SPORTS_MATCH' : defaultFilter === 'TWENTY_NINE' ? 'TWENTY_NINE' : 'TEEN_PATTI'
+  const [selectedGameType, setSelectedGameType] = useState<'SEEP' | 'TWENTY_NINE' | 'TEEN_PATTI' | 'GUESS_NUMBER' | 'SPORTS_MATCH'>(
+    defaultFilter === 'SEEP' ? 'SEEP' : defaultFilter === 'SPORTS_MATCH' ? 'SPORTS_MATCH' : defaultFilter === 'TWENTY_NINE' ? 'TWENTY_NINE' : 'TEEN_PATTI'
   );
   const [entryFee, setEntryFee] = useState(20);
-  const [maxPlayers, setMaxPlayers] = useState(6);
+  const [maxPlayers, setMaxPlayers] = useState(defaultFilter === 'SEEP' ? 2 : 6);
+  const [seepJoin, setSeepJoin] = useState<RoomItem | null>(null);
   const [createGuess, setCreateGuess] = useState(7);
   const [isPrivate, setIsPrivate] = useState(false);
 
@@ -703,7 +704,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     if (isFull) return;
 
     setError(null);
-    if (room.gameType === 'TWENTY_NINE') {
+    if (room.gameType === 'SEEP') {
+      setSeepJoin(room);
+    } else if (room.gameType === 'TWENTY_NINE') {
       setSelectedTwentyNineRoom(room);
     } else if (room.gameType === 'TEEN_PATTI') {
       setSelectedTeenPattiRoom(room);
@@ -795,6 +798,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 setCreateSportsSearch('');
                 setEntryFee(100);
                 setSportsCapacity(10);
+              } else if (filterGame === 'SEEP') {
+                setSelectedGameType('SEEP'); setEntryFee(25); setMaxPlayers(2);
               } else if (filterGame === 'TWENTY_NINE') {
                 setSelectedGameType('TWENTY_NINE');
                 setEntryFee(25);
@@ -823,7 +828,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-5 text-white border border-indigo-500/40 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start sm:items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center shrink-0 text-2xl">
-              {activeUserRoom.gameType === 'TWENTY_NINE' ? '🃏' : activeUserRoom.gameType === 'TEEN_PATTI' ? '🎴' : activeUserRoom.gameType === 'SPORTS_MATCH' ? '🏏' : '🎲'}
+              {activeUserRoom.gameType === 'SEEP' ? '♠' : activeUserRoom.gameType === 'TWENTY_NINE' ? '🃏' : activeUserRoom.gameType === 'TEEN_PATTI' ? '🎴' : activeUserRoom.gameType === 'SPORTS_MATCH' ? '🏏' : '🎲'}
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -832,7 +837,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 <span className="text-xs font-mono font-bold bg-white/10 px-2 py-0.5 rounded">#{activeUserRoom.roomCode}</span>
               </div>
               <h3 className="text-base font-extrabold text-white mt-0.5">
-                {activeUserRoom.gameType === 'TWENTY_NINE'
+                {activeUserRoom.gameType === 'SEEP' ? 'Seep' : activeUserRoom.gameType === 'TWENTY_NINE'
                   ? '29 Card Game (Partnership)'
                   : activeUserRoom.gameType === 'TEEN_PATTI'
                   ? 'Teen Patti'
@@ -867,6 +872,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         >
           All Tables ({rooms.length})
         </button>
+        <button onClick={() => setFilterGame('SEEP')} className={`px-4 py-2 rounded-xl text-xs font-bold border transition ${filterGame === 'SEEP' ? 'bg-emerald-900 text-amber-100 border-emerald-800' : 'bg-white text-slate-700 border-slate-200'}`}>♠ Seep ({rooms.filter(r => r.gameType === 'SEEP').length})</button>
         <button
           onClick={() => setFilterGame('TWENTY_NINE')}
           className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
@@ -1194,7 +1200,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             : 'bg-emerald-50 text-emerald-700 border-emerald-300'
                         }`}
                       >
-                        {isSports ? '🏏 LIVE SPORTS' : isTwentyNine ? '🃏 29 CARDS' : isTeenPatti ? '🎴 3 PATTI' : '🎲 DICE GUESS'}
+                        {room.gameType === 'SEEP' ? '♠ SEEP' : isSports ? '🏏 LIVE SPORTS' : isTwentyNine ? '🃏 29 CARDS' : isTeenPatti ? '🎴 3 PATTI' : '🎲 DICE GUESS'}
                       </span>
                       <span className="font-mono text-xs font-bold px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded">
                         #{room.roomCode}
@@ -1704,6 +1710,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">Select Arena / Game</label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button type="button" onClick={() => { setSelectedGameType('SEEP'); setEntryFee(25); setMaxPlayers(2); }} className={`py-2 px-2.5 rounded-xl border text-left ${selectedGameType === 'SEEP' ? 'bg-emerald-900 text-amber-100 border-emerald-800' : 'bg-white border-slate-200 text-slate-700'}`}><span className="text-xl">♠</span><div className="text-xs font-bold">Seep</div><div className="text-[10px]">2 players / 2 vs 2</div></button>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1995,7 +2003,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 <div className="flex flex-wrap gap-2">
                   {(selectedGameType === 'SPORTS_MATCH'
                     ? sportsStakes
-                    : selectedGameType === 'TWENTY_NINE'
+                    : ['TWENTY_NINE', 'SEEP'].includes(selectedGameType)
                     ? twentyNineStakes
                     : selectedGameType === 'TEEN_PATTI'
                     ? teenPattiStakes
@@ -2044,7 +2052,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   </div>
                 ) : (
                   <div className="flex gap-2">
-                    {(selectedGameType === 'TEEN_PATTI' ? teenPattiPlayerCounts : dicePlayerCounts).map(
+                    {(selectedGameType === 'SEEP' ? [2, 4] : selectedGameType === 'TEEN_PATTI' ? teenPattiPlayerCounts : dicePlayerCounts).map(
                       (count) => (
                         <button
                           key={count}
@@ -2261,7 +2269,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <div className="flex justify-between items-center text-slate-700">
                     <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Game</span>
                     <span className="font-bold text-slate-900 flex items-center gap-1">
-                      {codeTargetRoom.gameType === 'TWENTY_NINE'
+                      {codeTargetRoom.gameType === 'SEEP' ? 'Seep' : codeTargetRoom.gameType === 'TWENTY_NINE'
                         ? '🃏 29 Card Game'
                         : codeTargetRoom.gameType === 'SPORTS_MATCH'
                         ? '🏏 Live Sports Pool'
@@ -2425,7 +2433,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         </>
                       ) : (
                         <span>
-                          {codeTargetRoom.gameType === 'TWENTY_NINE'
+                          {['SEEP', 'TWENTY_NINE'].includes(codeTargetRoom.gameType)
                             ? `Lock ₹${codeTargetRoom.entryFee} & Take Seat`
                             : codeTargetRoom.gameType === 'SPORTS_MATCH'
                             ? `Lock ₹${codeTargetRoom.entryFee} & Back Team`
@@ -2527,6 +2535,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         </div>
       )}
 
+      {seepJoin && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"><section role="dialog" aria-modal="true" aria-label="Join Seep table" className="w-full max-w-sm rounded-2xl bg-white p-6 space-y-4 shadow-xl">
+        <h2 className="text-xl font-bold text-emerald-900">♠ Take a seat · Seep</h2><p className="text-sm text-slate-600">Table {seepJoin.roomCode} · {seepJoin.maxPlayers === 4 ? '2 vs 2 partnership' : 'Head to head'}</p>
+        <p className="text-sm">₹{seepJoin.entryFee} entry · {seepJoin.players.length}/{seepJoin.maxPlayers} seats occupied · ₹{(seepJoin.entryFee * seepJoin.maxPlayers).toFixed(2)} pool before commission.</p><p className="text-xs text-slate-500">Single deal, 100 card points plus sweeps. Opposite seats are partners in four-player games. Highest score wins; a draw returns all entries. <a href="/rules/seep.html" target="_blank" rel="noreferrer" className="underline">Read rules</a></p>
+        {error && <p role="alert" className="text-red-600 text-sm">{error}</p>}
+        <div className="flex justify-end gap-3"><button disabled={submitting} onClick={() => setSeepJoin(null)} className="px-4 py-2 text-sm">Cancel</button><button disabled={submitting || balance < seepJoin.entryFee} className="rounded-xl bg-emerald-800 px-4 py-2 text-sm font-bold text-white disabled:opacity-50" onClick={async () => { setSubmitting(true); setError(null); try { const result = await userApi.joinRoom(user.id, seepJoin.roomCode); setSeepJoin(null); onRefresh(); onSelectRoom(result.room.id); } catch (err) { setError(err instanceof Error ? err.message : 'Unable to join'); } finally { setSubmitting(false); } }}>{submitting ? 'Joining…' : balance < seepJoin.entryFee ? 'Insufficient balance' : `Lock ₹${seepJoin.entryFee} & Join`}</button></div>
+      </section></div>}
       {/* Public Profile Modal */}
       <PublicProfileModal
         userId={selectedPublicUserId}

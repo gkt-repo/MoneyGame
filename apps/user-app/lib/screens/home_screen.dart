@@ -1,3 +1,4 @@
+import '../core/constants/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/constants/colors.dart';
@@ -8,6 +9,7 @@ import '../core/services/notification_sound_service.dart';
 import 'lobby/lobby_screen.dart';
 import 'trading/trading_screen.dart';
 import 'wallet/withdraw_screen.dart';
+import 'wallet/add_cash_screen.dart';
 import 'profile/personal_profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -41,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _user = widget.user;
+    if (widget.pendingInvitation != null) _currentIndex = 1;
     _initSocket();
     _refreshProfile();
     _loadNotifications();
@@ -49,8 +52,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void didUpdateWidget(covariant HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.pendingInvitation != null && widget.pendingInvitation != oldWidget.pendingInvitation) {
-      _currentIndex = 0;
+    if (widget.pendingInvitation != null &&
+        widget.pendingInvitation != oldWidget.pendingInvitation) {
+      _currentIndex = 1;
     }
   }
 
@@ -79,7 +83,9 @@ class _HomeScreenState extends State<HomeScreen> {
           NotificationSoundService().playNotificationRing();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Payment approved! Wallet balance: ₹${newBalance.toStringAsFixed(2)}'),
+              content: Text(
+                'Payment approved! Wallet balance: ₹${newBalance.toStringAsFixed(2)}',
+              ),
               backgroundColor: AppColors.emerald700,
             ),
           );
@@ -101,7 +107,9 @@ class _HomeScreenState extends State<HomeScreen> {
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
               backgroundColor: AppColors.slate900,
               elevation: 8,
               content: Row(
@@ -126,7 +134,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           notif.message,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11, color: AppColors.slate300),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: context.palette.adapt(AppColors.slate300),
+                          ),
                         ),
                       ],
                     ),
@@ -193,7 +204,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _markAsRead(String id) async {
     setState(() {
-      _notifications = _notifications.map((n) => n.id == id ? n.copyWith(isRead: true) : n).toList();
+      _notifications = _notifications
+          .map((n) => n.id == id ? n.copyWith(isRead: true) : n)
+          .toList();
       _unreadNotificationCount = (_unreadNotificationCount - 1).clamp(0, 999);
     });
     await ApiClient.markNotificationAsRead(id);
@@ -201,14 +214,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _markAllAsRead() async {
     setState(() {
-      _notifications = _notifications.map((n) => n.copyWith(isRead: true)).toList();
+      _notifications = _notifications
+          .map((n) => n.copyWith(isRead: true))
+          .toList();
       _unreadNotificationCount = 0;
     });
     await ApiClient.markAllNotificationsAsRead();
   }
 
   Future<void> _deleteNotification(String id) async {
-    final target = _notifications.firstWhere((n) => n.id == id, orElse: () => _notifications.first);
+    final target = _notifications.firstWhere(
+      (n) => n.id == id,
+      orElse: () => _notifications.first,
+    );
     setState(() {
       _notifications.removeWhere((n) => n.id == id);
       if (!target.isRead) {
@@ -226,46 +244,89 @@ class _HomeScreenState extends State<HomeScreen> {
     await ApiClient.clearAllNotifications();
   }
 
+  void _openDeposit() {
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => AddCashScreen(
+              user: _user,
+              onPaymentSuccess: _refreshProfile,
+            ),
+          ),
+        )
+        .then((_) {
+          if (mounted) _refreshProfile();
+        });
+  }
+
   void _openWithdraw() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => WithdrawScreen(
-          user: _user,
-          onWithdrawalSuccess: _refreshProfile,
-        ),
-      ),
-    ).then((_) => _refreshProfile());
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => WithdrawScreen(
+              user: _user,
+              onWithdrawalSuccess: _refreshProfile,
+            ),
+          ),
+        )
+        .then((_) => _refreshProfile());
   }
 
   void _openProfile() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => PersonalProfileScreen(
-      user: _user, onChanged: _refreshProfile, onNotifications: _showNotificationSheet,
-      onLogout: () { Navigator.of(context).popUntil((route) => route.isFirst); _confirmLogout(); },
-    ))).then((_) { if (mounted) _refreshProfile(); });
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => PersonalProfileScreen(
+              user: _user,
+              onChanged: _refreshProfile,
+              onNotifications: _showNotificationSheet,
+              onLogout: () {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+                _confirmLogout();
+              },
+            ),
+          ),
+        )
+        .then((_) {
+          if (mounted) _refreshProfile();
+        });
   }
 
   void _openTrading() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => Scaffold(
-      appBar: AppBar(title: const Text('CricTrade')),
-      body: TradingScreen(userId: _user.id, onWithdraw: () async { await _refreshProfile(); if (mounted) _openWithdraw(); }),
-    )));
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TradingScreen(
+          userId: _user.id,
+          onWithdraw: () async {
+            await _refreshProfile();
+            if (mounted) _openWithdraw();
+          },
+        ),
+      ),
+    );
   }
 
   void _confirmLogout() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.white,
+        backgroundColor: context.palette.adapt(AppColors.white),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Text('Confirm Logout', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-        content: const Text(
+        title: const Text(
+          'Confirm Logout',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        content: Text(
           'Are you sure you want to end this session?',
-          style: TextStyle(fontSize: 13, color: AppColors.slate600),
+          style: TextStyle(fontSize: 13, color: context.palette.adapt(AppColors.slate600)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.slate500)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: context.palette.adapt(AppColors.slate500)),
+            ),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -278,7 +339,10 @@ class _HomeScreenState extends State<HomeScreen> {
               backgroundColor: AppColors.red600,
               elevation: 0,
             ),
-            child: const Text('Logout', style: TextStyle(color: AppColors.white)),
+            child: const Text(
+              'Logout',
+              style: TextStyle(color: AppColors.white),
+            ),
           ),
         ],
       ),
@@ -287,25 +351,177 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.white,
-    appBar: AppBar(backgroundColor: Colors.white, surfaceTintColor: Colors.transparent,
-      title: const Text('MONEYGAME', style: TextStyle(fontSize: 13, letterSpacing: 2.5, fontWeight: FontWeight.w700)),
-      actions: [Padding(padding: const EdgeInsets.only(right: 12), child: IconButton(tooltip: 'My profile', onPressed: _openProfile,
-        style: IconButton.styleFrom(backgroundColor: const Color(0xfff4f4f4)), icon: const Icon(Icons.person_outline, color: Colors.black)))],
-    ),
-    body: LobbyScreen(user: _user, onBalanceRefresh: _refreshProfile,
-      pendingInvitation: widget.pendingInvitation, onInvitationOpened: widget.onInvitationOpened,
-      gamesMode: _currentIndex == 1, onOpenTrading: _openTrading),
-    bottomNavigationBar: NavigationBarTheme(
-      data: const NavigationBarThemeData(
-        iconTheme: WidgetStatePropertyAll(IconThemeData(color: Colors.black87)),
-        labelTextStyle: WidgetStatePropertyAll(TextStyle(color: Colors.black87, fontSize: 12, fontWeight: FontWeight.w600)),
+    backgroundColor: context.palette.adapt(AppColors.canvas),
+    appBar: AppBar(
+      backgroundColor: context.palette.adapt(AppColors.canvas),
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      centerTitle: false,
+      titleSpacing: 16,
+      toolbarHeight: 48,
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Image.asset(
+              'assets/icon/app_icon.png',
+              width: 24,
+              height: 24,
+              fit: BoxFit.cover,
+            ),
+          ),
+          const SizedBox(width: 9),
+          Text(
+            'MONEYGAME',
+            style: TextStyle(
+              fontSize: 13,
+              letterSpacing: 2,
+              fontWeight: FontWeight.w700,
+              color: context.palette.adapt(AppColors.ink),
+            ),
+          ),
+        ],
       ),
-      child: NavigationBar(backgroundColor: Colors.white, surfaceTintColor: Colors.transparent,
-      indicatorColor: const Color(0xffeaeaea), selectedIndex: _currentIndex,
-      onDestinationSelected: (index) => setState(() => _currentIndex = index),
-      destinations: const [NavigationDestination(icon: Icon(Icons.table_restaurant_outlined), selectedIcon: Icon(Icons.table_restaurant), label: 'Join Tables'),
-        NavigationDestination(icon: Icon(Icons.sports_esports_outlined), selectedIcon: Icon(Icons.sports_esports), label: 'Games')])),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 16),
+          child: IconButton(
+            tooltip: 'My profile',
+            onPressed: _openProfile,
+            style: IconButton.styleFrom(
+              backgroundColor: context.palette.adapt(Colors.white),
+              side: BorderSide(color: context.palette.adapt(AppColors.outline)),
+              minimumSize: const Size(40, 40),
+            ),
+            icon: Icon(
+              Icons.person_outline,
+              size: 20,
+              color: context.palette.adapt(AppColors.ink),
+            ),
+          ),
+        ),
+      ],
+      bottom: PreferredSize(
+        preferredSize: Size.fromHeight(
+          MediaQuery.textScalerOf(context).scale(44) + 12,
+        ),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Balance',
+                        style: TextStyle(
+                          color: context.palette.muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '₹${_user.balance.toStringAsFixed(2)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: context.palette.ink,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                IconButton.filled(
+                  tooltip: 'Deposit',
+                  onPressed: _openDeposit,
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.emerald700,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(40, 40),
+                  ),
+                  icon: const Icon(Icons.add_rounded, size: 20),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+    body: LobbyScreen(
+      user: _user,
+      onBalanceRefresh: _refreshProfile,
+      pendingInvitation: widget.pendingInvitation,
+      onInvitationOpened: widget.onInvitationOpened,
+      section: LobbySection.values[_currentIndex],
+      onOpenTrading: _openTrading,
+    ),
+    bottomNavigationBar: DecoratedBox(
+      decoration: BoxDecoration(
+        color: context.palette.adapt(Colors.white),
+        border: Border(top: BorderSide(color: context.palette.adapt(AppColors.outline))),
+      ),
+      child: NavigationBarTheme(
+        data: NavigationBarThemeData(
+          iconTheme: WidgetStateProperty.resolveWith(
+            (states) => IconThemeData(
+              color: states.contains(WidgetState.selected)
+                  ? context.palette.accent
+                  : context.palette.adapt(AppColors.muted),
+            ),
+          ),
+          labelTextStyle: WidgetStateProperty.resolveWith(
+            (states) => TextStyle(
+              color: states.contains(WidgetState.selected)
+                  ? context.palette.adapt(AppColors.ink)
+                  : context.palette.adapt(AppColors.muted),
+              fontSize: 11,
+              fontWeight: states.contains(WidgetState.selected)
+                  ? FontWeight.w700
+                  : FontWeight.w500,
+            ),
+          ),
+        ),
+        child: NavigationBar(
+          height: 60,
+          labelPadding: const EdgeInsets.only(top: 2),
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          indicatorColor: context.palette.adapt(AppColors.emerald50),
+          selectedIndex: _currentIndex,
+          onDestinationSelected: (index) =>
+              setState(() => _currentIndex = index),
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.sports_esports_outlined),
+              selectedIcon: Icon(Icons.sports_esports),
+              label: 'Games',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.table_restaurant_outlined),
+              selectedIcon: Icon(Icons.table_restaurant),
+              label: 'Join Tables',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.bookmark_border_rounded),
+              selectedIcon: Icon(Icons.bookmark_rounded),
+              label: 'My Table',
+            ),
+          ],
+        ),
+      ),
+    ),
   );
 
   String _formatRelativeTime(DateTime dt) {
@@ -335,7 +551,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             Widget bodyContent;
             if (_loadingNotifications && _notifications.isEmpty) {
-              bodyContent = const Center(
+              bodyContent = Center(
                 child: Padding(
                   padding: EdgeInsets.all(32.0),
                   child: Column(
@@ -343,7 +559,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.emerald600),
                       SizedBox(height: 12),
-                      Text('Loading updates...', style: TextStyle(fontSize: 12, color: AppColors.slate500)),
+                      Text('Loading updates...', style: TextStyle(fontSize: 12, color: context.palette.adapt(AppColors.slate500))),
                     ],
                   ),
                 ),
@@ -355,11 +571,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.cloud_off, size: 36, color: AppColors.slate400),
+                      Icon(Icons.cloud_off, size: 36, color: context.palette.adapt(AppColors.slate400)),
                       const SizedBox(height: 10),
-                      const Text(
+                      Text(
                         'Failed to load notifications',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.slate800),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: context.palette.adapt(AppColors.slate800)),
                       ),
                       const SizedBox(height: 6),
                       TextButton.icon(
@@ -392,15 +608,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: 60,
                             height: 60,
                             decoration: BoxDecoration(
-                              color: AppColors.slate100,
+                              color: context.palette.adapt(AppColors.slate100),
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            child: const Icon(Icons.notifications_none, size: 30, color: AppColors.slate400),
+                            child: Icon(Icons.notifications_none, size: 30, color: context.palette.adapt(AppColors.slate400)),
                           ),
                           const SizedBox(height: 12),
-                          const Text(
+                          Text(
                             'No notifications',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.slate800),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate800)),
                           ),
                           const SizedBox(height: 4),
                           Padding(
@@ -410,7 +626,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ? 'You have read all your notifications.'
                                   : 'Payout confirmations, deposit updates, and table results will appear here.',
                               textAlign: TextAlign.center,
-                              style: const TextStyle(fontSize: 12, color: AppColors.slate400),
+                              style: TextStyle(fontSize: 12, color: context.palette.adapt(AppColors.slate400)),
                             ),
                           ),
                         ],
@@ -445,10 +661,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: notif.isRead ? Colors.white : AppColors.emerald50.withValues(alpha: 0.35),
+                          color: notif.isRead ? context.palette.adapt(Colors.white) : context.palette.adapt(AppColors.emerald50).withValues(alpha: 0.35),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: notif.isRead ? AppColors.slate200 : AppColors.emerald200,
+                            color: notif.isRead ? context.palette.adapt(AppColors.slate200) : AppColors.emerald200,
                           ),
                         ),
                         child: Row(
@@ -465,18 +681,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                       Expanded(
                                         child: Text(
                                           notif.title,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w700,
-                                            color: AppColors.slate900,
+                                            color: context.palette.adapt(AppColors.slate900),
                                           ),
                                         ),
                                       ),
                                       Text(
                                         _formatRelativeTime(notif.createdAt),
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 10,
-                                          color: AppColors.slate400,
+                                          color: context.palette.adapt(AppColors.slate400),
                                           fontFamily: 'monospace',
                                         ),
                                       ),
@@ -485,9 +701,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   const SizedBox(height: 3),
                                   Text(
                                     notif.message,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 11,
-                                      color: AppColors.slate600,
+                                      color: context.palette.adapt(AppColors.slate600),
                                       height: 1.35,
                                     ),
                                   ),
@@ -507,28 +723,28 @@ class _HomeScreenState extends State<HomeScreen> {
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                         decoration: BoxDecoration(
-                                          color: AppColors.slate100,
+                                          color: context.palette.adapt(AppColors.slate100),
                                           borderRadius: BorderRadius.circular(6),
-                                          border: Border.all(color: AppColors.slate200),
+                                          border: Border.all(color: context.palette.adapt(AppColors.slate200)),
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            const Text(
+                                            Text(
                                               'UTR: ',
-                                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.slate500),
+                                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: context.palette.adapt(AppColors.slate500)),
                                             ),
                                             Text(
                                               utr.toString(),
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.w700,
                                                 fontFamily: 'monospace',
-                                                color: AppColors.slate800,
+                                                color: context.palette.adapt(AppColors.slate800),
                                               ),
                                             ),
                                             const SizedBox(width: 4),
-                                            const Icon(Icons.copy, size: 11, color: AppColors.slate500),
+                                            Icon(Icons.copy, size: 11, color: context.palette.adapt(AppColors.slate500)),
                                           ],
                                         ),
                                       ),
@@ -555,9 +771,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                     await _deleteNotification(notif.id);
                                     setModalState(() {});
                                   },
-                                  child: const Padding(
+                                  child: Padding(
                                     padding: EdgeInsets.all(4.0),
-                                    child: Icon(Icons.delete_outline, size: 15, color: AppColors.slate400),
+                                    child: Icon(Icons.delete_outline, size: 15, color: context.palette.adapt(AppColors.slate400)),
                                   ),
                                 ),
                               ],
@@ -573,8 +789,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
             return Container(
               height: MediaQuery.of(context).size.height * 0.78,
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: context.palette.adapt(Colors.white),
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: Column(
@@ -585,7 +801,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     height: 4,
                     margin: const EdgeInsets.only(top: 10, bottom: 6),
                     decoration: BoxDecoration(
-                      color: AppColors.slate300,
+                      color: context.palette.adapt(AppColors.slate300),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -598,24 +814,24 @@ class _HomeScreenState extends State<HomeScreen> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: AppColors.slate100,
+                            color: context.palette.adapt(AppColors.slate100),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(Icons.notifications, size: 20, color: AppColors.slate700),
+                          child: Icon(Icons.notifications, size: 20, color: context.palette.adapt(AppColors.slate700)),
                         ),
                         const SizedBox(width: 10),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Notifications',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate900)),
                             ),
                             Text(
                               _unreadNotificationCount > 0
                                   ? '$_unreadNotificationCount unread update${_unreadNotificationCount > 1 ? 's' : ''}'
                                   : 'All caught up',
-                              style: const TextStyle(fontSize: 11, color: AppColors.slate400),
+                              style: TextStyle(fontSize: 11, color: context.palette.adapt(AppColors.slate400)),
                             ),
                           ],
                         ),
@@ -623,7 +839,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         if (_unreadNotificationCount > 0)
                           TextButton.icon(
                             style: TextButton.styleFrom(
-                              backgroundColor: AppColors.emerald50,
+                              backgroundColor: context.palette.adapt(AppColors.emerald50),
                               foregroundColor: AppColors.emerald700,
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -636,7 +852,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             },
                           ),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 20, color: AppColors.slate500),
+                          icon: Icon(Icons.close, size: 20, color: context.palette.adapt(AppColors.slate500)),
                           onPressed: () => Navigator.pop(ctx),
                         ),
                       ],
@@ -646,7 +862,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   // Filter Pills
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    color: AppColors.slate50,
+                    color: context.palette.adapt(AppColors.slate50),
                     child: Row(
                       children: [
                         _buildFilterChip(
@@ -674,7 +890,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
-                  const Divider(height: 1, color: AppColors.slate200),
+                  Divider(height: 1, color: context.palette.adapt(AppColors.slate200)),
 
                   // Notification List
                   Expanded(
@@ -700,9 +916,9 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
+          color: isSelected ? context.palette.adapt(Colors.white) : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
-          border: isSelected ? Border.all(color: AppColors.slate200) : null,
+          border: isSelected ? Border.all(color: context.palette.adapt(AppColors.slate200)) : null,
           boxShadow: isSelected ? [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 2)] : null,
         ),
         child: Text(
@@ -710,7 +926,7 @@ class _HomeScreenState extends State<HomeScreen> {
           style: TextStyle(
             fontSize: 11,
             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            color: isSelected ? AppColors.slate900 : AppColors.slate500,
+            color: isSelected ? context.palette.adapt(AppColors.slate900) : context.palette.adapt(AppColors.slate500),
           ),
         ),
       ),
@@ -726,7 +942,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'WITHDRAWAL_COMPLETED':
         icon = Icons.arrow_outward;
         iconColor = AppColors.emerald700;
-        bgColor = AppColors.emerald50;
+        bgColor = context.palette.adapt(AppColors.emerald50);
         break;
       case 'WITHDRAWAL_REQUESTED':
         icon = Icons.hourglass_top_rounded;
@@ -736,7 +952,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'WITHDRAWAL_REJECTED':
         icon = Icons.error_outline;
         iconColor = AppColors.red600;
-        bgColor = AppColors.red50;
+        bgColor = context.palette.adapt(AppColors.red50);
         break;
       case 'DEPOSIT_APPROVED':
         icon = Icons.arrow_downward;
@@ -755,8 +971,8 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       default:
         icon = Icons.notifications_none;
-        iconColor = AppColors.slate600;
-        bgColor = AppColors.slate100;
+        iconColor = context.palette.adapt(AppColors.slate600);
+        bgColor = context.palette.adapt(AppColors.slate100);
     }
 
     return Container(

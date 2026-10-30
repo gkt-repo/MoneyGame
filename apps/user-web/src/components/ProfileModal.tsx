@@ -266,7 +266,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                         className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-200/60"
                       >
                         <span className="font-semibold text-slate-800">
-                          {game === 'TWENTY_NINE'
+                          {game === 'SEEP' ? '♠ Seep' : game === 'TWENTY_NINE'
                             ? '29 Card Game'
                             : game === 'TEEN_PATTI'
                             ? 'Teen Patti'
@@ -301,7 +301,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       >
                         <div>
                           <span className="font-semibold text-slate-800">
-                            {m.gameType === 'TWENTY_NINE'
+                            {m.gameType === 'SEEP' ? '♠ Seep' : m.gameType === 'TWENTY_NINE'
                               ? '29 Card Game'
                               : m.gameType === 'TEEN_PATTI'
                               ? 'Teen Patti'

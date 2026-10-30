@@ -5,6 +5,7 @@ import '../../core/constants/colors.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/socket_service.dart';
 import 'teen_patti/teen_patti_table_screen.dart';
+import 'seep/seep_table_screen.dart';
 import 'sports_match/sports_match_table_screen.dart';
 import 'twenty_nine/twenty_nine_table_screen.dart';
 import 'widgets/dice_3d_widget.dart';
@@ -220,7 +221,7 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
     );
   }
 
-  bool get _isCardGame => ['TEEN_PATTI', 'TWENTY_NINE'].contains(_room?.gameType);
+  bool get _isCardGame => ['TEEN_PATTI', 'TWENTY_NINE', 'SEEP'].contains(_room?.gameType);
   bool get _inWaitingHall => _isCardGame && ['WAITING', 'COUNTDOWN', 'CANCELLED'].contains(_room?.status);
 
   void _refreshBalance() {
@@ -236,6 +237,10 @@ class _ActiveRoomScreenState extends State<ActiveRoomScreen> {
         user: widget.user,
         onBalanceRefresh: _refreshBalance,
       );
+    }
+
+    if (!_loading && _error == null && !_inWaitingHall && _room?.gameType == 'SEEP') {
+      return SeepTableScreen(roomId: widget.roomId, user: widget.user, onBalanceRefresh: _refreshBalance);
     }
 
     if (!_loading && _error == null && !_inWaitingHall && _room?.gameType == 'TWENTY_NINE') {

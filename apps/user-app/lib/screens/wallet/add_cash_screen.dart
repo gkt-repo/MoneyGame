@@ -1,3 +1,4 @@
+import '../../core/constants/app_theme.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -182,9 +183,9 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
 
       if (!launched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('UPI app could not open directly. Please scan the QR code below.'),
-            backgroundColor: AppColors.amber700,
+            backgroundColor: context.palette.adapt(AppColors.amber700),
             duration: Duration(seconds: 4),
           ),
         );
@@ -192,9 +193,9 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Could not open UPI app directly. Please scan the QR code below.'),
-            backgroundColor: AppColors.amber700,
+            backgroundColor: context.palette.adapt(AppColors.amber700),
             duration: Duration(seconds: 4),
           ),
         );
@@ -213,15 +214,15 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
           return AlertDialog(
-            backgroundColor: AppColors.white,
+            backgroundColor: context.palette.adapt(AppColors.white),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
+            title: Row(
               children: [
                 Icon(Icons.verified_outlined, size: 20, color: AppColors.emerald600),
                 SizedBox(width: 8),
                 Text(
                   'Verify with UTR',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate900)),
                 ),
               ],
             ),
@@ -229,9 +230,9 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Enter the 12-digit UPI Reference Number / UTR from your bank SMS or payment receipt.',
-                  style: TextStyle(fontSize: 12, color: AppColors.slate600, height: 1.4),
+                  style: TextStyle(fontSize: 12, color: context.palette.adapt(AppColors.slate600), height: 1.4),
                 ),
                 const SizedBox(height: 14),
                 TextField(
@@ -241,23 +242,23 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(12),
                   ],
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'monospace',
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
                     letterSpacing: 1.2,
-                    color: AppColors.slate900,
+                    color: context.palette.adapt(AppColors.slate900),
                   ),
                   decoration: InputDecoration(
                     hintText: 'e.g. 429384729182',
-                    hintStyle: const TextStyle(fontSize: 13, color: AppColors.slate400, letterSpacing: 0),
+                    hintStyle: TextStyle(fontSize: 13, color: context.palette.adapt(AppColors.slate400), letterSpacing: 0),
                     labelText: '12-Digit UTR',
                     filled: true,
-                    fillColor: AppColors.slate50,
+                    fillColor: context.palette.adapt(AppColors.slate50),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: AppColors.slate200),
+                      borderSide: BorderSide(color: context.palette.adapt(AppColors.slate200)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -275,7 +276,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cancel', style: TextStyle(color: AppColors.slate500, fontWeight: FontWeight.w600)),
+                child: Text('Cancel', style: TextStyle(color: context.palette.adapt(AppColors.slate500), fontWeight: FontWeight.w600)),
               ),
               ElevatedButton(
                 onPressed: submitting
@@ -339,26 +340,26 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.slate50,
+      backgroundColor: context.palette.adapt(AppColors.slate50),
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Add Cash',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w700,
-            color: AppColors.slate900,
+            color: context.palette.adapt(AppColors.slate900),
           ),
         ),
-        backgroundColor: AppColors.white,
+        backgroundColor: context.palette.adapt(AppColors.white),
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.slate900),
+          icon: Icon(Icons.arrow_back_ios_new, size: 18, color: context.palette.adapt(AppColors.slate900)),
           onPressed: () => Navigator.of(context).pop(),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(color: AppColors.slate200, height: 1),
+          child: Container(color: context.palette.adapt(AppColors.slate200), height: 1),
         ),
       ),
       body: SafeArea(
@@ -383,33 +384,36 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.white,
+            color: context.palette.adapt(AppColors.white),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.slate200),
+            border: Border.all(color: context.palette.adapt(AppColors.slate200)),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 12,
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'CURRENT WALLET BALANCE',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.5,
-                      color: AppColors.slate500,
+                      color: context.palette.adapt(AppColors.slate500),
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     '₹${widget.user.balance.toStringAsFixed(2)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 24,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.slate900,
+                      color: context.palette.adapt(AppColors.slate900),
                     ),
                   ),
                 ],
@@ -417,7 +421,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.emerald50,
+                  color: context.palette.adapt(AppColors.emerald50),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: AppColors.emerald600.withValues(alpha: 0.25)),
                 ),
@@ -447,9 +451,9 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
           width: double.infinity,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: AppColors.white,
+            color: context.palette.adapt(AppColors.white),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.slate200),
+            border: Border.all(color: context.palette.adapt(AppColors.slate200)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.03),
@@ -461,21 +465,24 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 10,
+                runSpacing: 8,
                 children: [
-                  const Text(
+                  Text(
                     'Select Deposit Amount',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.slate900,
+                      color: context.palette.adapt(AppColors.slate900),
                     ),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AppColors.emerald50,
+                      color: context.palette.adapt(AppColors.emerald50),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Text(
@@ -515,10 +522,10 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
                       decoration: BoxDecoration(
-                        color: isSelected ? AppColors.emerald50 : AppColors.slate50,
+                        color: isSelected ? context.palette.adapt(AppColors.emerald50) : context.palette.adapt(AppColors.slate50),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: isSelected ? AppColors.emerald600 : AppColors.slate200,
+                          color: isSelected ? AppColors.emerald600 : context.palette.adapt(AppColors.slate200),
                           width: isSelected ? 1.5 : 1.0,
                         ),
                       ),
@@ -536,7 +543,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                               fontFamily: 'monospace',
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
-                              color: isSelected ? AppColors.emerald700 : AppColors.slate800,
+                              color: isSelected ? AppColors.emerald700 : context.palette.adapt(AppColors.slate800),
                             ),
                           ),
                         ],
@@ -548,12 +555,12 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
               const SizedBox(height: 18),
 
               // Custom Amount Input
-              const Text(
+              Text(
                 'Custom Amount (₹)',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.slate600,
+                  color: context.palette.adapt(AppColors.slate600),
                 ),
               ),
               const SizedBox(height: 8),
@@ -562,23 +569,23 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 onChanged: (_) => setState(() {}),
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.slate900,
+                  color: context.palette.adapt(AppColors.slate900),
                 ),
                 decoration: InputDecoration(
-                  prefixIcon: const Padding(
+                  prefixIcon: Padding(
                     padding: EdgeInsets.only(left: 14, right: 8),
                     child: Center(
                       widthFactor: 0,
-                      child: Text('₹', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.slate400)),
+                      child: Text('₹', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: context.palette.adapt(AppColors.slate400))),
                     ),
                   ),
                   suffixIcon: _amountController.text.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.clear, size: 18, color: AppColors.slate400),
+                          icon: Icon(Icons.clear, size: 18, color: context.palette.adapt(AppColors.slate400)),
                           onPressed: () {
                             _amountController.clear();
                             setState(() {});
@@ -586,17 +593,17 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                         )
                       : null,
                   hintText: 'Enter amount',
-                  hintStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: AppColors.slate400),
+                  hintStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: context.palette.adapt(AppColors.slate400)),
                   filled: true,
-                  fillColor: AppColors.slate50,
+                  fillColor: context.palette.adapt(AppColors.slate50),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: AppColors.slate200),
+                    borderSide: BorderSide(color: context.palette.adapt(AppColors.slate200)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: AppColors.slate200),
+                    borderSide: BorderSide(color: context.palette.adapt(AppColors.slate200)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -605,13 +612,15 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                 ),
               ),
               const SizedBox(height: 8),
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.info_outline, size: 13, color: AppColors.slate400),
+                  Icon(Icons.info_outline, size: 13, color: context.palette.adapt(AppColors.slate400)),
                   SizedBox(width: 5),
-                  Text(
-                    'Minimum deposit: ₹10 • Instant auto-credit',
-                    style: TextStyle(fontSize: 11, color: AppColors.slate500),
+                  Expanded(
+                    child: Text(
+                      'Minimum deposit: ₹10 • Instant auto-credit',
+                      style: TextStyle(fontSize: 11, color: context.palette.adapt(AppColors.slate500)),
+                    ),
                   ),
                 ],
               ),
@@ -621,7 +630,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.red50,
+                    color: context.palette.adapt(AppColors.red50),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppColors.red600.withValues(alpha: 0.3)),
                   ),
@@ -665,9 +674,12 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                           children: [
                             Icon(Icons.bolt, size: 20),
                             SizedBox(width: 8),
-                            Text(
-                              'Proceed to Pay via UPI',
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                            Flexible(
+                              child: Text(
+                                'Proceed to Pay via UPI',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                              ),
                             ),
                           ],
                         ),
@@ -682,9 +694,9 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.white,
+            color: context.palette.adapt(AppColors.white),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.slate200),
+            border: Border.all(color: context.palette.adapt(AppColors.slate200)),
           ),
           child: Column(
             children: [
@@ -694,7 +706,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                 title: 'Instant Auto-Credit',
                 subtitle: 'Bank-verified within seconds using unique paise offset matching.',
               ),
-              const Divider(height: 20, color: AppColors.slate100),
+              Divider(height: 20, color: context.palette.adapt(AppColors.slate100)),
               _buildTrustRow(
                 icon: Icons.verified_user_rounded,
                 iconColor: AppColors.emerald600,
@@ -714,10 +726,10 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
             spacing: 6,
             runSpacing: 4,
             children: [
-              const Icon(Icons.shield_outlined, size: 14, color: AppColors.slate400),
-              const Text(
+              Icon(Icons.shield_outlined, size: 14, color: context.palette.adapt(AppColors.slate400)),
+              Text(
                 'Supports all apps:',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.slate400),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: context.palette.adapt(AppColors.slate400)),
               ),
               _buildAppPill('GPay'),
               _buildAppPill('PhonePe'),
@@ -734,12 +746,12 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: AppColors.slate100,
+        color: context.palette.adapt(AppColors.slate100),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         name,
-        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.slate600),
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate600)),
       ),
     );
   }
@@ -768,12 +780,12 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
             children: [
               Text(
                 title,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate900)),
               ),
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(fontSize: 11, color: AppColors.slate500, height: 1.3),
+                style: TextStyle(fontSize: 11, color: context.palette.adapt(AppColors.slate500), height: 1.3),
               ),
             ],
           ),
@@ -789,10 +801,10 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: _secondsRemaining < 120 ? AppColors.red50 : AppColors.amber50,
+            color: _secondsRemaining < 120 ? context.palette.adapt(AppColors.red50) : context.palette.adapt(AppColors.amber50),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: _secondsRemaining < 120 ? AppColors.red600.withValues(alpha: 0.3) : AppColors.amber600.withValues(alpha: 0.3),
+              color: _secondsRemaining < 120 ? AppColors.red600.withValues(alpha: 0.3) : context.palette.adapt(AppColors.amber600).withValues(alpha: 0.3),
             ),
           ),
           child: Row(
@@ -803,7 +815,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                   Icon(
                     Icons.timer_outlined,
                     size: 16,
-                    color: _secondsRemaining < 120 ? AppColors.red600 : AppColors.amber800,
+                    color: _secondsRemaining < 120 ? AppColors.red600 : context.palette.adapt(AppColors.amber800),
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -811,7 +823,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: _secondsRemaining < 120 ? AppColors.red700 : AppColors.amber900,
+                      color: _secondsRemaining < 120 ? context.palette.adapt(AppColors.red700) : context.palette.adapt(AppColors.amber900),
                     ),
                   ),
                 ],
@@ -819,10 +831,10 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.white,
+                  color: context.palette.adapt(AppColors.white),
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(
-                    color: _secondsRemaining < 120 ? AppColors.red600 : AppColors.amber700,
+                    color: _secondsRemaining < 120 ? AppColors.red600 : context.palette.adapt(AppColors.amber700),
                   ),
                 ),
                 child: Text(
@@ -831,7 +843,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                     fontFamily: 'monospace',
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
-                    color: _secondsRemaining < 120 ? AppColors.red600 : AppColors.amber800,
+                    color: _secondsRemaining < 120 ? AppColors.red600 : context.palette.adapt(AppColors.amber800),
                   ),
                 ),
               ),
@@ -845,9 +857,9 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
           width: double.infinity,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: AppColors.white,
+            color: context.palette.adapt(AppColors.white),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.slate200),
+            border: Border.all(color: context.palette.adapt(AppColors.slate200)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.03),
@@ -858,13 +870,13 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
           ),
           child: Column(
             children: [
-              const Text(
+              Text(
                 'EXACT AMOUNT TO PAY',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.8,
-                  color: AppColors.slate500,
+                  color: context.palette.adapt(AppColors.slate500),
                 ),
               ),
               const SizedBox(height: 8),
@@ -876,11 +888,11 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                 children: [
                   Text(
                     '₹${_deposit!.totalAmount.toStringAsFixed(2)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 32,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.slate900,
+                      color: context.palette.adapt(AppColors.slate900),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -898,17 +910,17 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: AppColors.slate100,
+                        color: context.palette.adapt(AppColors.slate100),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.slate200),
+                        border: Border.all(color: context.palette.adapt(AppColors.slate200)),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Icon(Icons.copy, size: 14, color: AppColors.slate700),
+                          Icon(Icons.copy, size: 14, color: context.palette.adapt(AppColors.slate700)),
                           SizedBox(width: 4),
                           Text(
                             'Copy',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.slate700),
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate700)),
                           ),
                         ],
                       ),
@@ -922,7 +934,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AppColors.slate100,
+                  color: context.palette.adapt(AppColors.slate100),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -930,11 +942,11 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                   children: [
                     Text(
                       'Base: ₹${_deposit!.baseAmount.toStringAsFixed(2)} + Match Code: ₹${(_deposit!.offsetPaise / 100).toStringAsFixed(2)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.slate700,
+                        color: context.palette.adapt(AppColors.slate700),
                       ),
                     ),
                   ],
@@ -946,23 +958,23 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: AppColors.amber50,
+                  color: context.palette.adapt(AppColors.amber50),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.amber600.withValues(alpha: 0.5), width: 1.5),
+                  border: Border.all(color: context.palette.adapt(AppColors.amber600).withValues(alpha: 0.5), width: 1.5),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.warning_amber_rounded, size: 18, color: AppColors.amber800),
+                    Icon(Icons.warning_amber_rounded, size: 18, color: context.palette.adapt(AppColors.amber800)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: RichText(
                         text: TextSpan(
-                          style: const TextStyle(fontSize: 11.5, color: AppColors.amber900, height: 1.35),
+                          style: TextStyle(fontSize: 11.5, color: context.palette.adapt(AppColors.amber900), height: 1.35),
                           children: [
-                            const TextSpan(
+                            TextSpan(
                               text: 'IMPORTANT: Pay EXACTLY ',
-                              style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.amber900),
+                              style: TextStyle(fontWeight: FontWeight.w800, color: context.palette.adapt(AppColors.amber900)),
                             ),
                             TextSpan(
                               text: '₹${_deposit!.totalAmount.toStringAsFixed(2)}. ',
@@ -970,7 +982,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                             ),
                             TextSpan(
                               text: 'Do NOT round off to ₹${_deposit!.baseAmount.toStringAsFixed(2)} or automated verification will fail.',
-                              style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.red700),
+                              style: TextStyle(fontWeight: FontWeight.w600, color: context.palette.adapt(AppColors.red700)),
                             ),
                           ],
                         ),
@@ -993,7 +1005,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: _launchUpiIntent,
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.open_in_new, size: 20),
@@ -1005,7 +1017,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                       SizedBox(width: 6),
                       Text(
                         '(GPay / PhonePe / Paytm)',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: AppColors.emerald100),
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.normal, color: context.palette.adapt(AppColors.emerald100)),
                       ),
                     ],
                   ),
@@ -1016,20 +1028,20 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
               // OR Divider
               Row(
                 children: [
-                  Expanded(child: Container(color: AppColors.slate200, height: 1)),
-                  const Padding(
+                  Expanded(child: Container(color: context.palette.adapt(AppColors.slate200), height: 1)),
+                  Padding(
                     padding: EdgeInsets.symmetric(horizontal: 12),
                     child: Text(
                       'OR SCAN QR CODE',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.slate400,
+                        color: context.palette.adapt(AppColors.slate400),
                         letterSpacing: 0.5,
                       ),
                     ),
                   ),
-                  Expanded(child: Container(color: AppColors.slate200, height: 1)),
+                  Expanded(child: Container(color: context.palette.adapt(AppColors.slate200), height: 1)),
                 ],
               ),
               const SizedBox(height: 20),
@@ -1038,9 +1050,9 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AppColors.white,
+                  color: context.palette.adapt(AppColors.white),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.slate200, width: 1.5),
+                  border: Border.all(color: context.palette.adapt(AppColors.slate200), width: 1.5),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.04),
@@ -1062,20 +1074,20 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                       decoration: BoxDecoration(
-                        color: AppColors.slate100,
+                        color: context.palette.adapt(AppColors.slate100),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.qr_code_scanner, size: 14, color: AppColors.slate700),
+                          Icon(Icons.qr_code_scanner, size: 14, color: context.palette.adapt(AppColors.slate700)),
                           SizedBox(width: 6),
                           Text(
                             'Scan with any UPI Scanner app',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.slate700,
+                              color: context.palette.adapt(AppColors.slate700),
                             ),
                           ),
                         ],
@@ -1109,17 +1121,17 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Tap after paying in your UPI app to start automated bank verification.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: AppColors.slate500),
+                  style: TextStyle(fontSize: 11, color: context.palette.adapt(AppColors.slate500)),
                 ),
               ] else if (_paidCountdown > 0) ...[
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.emerald50,
+                    color: context.palette.adapt(AppColors.emerald50),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppColors.emerald500.withValues(alpha: 0.3)),
                   ),
@@ -1136,10 +1148,10 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                           const SizedBox(width: 10),
                           Text(
                             'Verifying with bank... (${_paidCountdown}s)',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.emerald900,
+                              color: context.palette.adapt(AppColors.emerald900),
                             ),
                           ),
                         ],
@@ -1149,16 +1161,16 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
                           value: (60 - _paidCountdown) / 60,
-                          backgroundColor: AppColors.emerald100,
+                          backgroundColor: context.palette.adapt(AppColors.emerald100),
                           valueColor: const AlwaysStoppedAnimation<Color>(AppColors.emerald600),
                           minHeight: 5,
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'Listening for automated bank notification. Screen updates immediately once verified.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 11, color: AppColors.emerald800),
+                        style: TextStyle(fontSize: 11, color: context.palette.adapt(AppColors.emerald800)),
                       ),
                     ],
                   ),
@@ -1168,31 +1180,31 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.amber50,
+                    color: context.palette.adapt(AppColors.amber50),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.amber700.withValues(alpha: 0.3)),
+                    border: Border.all(color: context.palette.adapt(AppColors.amber700).withValues(alpha: 0.3)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(Icons.schedule, size: 16, color: AppColors.amber700),
+                          Icon(Icons.schedule, size: 16, color: context.palette.adapt(AppColors.amber700)),
                           SizedBox(width: 8),
                           Text(
                             'Bank confirmation taking longer than 1 min',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.amber900,
+                              color: context.palette.adapt(AppColors.amber900),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 6),
-                      const Text(
+                      Text(
                         'If money was debited from your bank, enter your 12-digit UTR from your receipt to verify immediately.',
-                        style: TextStyle(fontSize: 11, color: AppColors.amber800, height: 1.3),
+                        style: TextStyle(fontSize: 11, color: context.palette.adapt(AppColors.amber800), height: 1.3),
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
@@ -1230,7 +1242,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                     _paidCountdown = 60;
                   });
                 },
-                child: const Text('Cancel & Change Amount', style: TextStyle(fontSize: 13, color: AppColors.slate500)),
+                child: Text('Cancel & Change Amount', style: TextStyle(fontSize: 13, color: context.palette.adapt(AppColors.slate500))),
               ),
             ],
           ),
@@ -1243,7 +1255,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: context.palette.adapt(AppColors.white),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.emerald500),
         boxShadow: [
@@ -1260,16 +1272,16 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: AppColors.emerald50,
+              color: context.palette.adapt(AppColors.emerald50),
               shape: BoxShape.circle,
               border: Border.all(color: AppColors.emerald600, width: 2),
             ),
             child: const Icon(Icons.check_rounded, color: AppColors.emerald600, size: 38),
           ),
           const SizedBox(height: 18),
-          const Text(
+          Text(
             'Payment Verified & Credited!',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.slate900),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: context.palette.adapt(AppColors.slate900)),
           ),
           const SizedBox(height: 8),
           Text(
@@ -1282,24 +1294,24 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Successfully added to your wallet balance.',
-            style: TextStyle(fontSize: 13, color: AppColors.slate500),
+            style: TextStyle(fontSize: 13, color: context.palette.adapt(AppColors.slate500)),
           ),
           const SizedBox(height: 24),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: AppColors.slate50,
+              color: context.palette.adapt(AppColors.slate50),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.slate200),
+              border: Border.all(color: context.palette.adapt(AppColors.slate200)),
             ),
             child: Column(
               children: [
                 _buildReceiptRow('Deposit ID', _deposit?.depositId ?? '-'),
-                const Divider(height: 16, color: AppColors.slate200),
+                Divider(height: 16, color: context.palette.adapt(AppColors.slate200)),
                 _buildReceiptRow('Payment Method', 'Direct UPI Transfer'),
-                const Divider(height: 16, color: AppColors.slate200),
+                Divider(height: 16, color: context.palette.adapt(AppColors.slate200)),
                 _buildReceiptRow('Status', 'Auto-Approved', isStatus: true),
               ],
             ),
@@ -1328,7 +1340,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
                 _hasTappedPaid = false;
               });
             },
-            child: const Text('Make Another Deposit', style: TextStyle(fontSize: 13, color: AppColors.slate600)),
+            child: Text('Make Another Deposit', style: TextStyle(fontSize: 13, color: context.palette.adapt(AppColors.slate600))),
           ),
         ],
       ),
@@ -1339,12 +1351,12 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: AppColors.slate500)),
+        Text(label, style: TextStyle(fontSize: 12, color: context.palette.adapt(AppColors.slate500))),
         if (isStatus)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: AppColors.emerald50,
+              color: context.palette.adapt(AppColors.emerald50),
               borderRadius: BorderRadius.circular(4),
               border: Border.all(color: AppColors.emerald600.withValues(alpha: 0.3)),
             ),
@@ -1356,7 +1368,7 @@ class _AddCashScreenState extends State<AddCashScreen> with WidgetsBindingObserv
         else
           Text(
             value,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate800, fontFamily: 'monospace'),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate800), fontFamily: 'monospace'),
           ),
       ],
     );

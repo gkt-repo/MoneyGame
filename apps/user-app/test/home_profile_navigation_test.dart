@@ -10,9 +10,10 @@ import 'package:moneygame_user/core/network/socket_service.dart';
 import 'package:moneygame_user/screens/home_screen.dart';
 import 'package:moneygame_user/screens/lobby/games_stage.dart';
 import 'package:moneygame_user/screens/profile/personal_profile_screen.dart';
+import 'package:moneygame_user/screens/wallet/add_cash_screen.dart';
 
 void main() {
-  testWidgets('Game pills fit a small phone with larger text', (tester) async {
+  testWidgets('Game stack fits a small phone with larger text', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 568));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     String? selected;
@@ -40,7 +41,7 @@ void main() {
   });
 
   testWidgets(
-    'Home has two tabs, game pills, and one profile action leading to wallet controls',
+    'Home has Games, Join Tables, My Table, and profile wallet controls',
     (tester) async {
       FlutterSecureStorage.setMockInitialValues({});
       await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -79,14 +80,28 @@ void main() {
       await tester.pump();
       expect(find.text('Join Tables'), findsOneWidget);
       expect(find.text('Games'), findsOneWidget);
+      expect(find.text('My Table'), findsOneWidget);
+      expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        0,
+      );
       expect(tester.widget<AppBar>(find.byType(AppBar)).actions!.length, 1);
-      await tester.tap(find.text('Games'));
+      await tester.pumpAndSettle();
+      expect(find.text('Balance'), findsOneWidget);
+      expect(find.text('₹123.45'), findsOneWidget);
+      expect(find.byTooltip('Deposit'), findsOneWidget);
+      await tester.tap(find.byTooltip('Deposit'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AddCashScreen), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.arrow_back_ios_new));
       await tester.pumpAndSettle();
       expect(find.text('Create room'), findsOneWidget);
       expect(find.text('Join room'), findsOneWidget);
       await tester.tap(find.text('Teen Patti'));
       await tester.pumpAndSettle();
-      expect(find.text('Read the table. Play your hand.'), findsOneWidget);
+      expect(find.text('THE GAME ROOM'), findsNothing);
+      expect(find.byKey(const ValueKey('game-selection')), findsNothing);
+      expect(find.text('Read the table. Play your hand.'), findsNothing);
       if (Platform.environment['MONEYGAME_PREVIEW'] == '1') {
         await tester.runAsync(() async {
           final image =
@@ -115,11 +130,27 @@ void main() {
       );
       Navigator.of(tester.element(find.byType(BottomSheet))).pop();
       await tester.pumpAndSettle();
+      await tester.tap(find.text('My Table'));
+      await tester.pumpAndSettle();
+      expect(find.text('Joined'), findsOneWidget);
+      expect(find.text('Created'), findsOneWidget);
+      await tester.tap(find.text('Join Tables'));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsOneWidget);
+      expect(find.text('Joined'), findsNothing);
+      expect(find.text('Created'), findsNothing);
+      expect(find.text('YOUR TABLE'), findsNothing);
       await tester.tap(find.byTooltip('My profile'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
       expect(find.text('My profile'), findsOneWidget);
-      expect(find.text('₹123.45'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(PersonalProfileScreen),
+          matching: find.text('₹123.45'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Deposit'), findsOneWidget);
       expect(find.text('Withdraw'), findsOneWidget);
       expect(find.text('Transaction history'), findsOneWidget);

@@ -1,3 +1,4 @@
+import { seepEngine } from './engines/seep/seep.engine';
 import { GameType, GameDescriptor } from '@moneygame/shared-types';
 import { IGameEngine } from './engine.interface';
 import { guessNumberEngine } from './engines/guess-number/guess-number.engine';
@@ -37,3 +38,5 @@ gameRegistry.register(teenPattiEngine);
 gameRegistry.register(twentyNineEngine);
 gameRegistry.register(sportsMatchEngine);
 
+
+gameRegistry.register(seepEngine);

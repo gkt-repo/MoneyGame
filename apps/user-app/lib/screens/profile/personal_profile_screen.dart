@@ -1,5 +1,7 @@
+import '../../core/constants/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../core/services/theme_preferences.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/socket_service.dart';
 import '../wallet/add_cash_screen.dart';
@@ -82,7 +84,7 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.white,
+    backgroundColor: context.palette.adapt(Colors.white),
     appBar: AppBar(
       title: const Text('My profile'),
       actions: [
@@ -102,53 +104,88 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
     ),
     body: RefreshIndicator(
       onRefresh: _refresh,
-      color: Colors.black,
+      color: context.palette.adapt(Colors.black),
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
           if (_loading)
-            const LinearProgressIndicator(color: Colors.black, minHeight: 2),
+            LinearProgressIndicator(
+              color: context.palette.adapt(Colors.black),
+              minHeight: 2,
+            ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text(_error!, style: const TextStyle(color: Colors.red)),
             ),
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 32,
-                backgroundColor: const Color(0xfff3f3f3),
-                child: Text(
-                  getAvatarEmoji(_user.avatar),
-                  style: const TextStyle(fontSize: 30),
+          _section(context.palette.adapt(Color(0xffeef4fb)), [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 32,
+                  backgroundColor: context.palette.adapt(Color(0xffdce8f5)),
+                  child: Text(
+                    getAvatarEmoji(_user.avatar),
+                    style: const TextStyle(fontSize: 30),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _user.displayName ?? _user.username,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _user.displayName ?? _user.username,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                    Text(
-                      '@${_user.username}',
-                      style: const TextStyle(color: Colors.black54),
-                    ),
-                  ],
+                      Text(
+                        '@${_user.username}',
+                        style: TextStyle(
+                          color: context.palette.adapt(Colors.black54),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+              ],
+            ),
+          ]),
+          const SizedBox(height: 16),
+          _section(context.palette.elevated, [
+            ValueListenableBuilder<ThemeMode>(
+              valueListenable: ThemePreferences.instance,
+              builder: (context, mode, child) => SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: const Icon(Icons.dark_mode_outlined),
+                title: const Text('Dark mode'),
+                subtitle: const Text('Use a darker appearance'),
+                value: mode == ThemeMode.dark,
+                onChanged: (enabled) async {
+                  try {
+                    await ThemePreferences.instance.setDarkMode(enabled);
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Could not save appearance. Please try again.',
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                },
               ),
-            ],
-          ),
-          const SizedBox(height: 28),
+            ),
+          ]),
+          const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: const Color(0xff141414),
+              color: const Color(0xff183e36),
               borderRadius: BorderRadius.circular(24),
             ),
             child: Column(
@@ -182,8 +219,8 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
                       child: FilledButton(
                         onPressed: () => _money(true),
                         style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
+                          backgroundColor: context.palette.adapt(Colors.white),
+                          foregroundColor: context.palette.adapt(Colors.black),
                         ),
                         child: const Text('Deposit'),
                       ),
@@ -205,108 +242,134 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.receipt_long_outlined),
-            title: const Text('Transaction history'),
-            subtitle: const Text('All deposits, withdrawals and game activity'),
-            trailing: const Icon(Icons.arrow_forward),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const TransactionHistoryScreen(),
+          _section(context.palette.adapt(Color(0xfffff5e5)), [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: const Text('Transaction history'),
+              subtitle: const Text(
+                'All deposits, withdrawals and game activity',
+              ),
+              trailing: const Icon(Icons.arrow_forward),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const TransactionHistoryScreen(),
+                ),
               ),
             ),
-          ),
-          const Divider(height: 32),
-          const Text(
-            'ACCOUNT DETAILS',
-            style: TextStyle(
-              fontSize: 11,
-              letterSpacing: 1.5,
-              color: Colors.black54,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _detail('Email', _user.email ?? 'Not provided'),
-          _detail('Phone', _user.phone ?? 'Not provided'),
-          _detail('Account ID', _user.id),
-          _detail('Status', _user.status),
-          _detail('Role', _user.role),
-          _detail(
-            'Member since',
-            _profile == null
-                ? '—'
-                : DateFormat.yMMMd().format(
-                    DateTime.parse(_profile!.createdAt),
-                  ),
-          ),
-          if (_profile != null) ...[
-            const Divider(height: 32),
-            const Text(
-              'YOUR GAME RECORD',
+          ]),
+          const SizedBox(height: 16),
+          _section(context.palette.adapt(Color(0xffeef5f6)), [
+            Text(
+              'ACCOUNT DETAILS',
               style: TextStyle(
                 fontSize: 11,
                 letterSpacing: 1.5,
-                color: Colors.black54,
+                color: context.palette.adapt(Colors.black54),
               ),
             ),
+            const SizedBox(height: 12),
+            _detail('Email', _user.email ?? 'Not provided'),
+            _detail('Phone', _user.phone ?? 'Not provided'),
+            _detail('Account ID', _user.id),
+            _detail('Status', _user.status),
+            _detail('Role', _user.role),
+            _detail(
+              'Member since',
+              _profile == null
+                  ? '—'
+                  : DateFormat.yMMMd().format(
+                      DateTime.parse(_profile!.createdAt),
+                    ),
+            ),
+          ]),
+          if (_profile != null) ...[
             const SizedBox(height: 16),
-            Wrap(
-              spacing: 28,
-              runSpacing: 12,
-              children: [
-                Text('${_profile!.stats.totalGames} played'),
-                Text('${_profile!.stats.totalWins} won'),
-                Text(
-                  '${_profile!.stats.winRatePercent.toStringAsFixed(0)}% win rate',
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            ..._profile!.stats.byGame.entries.map(
-              (e) => _detail(
-                e.key.replaceAll('_', ' '),
-                '${e.value.played} played · ${e.value.won} won',
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Recent results',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            if (_profile!.recentGames.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('Your completed games will appear here.'),
-              ),
-            ..._profile!.recentGames.map(
-              (g) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(g.gameType.replaceAll('_', ' ')),
-                subtitle: Text('#${g.roomCode}'),
-                trailing: Text(
-                  g.isWin ? '+₹${g.prize.toStringAsFixed(2)}' : 'Lost',
+            _section(context.palette.adapt(Color(0xfff3effa)), [
+              Text(
+                'YOUR GAME RECORD',
+                style: TextStyle(
+                  fontSize: 11,
+                  letterSpacing: 1.5,
+                  color: context.palette.adapt(Colors.black54),
                 ),
               ),
-            ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 28,
+                runSpacing: 12,
+                children: [
+                  Text('${_profile!.stats.totalGames} played'),
+                  Text('${_profile!.stats.totalWins} won'),
+                  Text(
+                    '${_profile!.stats.winRatePercent.toStringAsFixed(0)}% win rate',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              ..._profile!.stats.byGame.entries.map(
+                (e) => _detail(
+                  e.key.replaceAll('_', ' '),
+                  '${e.value.played} played · ${e.value.won} won',
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Recent results',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              if (_profile!.recentGames.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('Your completed games will appear here.'),
+                ),
+              ..._profile!.recentGames.map(
+                (g) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(g.gameType.replaceAll('_', ' ')),
+                  subtitle: Text('#${g.roomCode}'),
+                  trailing: Text(
+                    g.isWin ? '+₹${g.prize.toStringAsFixed(2)}' : 'Lost',
+                  ),
+                ),
+              ),
+            ]),
           ],
-          const Divider(height: 32),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.notifications_none),
-            title: const Text('Notifications'),
-            onTap: widget.onNotifications,
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.logout),
-            title: const Text('Log out'),
-            onTap: widget.onLogout,
-          ),
+          const SizedBox(height: 16),
+          _section(context.palette.adapt(Color(0xfffcf0eb)), [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.notifications_none),
+              title: const Text('Notifications'),
+              onTap: widget.onNotifications,
+            ),
+          ]),
+          const SizedBox(height: 12),
+          _section(context.palette.adapt(Color(0xfff5f5f5)), [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.logout),
+              title: const Text('Log out'),
+              onTap: widget.onLogout,
+            ),
+          ]),
         ],
       ),
     ),
   );
+  Widget _section(Color color, List<Widget> children) => Material(
+    color: color,
+    borderRadius: BorderRadius.circular(20),
+    clipBehavior: Clip.antiAlias,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    ),
+  );
+
   Widget _detail(String label, String value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 9),
     child: Row(
@@ -314,7 +377,10 @@ class _PersonalProfileScreenState extends State<PersonalProfileScreen> {
       children: [
         SizedBox(
           width: 110,
-          child: Text(label, style: const TextStyle(color: Colors.black54)),
+          child: Text(
+            label,
+            style: TextStyle(color: context.palette.adapt(Colors.black54)),
+          ),
         ),
         Expanded(child: SelectableText(value)),
       ],
@@ -371,16 +437,16 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.white,
+    backgroundColor: context.palette.adapt(Colors.white),
     appBar: AppBar(title: const Text('Transaction history')),
     body: RefreshIndicator(
       onRefresh: () => _load(reset: true),
       child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const Text(
+          Text(
             'Your complete wallet ledger',
-            style: TextStyle(color: Colors.black54),
+            style: TextStyle(color: context.palette.adapt(Colors.black54)),
           ),
           const SizedBox(height: 20),
           if (_items.isEmpty && !_loading && _error == null)
@@ -415,16 +481,16 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                           DateFormat(
                             'dd MMM yyyy · HH:mm',
                           ).format(tx.createdAt),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
-                            color: Colors.black54,
+                            color: context.palette.adapt(Colors.black54),
                           ),
                         ),
                         SelectableText(
                           tx.referenceId ?? tx.id,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10,
-                            color: Colors.black45,
+                            color: context.palette.adapt(Colors.black45),
                           ),
                         ),
                       ],
@@ -446,10 +512,12 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
           if (_error != null)
             Text(_error!, style: const TextStyle(color: Colors.red)),
           if (_loading)
-            const Center(
+            Center(
               child: Padding(
                 padding: EdgeInsets.all(20),
-                child: CircularProgressIndicator(color: Colors.black),
+                child: CircularProgressIndicator(
+                  color: context.palette.adapt(Colors.black),
+                ),
               ),
             )
           else if (_hasMore || _error != null)
@@ -458,12 +526,12 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
               child: Text(_error != null ? 'Retry' : 'Load older transactions'),
             ),
           if (!_hasMore && _items.isNotEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(20),
               child: Text(
                 'You’re up to date — all transactions shown.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.black54),
+                style: TextStyle(color: context.palette.adapt(Colors.black54)),
               ),
             ),
         ],

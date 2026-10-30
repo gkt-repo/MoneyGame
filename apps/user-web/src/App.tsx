@@ -316,7 +316,7 @@ export const App: React.FC = () => {
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="text-xs font-bold">Active Match in Progress (#{activeUserRoom.roomCode})</span>
                 <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
-                  {activeUserRoom.gameType === 'TEEN_PATTI' ? 'Teen Patti' : activeUserRoom.gameType === 'SPORTS_MATCH' ? 'Sports Pool' : 'Dice Guess'} · Boot ₹{activeUserRoom.entryFee}
+                  {activeUserRoom.gameType === 'SEEP' ? 'Seep' : activeUserRoom.gameType === 'TWENTY_NINE' ? '29 Cards' : activeUserRoom.gameType === 'TEEN_PATTI' ? 'Teen Patti' : activeUserRoom.gameType === 'SPORTS_MATCH' ? 'Sports Pool' : 'Dice Guess'} · Boot ₹{activeUserRoom.entryFee}
                 </span>
               </div>
               <div className="text-xs font-bold text-emerald-400 flex items-center gap-1">

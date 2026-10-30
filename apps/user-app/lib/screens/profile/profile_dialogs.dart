@@ -1,3 +1,4 @@
+import '../../core/constants/app_theme.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/colors.dart';
 import '../../core/network/api_client.dart';
@@ -26,7 +27,7 @@ void showPublicProfileModal(BuildContext context, String userId) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.white,
+    backgroundColor: context.palette.adapt(Colors.white),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
@@ -108,12 +109,12 @@ class _PublicProfileSheetState extends State<_PublicProfileSheet> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        Text(
                           'Player Profile',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate900)),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 20, color: AppColors.slate500),
+                          icon: Icon(Icons.close, size: 20, color: context.palette.adapt(AppColors.slate500)),
                           onPressed: () => Navigator.of(context).pop(),
                         ),
                       ],
@@ -124,7 +125,7 @@ class _PublicProfileSheetState extends State<_PublicProfileSheet> {
                       width: 72,
                       height: 72,
                       decoration: BoxDecoration(
-                        color: AppColors.slate100,
+                        color: context.palette.adapt(AppColors.slate100),
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.emerald600, width: 2),
                       ),
@@ -137,32 +138,32 @@ class _PublicProfileSheetState extends State<_PublicProfileSheet> {
                     const SizedBox(height: 8),
                     Text(
                       _profile!.displayName,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.slate900),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: context.palette.adapt(AppColors.slate900)),
                     ),
                     Text(
                       '@${_profile!.username}',
-                      style: const TextStyle(fontSize: 12, color: AppColors.slate500),
+                      style: TextStyle(fontSize: 12, color: context.palette.adapt(AppColors.slate500)),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Member since ${_formatDate(_profile!.createdAt)}',
-                      style: const TextStyle(fontSize: 11, color: AppColors.slate400),
+                      style: TextStyle(fontSize: 11, color: context.palette.adapt(AppColors.slate400)),
                     ),
                     const SizedBox(height: 16),
                     // Stats 3-column
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                       decoration: BoxDecoration(
-                        color: AppColors.slate50,
+                        color: context.palette.adapt(AppColors.slate50),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.slate200),
+                        border: Border.all(color: context.palette.adapt(AppColors.slate200)),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
                           _buildStatCol('Played', '${_profile!.stats.totalGames}'),
                           _buildStatCol('Won', '${_profile!.stats.totalWins}', color: AppColors.emerald600),
-                          _buildStatCol('Win Rate', '${_profile!.stats.winRatePercent}%', color: const Color(0xFF6366F1)),
+                          _buildStatCol('Win Rate', '${_profile!.stats.winRatePercent}%', color: context.palette.adapt(Color(0xFF6366F1))),
                         ],
                       ),
                     ),
@@ -177,14 +178,14 @@ class _PublicProfileSheetState extends State<_PublicProfileSheet> {
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.5,
-                            color: AppColors.slate500,
+                            color: context.palette.adapt(AppColors.slate500),
                           ),
                         ),
                       ),
                       const SizedBox(height: 8),
                       ..._profile!.stats.byGame.entries.map((entry) {
                         final g = entry.value;
-                        final name = entry.key == 'TWENTY_NINE'
+                        final name = entry.key == 'SEEP' ? '♠ Seep' : entry.key == 'TWENTY_NINE'
                             ? '🃏 29 Card Game'
                             : entry.key == 'TEEN_PATTI'
                                 ? '🎴 Teen Patti'
@@ -196,10 +197,10 @@ class _PublicProfileSheetState extends State<_PublicProfileSheet> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate800)),
+                              Text(name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: context.palette.adapt(AppColors.slate800))),
                               Text(
                                 '${g.won}W / ${g.played}G (${g.winRatePercent}%)',
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate600),
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate600)),
                               ),
                             ],
                           ),
@@ -220,13 +221,13 @@ class _PublicProfileSheetState extends State<_PublicProfileSheet> {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w800,
-            color: color ?? AppColors.slate900,
+            color: color ?? context.palette.adapt(AppColors.slate900),
           ),
         ),
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.slate500),
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: context.palette.adapt(AppColors.slate500)),
         ),
       ],
     );
@@ -352,12 +353,12 @@ class _EditProfileModalState extends State<EditProfileModal> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Edit Profile',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.slate900),
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate900)),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close, size: 20, color: AppColors.slate500),
+                        icon: Icon(Icons.close, size: 20, color: context.palette.adapt(AppColors.slate500)),
                         onPressed: () => Navigator.of(context).pop(),
                       ),
                     ],
@@ -369,7 +370,7 @@ class _EditProfileModalState extends State<EditProfileModal> {
                       padding: const EdgeInsets.all(10),
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
-                        color: AppColors.red50,
+                        color: context.palette.adapt(AppColors.red50),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: AppColors.red600.withValues(alpha: 0.3)),
                       ),
@@ -381,7 +382,7 @@ class _EditProfileModalState extends State<EditProfileModal> {
                       padding: const EdgeInsets.all(10),
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
-                        color: AppColors.emerald50,
+                        color: context.palette.adapt(AppColors.emerald50),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: AppColors.emerald600.withValues(alpha: 0.3)),
                       ),
@@ -390,9 +391,9 @@ class _EditProfileModalState extends State<EditProfileModal> {
                   ],
 
                   // Avatar Picker
-                  const Text(
+                  Text(
                     'Choose Avatar',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: context.palette.adapt(AppColors.slate900)),
                   ),
                   const SizedBox(height: 10),
                   Wrap(
@@ -407,10 +408,10 @@ class _EditProfileModalState extends State<EditProfileModal> {
                           width: 48,
                           height: 48,
                           decoration: BoxDecoration(
-                            color: isSel ? const Color(0xFFEFF6FF) : AppColors.slate100,
+                            color: isSel ? context.palette.adapt(Color(0xFFEFF6FF)) : context.palette.adapt(AppColors.slate100),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: isSel ? const Color(0xFF2563EB) : Colors.transparent,
+                              color: isSel ? context.palette.adapt(Color(0xFF2563EB)) : Colors.transparent,
                               width: 2,
                             ),
                           ),
@@ -423,9 +424,9 @@ class _EditProfileModalState extends State<EditProfileModal> {
                   const SizedBox(height: 16),
 
                   // Display Name Input
-                  const Text(
+                  Text(
                     'Display Name',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: context.palette.adapt(AppColors.slate900)),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -433,18 +434,18 @@ class _EditProfileModalState extends State<EditProfileModal> {
                     decoration: InputDecoration(
                       hintText: 'Enter your nickname',
                       filled: true,
-                      fillColor: AppColors.slate50,
+                      fillColor: context.palette.adapt(AppColors.slate50),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: AppColors.slate200),
+                        borderSide: BorderSide(color: context.palette.adapt(AppColors.slate200)),
                       ),
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Member since ${_formatDate(_profile!.createdAt)} • Role: ${_profile!.role}',
-                    style: const TextStyle(fontSize: 11, color: AppColors.slate400),
+                    style: TextStyle(fontSize: 11, color: context.palette.adapt(AppColors.slate400)),
                   ),
                   const SizedBox(height: 16),
 
@@ -466,29 +467,29 @@ class _EditProfileModalState extends State<EditProfileModal> {
                   const SizedBox(height: 20),
 
                   // Dynamic Performance Stats
-                  const Text(
+                  Text(
                     'CAREER STATISTICS',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.5,
-                      color: AppColors.slate500,
+                      color: context.palette.adapt(AppColors.slate500),
                     ),
                   ),
                   const SizedBox(height: 10),
                   Container(
                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                     decoration: BoxDecoration(
-                      color: AppColors.slate50,
+                      color: context.palette.adapt(AppColors.slate50),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.slate200),
+                      border: Border.all(color: context.palette.adapt(AppColors.slate200)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
                         _buildStatCol('Total Played', '${_profile!.stats.totalGames}'),
                         _buildStatCol('Won', '${_profile!.stats.totalWins}', color: AppColors.emerald600),
-                        _buildStatCol('Win Rate', '${_profile!.stats.winRatePercent}%', color: const Color(0xFF6366F1)),
+                        _buildStatCol('Win Rate', '${_profile!.stats.winRatePercent}%', color: context.palette.adapt(Color(0xFF6366F1))),
                       ],
                     ),
                   ),
@@ -496,19 +497,19 @@ class _EditProfileModalState extends State<EditProfileModal> {
 
                   // Game Breakdown
                   if (_profile!.stats.byGame.isNotEmpty) ...[
-                    const Text(
+                    Text(
                       'PER-GAME PERFORMANCE',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.5,
-                        color: AppColors.slate500,
+                        color: context.palette.adapt(AppColors.slate500),
                       ),
                     ),
                     const SizedBox(height: 8),
                     ..._profile!.stats.byGame.entries.map((entry) {
                       final g = entry.value;
-                      final name = entry.key == 'TWENTY_NINE'
+                      final name = entry.key == 'SEEP' ? '♠ Seep' : entry.key == 'TWENTY_NINE'
                           ? '🃏 29 Card Game'
                           : entry.key == 'TEEN_PATTI'
                               ? '🎴 Teen Patti'
@@ -519,14 +520,14 @@ class _EditProfileModalState extends State<EditProfileModal> {
                         margin: const EdgeInsets.only(bottom: 6),
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: AppColors.white,
+                          color: context.palette.adapt(AppColors.white),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.slate200),
+                          border: Border.all(color: context.palette.adapt(AppColors.slate200)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate800)),
+                            Text(name, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate800))),
                             Text(
                               '${g.won}W / ${g.played}G (${g.winRatePercent}%)',
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.emerald700),
@@ -540,18 +541,18 @@ class _EditProfileModalState extends State<EditProfileModal> {
 
                   // Recent Games List
                   if (_profile!.recentGames.isNotEmpty) ...[
-                    const Text(
+                    Text(
                       'RECENT MATCH RESULTS',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.5,
-                        color: AppColors.slate500,
+                        color: context.palette.adapt(AppColors.slate500),
                       ),
                     ),
                     const SizedBox(height: 8),
                     ..._profile!.recentGames.take(5).map((m) {
-                      final name = m.gameType == 'TWENTY_NINE'
+                      final name = m.gameType == 'SEEP' ? '♠ Seep' : m.gameType == 'TWENTY_NINE'
                           ? '🃏 29 Cards'
                           : m.gameType == 'TEEN_PATTI'
                               ? '🎴 Teen Patti'
@@ -562,9 +563,9 @@ class _EditProfileModalState extends State<EditProfileModal> {
                         margin: const EdgeInsets.only(bottom: 6),
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: AppColors.white,
+                          color: context.palette.adapt(AppColors.white),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.slate200),
+                          border: Border.all(color: context.palette.adapt(AppColors.slate200)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -572,14 +573,14 @@ class _EditProfileModalState extends State<EditProfileModal> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.slate800)),
-                                Text('Stake ₹${m.entryFee.toStringAsFixed(0)}', style: const TextStyle(fontSize: 10, color: AppColors.slate500)),
+                                Text(name, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.palette.adapt(AppColors.slate800))),
+                                Text('Stake ₹${m.entryFee.toStringAsFixed(0)}', style: TextStyle(fontSize: 10, color: context.palette.adapt(AppColors.slate500))),
                               ],
                             ),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: m.isWin ? AppColors.emerald50 : AppColors.slate100,
+                                color: m.isWin ? context.palette.adapt(AppColors.emerald50) : context.palette.adapt(AppColors.slate100),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
@@ -587,7 +588,7 @@ class _EditProfileModalState extends State<EditProfileModal> {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w800,
-                                  color: m.isWin ? AppColors.emerald700 : AppColors.slate500,
+                                  color: m.isWin ? AppColors.emerald700 : context.palette.adapt(AppColors.slate500),
                                 ),
                               ),
                             ),
@@ -610,13 +611,13 @@ class _EditProfileModalState extends State<EditProfileModal> {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w800,
-            color: color ?? AppColors.slate900,
+            color: color ?? context.palette.adapt(AppColors.slate900),
           ),
         ),
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.slate500),
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: context.palette.adapt(AppColors.slate500)),
         ),
       ],
     );

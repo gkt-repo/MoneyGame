@@ -11,7 +11,7 @@ export function CardWaitingHall({ room, userId }: { room: RoomItem; userId: stri
     <section className="overflow-hidden rounded-3xl border border-violet-200 bg-slate-950 text-white shadow-xl">
       <div className="bg-gradient-to-br from-violet-900 via-violet-950 to-slate-950 px-6 py-8 text-center">
         <p className="text-xs font-semibold uppercase tracking-widest text-violet-300">
-          {room.gameType === 'TWENTY_NINE' ? '29 Card Game · 2 vs 2' : 'Teen Patti'}
+          {room.gameType === 'SEEP' ? `Seep · ${room.maxPlayers === 4 ? '2 vs 2' : 'Head to head'}` : room.gameType === 'TWENTY_NINE' ? '29 Card Game · 2 vs 2' : 'Teen Patti'}
         </p>
         <h1 className="mt-2 text-2xl font-bold">Waiting hall</h1>
         <div className="mx-auto my-6 flex h-24 w-24 items-center justify-center rounded-full border-4 border-violet-400/40 bg-violet-400/10" aria-live="polite" aria-atomic="true">
@@ -45,7 +45,7 @@ export function CardWaitingHall({ room, userId }: { room: RoomItem; userId: stri
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">{player ? `${name}${player.userId === userId ? ' (You)' : ''}` : 'Waiting for player…'}</p>
-                <p className="mt-1 text-xs text-slate-400">Seat {index + 1}{room.gameType === 'TWENTY_NINE' ? ` · Team ${index % 2 === 0 ? 'A' : 'B'}` : ''}</p>
+                <p className="mt-1 text-xs text-slate-400">Seat {index + 1}{(room.gameType === 'TWENTY_NINE' || (room.gameType === 'SEEP' && room.maxPlayers === 4)) ? ` · Team ${index % 2 === 0 ? 'A' : 'B'}` : ''}</p>
               </div>
               {player && <CheckCircle2 aria-label="Joined" className="h-5 w-5 shrink-0 text-emerald-400" />}
             </div>

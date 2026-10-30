@@ -5,7 +5,10 @@ from PIL import Image
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 
-USER_ICON_SRC = "/home/gulshan/.gemini/antigravity/brain/c936982d-58b8-45fb-bc87-8c77b2811afe/user_app_tilted_perfect_neg14.png"
+USER_ICON_SRC = os.environ.get(
+    "USER_ICON_SRC",
+    os.path.join(PROJECT_ROOT, "apps", "user-app", "assets", "icon", "master_sports_cards_crictrade.png")
+)
 ADMIN_ICON_SRC = "/home/gulshan/.gemini/antigravity/brain/c936982d-58b8-45fb-bc87-8c77b2811afe/admin_app_executive_shield.png"
 
 def process_app_icons(app_type, src_path):

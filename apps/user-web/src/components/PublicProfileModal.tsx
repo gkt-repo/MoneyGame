@@ -130,7 +130,7 @@ export const PublicProfileModal: React.FC<PublicProfileModalProps> = ({
                       className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-200/60"
                     >
                       <span className="font-semibold text-slate-700">
-                        {game === 'TWENTY_NINE'
+                        {game === 'SEEP' ? '♠ Seep' : game === 'TWENTY_NINE'
                           ? '29 Card Game'
                           : game === 'TEEN_PATTI'
                           ? 'Teen Patti'

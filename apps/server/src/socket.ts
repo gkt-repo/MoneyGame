@@ -1,3 +1,4 @@
+import { seepEngine } from './modules/game/engines/seep/seep.engine';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { prisma } from './db';
@@ -92,6 +93,8 @@ export function configureSockets(io: Server) {
           await socket.join(`room:${id}`);
           const state = twentyNineEngine.getClientState(id, socket.data.userId);
           if (state) socket.emit('twenty_nine_state', state);
+          const seep = seepEngine.getClientState(id, socket.data.userId);
+          if (seep) socket.emit('seep_state', seep);
         }
       } catch {
         socket.emit('subscription_error', { message: 'Unable to subscribe to room' });

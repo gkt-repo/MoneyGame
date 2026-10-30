@@ -18,6 +18,7 @@ const cases = {
   moderator: 'moderator.test.ts',
   float: 'moderator_float.test.ts',
   'twenty-nine': 'twenty_nine.test.ts',
+  seep: 'seep.test.ts',
   'card-waiting': 'card_waiting.test.ts',
   invitations: 'lobby_invitation.test.ts',
   profile: 'profile.test.ts',

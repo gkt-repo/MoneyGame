@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import '../../core/constants/app_theme.dart';
+import '../../core/constants/colors.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/trading_models.dart';
@@ -11,9 +13,6 @@ import '../../core/network/socket_service.dart';
 import 'trading_chart.dart';
 import 'trading_history.dart';
 
-const _green = Color(0xff42dfb6),
-    _muted = Color(0xffa4b5cb),
-    _panel = Color(0xff101c2b);
 String _teamCode(String name) =>
     {
       'India': 'IND',
@@ -280,7 +279,10 @@ class _TradingScreenState extends State<TradingScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: _panel,
+      backgroundColor: context.palette.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (sheetContext) => StatefulBuilder(
         builder: (ctx, update) {
           final quantity = int.tryParse(controller.text) ?? 0,
@@ -299,25 +301,25 @@ class _TradingScreenState extends State<TradingScreen> {
                 children: [
                   Text(
                     '${side == 'BUY' ? 'Buy' : 'Exit'} ${m.team(outcome)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 23,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: context.palette.ink,
                     ),
                   ),
                   Text(
                     '${_credits(price)} credits per share · maximum $maximum shares',
-                    style: const TextStyle(color: _muted),
+                    style: TextStyle(color: context.palette.muted),
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: controller,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: context.palette.ink),
                     keyboardType: TextInputType.number,
                     onChanged: (_) => update(() {}),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Share quantity',
-                      labelStyle: TextStyle(color: _muted),
+                      labelStyle: TextStyle(color: context.palette.muted),
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -340,12 +342,15 @@ class _TradingScreenState extends State<TradingScreen> {
                   ),
                   Text(
                     '${side == 'BUY' ? 'Cost' : 'Proceeds'}: ${_credits(quantity * price)} credits',
-                    style: const TextStyle(fontSize: 18, color: Colors.white),
+                    style: TextStyle(fontSize: 18, color: context.palette.ink),
                   ),
                   const SizedBox(height: 12),
-                  const Text(
+                  Text(
                     'Credit P&L. Final rewards depend on the match loss pool.',
-                    style: TextStyle(color: _muted, fontSize: 12),
+                    style: TextStyle(
+                      color: context.palette.muted,
+                      fontSize: 12,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   FilledButton(
@@ -461,10 +466,10 @@ class _TradingScreenState extends State<TradingScreen> {
   }
 
   Color _pnlColor(num n) => n > 0
-      ? _green
+      ? context.palette.accent
       : n < 0
-      ? const Color(0xfff87171)
-      : Colors.white;
+      ? Theme.of(context).colorScheme.error
+      : context.palette.ink;
   String _signed(num n) => '${n > 0 ? '+' : ''}${_credits(n)} cr';
   void _withdraw() {
     final s = _snapshot;
@@ -507,7 +512,10 @@ class _TradingScreenState extends State<TradingScreen> {
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(name, style: const TextStyle(color: _muted, fontSize: 12)),
+        Text(
+          name,
+          style: TextStyle(color: context.palette.muted, fontSize: 12),
+        ),
         Text(value),
       ],
     ),
@@ -543,189 +551,189 @@ class _TradingScreenState extends State<TradingScreen> {
         state['totalBalls'] != null &&
         state['balls'] != null &&
         (state['totalBalls'] as num) - (state['balls'] as num) <= 18;
-    return Theme(
-      data: ThemeData.dark(useMaterial3: true).copyWith(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: _green,
-          brightness: Brightness.dark,
+    return Scaffold(
+      backgroundColor: context.palette.canvas,
+      appBar: AppBar(
+        automaticallyImplyLeading: true,
+        backgroundColor: context.palette.canvas,
+        surfaceTintColor: Colors.transparent,
+        title: const Text(
+          'CricTrade',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
-        scaffoldBackgroundColor: const Color(0xff0d1117),
-      ),
-      child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          backgroundColor: const Color(0xff0d1117),
-          surfaceTintColor: Colors.transparent,
-          title: const Text(
-            'CricTrade',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+        actions: [
+          IconButton(
+            tooltip: 'Withdraw',
+            onPressed: m == null || _busy || _pending != null
+                ? null
+                : _withdraw,
+            icon: const Icon(Icons.north_east, size: 20),
           ),
-          actions: [
-            IconButton(
-              tooltip: 'Withdraw',
-              onPressed: m == null || _busy || _pending != null
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: OutlinedButton(
+              onPressed: m == null || !m.canEnter || _busy || _pending != null
                   ? null
-                  : _withdraw,
-              icon: const Icon(Icons.north_east, size: 20),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: OutlinedButton(
-                onPressed: m == null || !m.canEnter || _busy || _pending != null
-                    ? null
-                    : _fund,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  : _fund,
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Match credits',
-                          style: TextStyle(fontSize: 9, color: _muted),
-                        ),
-                        Text(
-                          '${_credits(s?.receipt != null ? 0 : s?.balance ?? 0)} cr',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 12),
-                    const Icon(Icons.add, size: 22, color: _green),
-                  ],
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Match credits',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: context.palette.muted,
+                        ),
+                      ),
+                      Text(
+                        '${_credits(s?.receipt != null ? 0 : s?.balance ?? 0)} cr',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: context.palette.ink,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Icon(Icons.add, size: 22, color: context.palette.accent),
+                ],
+              ),
             ),
-          ],
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(48),
-            child: Row(
-              children: ['Home', 'My positions', 'History']
-                  .map(
-                    (tab) => Expanded(
-                      flex: tab == 'My positions' ? 4 : 3,
-                      child: InkWell(
-                        onTap: () {
-                          if (_tab == tab) return;
-                          setState(() {
-                            _tab = tab;
-                            _markets = [];
-                            _loading = true;
-                            if (tab == 'History') {
-                              _marketId = null;
-                              _snapshot = null;
-                              _epoch++;
-                            }
-                          });
-                          _loadMarkets();
-                        },
-                        child: Container(
-                          height: 48,
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(
-                                color: _tab == tab
-                                    ? _green
-                                    : Colors.transparent,
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              tab,
-                              style: TextStyle(
-                                color: _tab == tab ? _green : _muted,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 13,
-                              ),
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Row(
+            children: ['Home', 'My positions', 'History']
+                .map(
+                  (tab) => Expanded(
+                    flex: tab == 'My positions' ? 4 : 3,
+                    child: InkWell(
+                      onTap: () {
+                        if (_tab == tab) return;
+                        setState(() {
+                          _tab = tab;
+                          _markets = [];
+                          _loading = true;
+                          if (tab == 'History') {
+                            _marketId = null;
+                            _snapshot = null;
+                            _epoch++;
+                          }
+                        });
+                        _loadMarkets();
+                      },
+                      child: Container(
+                        height: 48,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _tab == tab
+                              ? context.palette.selected
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            tab,
+                            style: TextStyle(
+                              color: _tab == tab
+                                  ? context.palette.accent
+                                  : context.palette.muted,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 13,
                             ),
                           ),
                         ),
                       ),
                     ),
-                  )
-                  .toList(),
-            ),
+                  ),
+                )
+                .toList(),
           ),
         ),
-        body: _tab == 'History'
-            ? TradingHistory(request: widget.request)
-            : RefreshIndicator(
-                onRefresh: () async {
-                  await _loadMarkets();
-                  await _load();
-                },
-                child: ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    if (_error.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Text(
-                          _error,
-                          style: const TextStyle(color: Color(0xfff87171)),
+      ),
+      body: _tab == 'History'
+          ? TradingHistory(request: widget.request)
+          : RefreshIndicator(
+              onRefresh: () async {
+                await _loadMarkets();
+                await _load();
+              },
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  if (_error.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        _error,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
                         ),
                       ),
-                    if (_notice.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Text(
-                          _notice,
-                          style: const TextStyle(color: _green, fontSize: 12),
+                    ),
+                  if (_notice.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        _notice,
+                        style: TextStyle(
+                          color: context.palette.accent,
+                          fontSize: 12,
                         ),
                       ),
-                    if (_pending != null)
-                      TextButton(
-                        onPressed: _busy ? null : () => _execute(_pending!),
-                        child: const Text('Retry unconfirmed request'),
+                    ),
+                  if (_pending != null)
+                    TextButton(
+                      onPressed: _busy ? null : () => _execute(_pending!),
+                      child: const Text('Retry unconfirmed request'),
+                    ),
+                  if (_loading)
+                    const Center(child: CircularProgressIndicator()),
+                  if (!_loading && _markets.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(40),
+                      child: Text(
+                        _tab == 'My positions'
+                            ? 'No real-match positions yet.'
+                            : 'No live matches available right now. This list updates automatically.',
                       ),
-                    if (_loading)
-                      const Center(child: CircularProgressIndicator()),
-                    if (!_loading && _markets.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(40),
-                        child: Text(
-                          _tab == 'My positions'
-                              ? 'No real-match positions yet.'
-                              : 'No live matches available right now. This list updates automatically.',
-                        ),
-                      ),
-                    if (_markets.isNotEmpty)
+                    ),
+                  if (_markets.isNotEmpty)
+                    _card(
                       Row(
                         children: [
                           Expanded(
                             child: DropdownButton<String>(
                               value: _marketId,
-                              hint: const Text(
+                              hint: Text(
                                 'Choose a match',
-                                style: TextStyle(color: _muted),
+                                style: TextStyle(color: context.palette.muted),
                               ),
                               isExpanded: true,
                               underline: const SizedBox.shrink(),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.white,
+                                color: context.palette.ink,
                               ),
                               items: _markets
                                   .map(
@@ -746,199 +754,213 @@ class _TradingScreenState extends State<TradingScreen> {
                             ),
                           ),
                           if (m?.mode == 'TEST')
-                            const Padding(
+                            Padding(
                               padding: EdgeInsets.only(left: 12),
                               child: Text(
                                 'Test credits',
-                                style: TextStyle(fontSize: 10, color: _muted),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: context.palette.muted,
+                                ),
                               ),
                             ),
                           IconButton(
                             onPressed: _details,
                             tooltip: 'Market details',
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.info_outline,
                               size: 18,
-                              color: _muted,
+                              color: context.palette.muted,
                             ),
                           ),
                         ],
                       ),
-                    if (!_loading && _markets.isNotEmpty && _marketId == null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 40),
-                        child: Text(
-                          _tab == 'My positions'
-                              ? 'Choose a match to view your positions and settlement.'
-                              : 'Choose a live match to add credits and trade. Credits belong only to that match.',
-                          style: const TextStyle(color: _muted),
+                    ),
+                  if (!_loading && _markets.isNotEmpty && _marketId == null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      child: Text(
+                        _tab == 'My positions'
+                            ? 'Choose a match to view your positions and settlement.'
+                            : 'Choose a live match to add credits and trade. Credits belong only to that match.',
+                        style: TextStyle(color: context.palette.muted),
+                      ),
+                    ),
+                  if (_marketId != null && s == null)
+                    const Center(child: CircularProgressIndicator()),
+                  if (m != null &&
+                      !m.open &&
+                      !['SETTLED', 'VOIDED'].contains(m.status))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 18),
+                      child: Text(
+                        'Trading paused: ${m.status == 'OPEN' ? 'Quote expired; waiting for a fresh price.' : m.reason} Buying and exiting are unavailable until a valid quote returns.',
+                        style: TextStyle(
+                          color: context.palette.muted,
+                          fontSize: 11,
                         ),
                       ),
-                    if (_marketId != null && s == null)
-                      const Center(child: CircularProgressIndicator()),
-                    if (m != null &&
-                        !m.open &&
-                        !['SETTLED', 'VOIDED'].contains(m.status))
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 18),
-                        child: Text(
-                          'Trading paused: ${m.status == 'OPEN' ? 'Quote expired; waiting for a fresh price.' : m.reason} Buying and exiting are unavailable until a valid quote returns.',
-                          style: const TextStyle(color: _muted, fontSize: 11),
+                    ),
+                  if (m != null &&
+                      m.nearingCutoff &&
+                      !['SETTLED', 'VOIDED'].contains(m.status))
+                    Padding(
+                      padding: EdgeInsets.only(bottom: 18),
+                      child: Text(
+                        'Approaching 90% · Above 90%, new buys and funding pause. You can still exit with a valid quote.',
+                        style: TextStyle(
+                          color: context.palette.muted,
+                          fontSize: 11,
                         ),
                       ),
-                    if (m != null &&
-                        m.nearingCutoff &&
-                        !['SETTLED', 'VOIDED'].contains(m.status))
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 18),
-                        child: Text(
-                          'Approaching 90% · Above 90%, new buys and funding pause. You can still exit with a valid quote.',
-                          style: TextStyle(color: _muted, fontSize: 11),
+                    ),
+                  if (m != null &&
+                      m.entryClosed &&
+                      m.status != 'SETTLED' &&
+                      m.status != 'VOIDED')
+                    Padding(
+                      padding: EdgeInsets.only(bottom: 18),
+                      child: Text(
+                        'Outcome probability above 90% · New buys and funding paused. Exits require a valid quote.',
+                        style: TextStyle(
+                          color: context.palette.muted,
+                          fontSize: 11,
                         ),
                       ),
-                    if (m != null &&
-                        m.entryClosed &&
-                        m.status != 'SETTLED' &&
-                        m.status != 'VOIDED')
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 18),
-                        child: Text(
-                          'Outcome probability above 90% · New buys and funding paused. Exits require a valid quote.',
-                          style: TextStyle(color: _muted, fontSize: 11),
-                        ),
-                      ),
-                    if (s != null && m != null) ...[
-                      if (_tab == 'Home') ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                m.open
-                                    ? (state['description'] as String? ?? '')
-                                    : m.reason,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: _muted,
-                                ),
+                    ),
+                  if (s != null && m != null) ...[
+                    if (_tab == 'Home') ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              m.open
+                                  ? (state['description'] as String? ?? '')
+                                  : m.reason,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: context.palette.muted,
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            if (state['balls'] != null)
-                              Text(
-                                '${state['runs']}/${state['wickets']}  (${(state['balls'] as int) ~/ 6}.${(state['balls'] as int) % 6} ov)',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(color: const Color(0xff26303d)),
-                            borderRadius: BorderRadius.circular(8),
                           ),
-                          clipBehavior: Clip.antiAlias,
-                          child: Row(
-                            children: m.outcomes
-                                .map(
-                                  (o) => Expanded(
-                                    child: Semantics(
-                                      label:
-                                          '${m.team(o)}, ${_credits(m.price(o))} credits',
-                                      selected: o == _outcome,
-                                      button: true,
-                                      child: InkWell(
-                                        onTap: () => _chartChange(o),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 11,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: o == _outcome
-                                                ? const Color(0xff122b22)
-                                                : _panel,
-                                            border: Border(
-                                              left: BorderSide(
-                                                color: o > 0
-                                                    ? const Color(0xff26303d)
-                                                    : Colors.transparent,
-                                              ),
-                                              bottom: BorderSide(
-                                                color: o == _outcome
-                                                    ? _green
-                                                    : Colors.transparent,
-                                                width: 2,
-                                              ),
+                          const SizedBox(width: 12),
+                          if (state['balls'] != null)
+                            Text(
+                              '${state['runs']}/${state['wickets']}  (${(state['balls'] as int) ~/ 6}.${(state['balls'] as int) % 6} ov)',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: context.palette.outline),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Row(
+                          children: m.outcomes
+                              .map(
+                                (o) => Expanded(
+                                  child: Semantics(
+                                    label:
+                                        '${m.team(o)}, ${_credits(m.price(o))} credits',
+                                    selected: o == _outcome,
+                                    button: true,
+                                    child: InkWell(
+                                      onTap: () => _chartChange(o),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 11,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: o == _outcome
+                                              ? context.palette.selected
+                                              : context.palette.surface,
+                                          border: Border(
+                                            left: BorderSide(
+                                              color: o > 0
+                                                  ? context.palette.outline
+                                                  : Colors.transparent,
+                                            ),
+                                            bottom: BorderSide(
+                                              color: o == _outcome
+                                                  ? context.palette.accent
+                                                  : Colors.transparent,
+                                              width: 2,
                                             ),
                                           ),
-                                          child: FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            child: Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  o == 2
-                                                      ? 'Draw'
-                                                      : _teamCode(m.team(o)),
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: o == _outcome
-                                                        ? _green
-                                                        : Colors.white,
-                                                  ),
+                                        ),
+                                        child: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Text(
+                                                o == 2
+                                                    ? 'Draw'
+                                                    : _teamCode(m.team(o)),
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: o == _outcome
+                                                      ? context.palette.accent
+                                                      : context.palette.ink,
                                                 ),
-                                                const SizedBox(width: 6),
-                                                Text(
-                                                  (m.price(o) / 10)
-                                                      .toStringAsFixed(2),
-                                                  style: TextStyle(
-                                                    fontSize:
-                                                        m.outcomes.length == 3
-                                                        ? 15
-                                                        : 17,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: o == _outcome
-                                                        ? _green
-                                                        : Colors.white,
-                                                  ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                (m.price(o) / 10)
+                                                    .toStringAsFixed(2),
+                                                style: TextStyle(
+                                                  fontSize:
+                                                      m.outcomes.length == 3
+                                                      ? 15
+                                                      : 17,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: o == _outcome
+                                                      ? context.palette.accent
+                                                      : context.palette.ink,
                                                 ),
-                                              ],
-                                            ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                )
-                                .toList(),
-                          ),
-                        ),
-                        const SizedBox(height: 22),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                m.team(_outcome),
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
                                 ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              '${m.format} · ${oneMinute ? '1 min' : 'Over'} candles · Auto',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: _muted,
-                              ),
-                            ),
-                          ],
+                              )
+                              .toList(),
                         ),
-                        const SizedBox(height: 12),
+                      ),
+                      const SizedBox(height: 22),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              m.team(_outcome),
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${m.format} · ${oneMinute ? '1 min' : 'Over'} candles · Auto',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: context.palette.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _card(
                         TradingChart(
                           key: ValueKey('$_marketId:$_outcome:$oneMinute'),
                           candles: _candles,
@@ -947,253 +969,267 @@ class _TradingScreenState extends State<TradingScreen> {
                               .where((e) => e.outcome == _outcome)
                               .toList(),
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Updated ${_time(m.quote?['publishedAt'] as String?)}',
-                          style: const TextStyle(color: _muted, fontSize: 10),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Updated ${_time(m.quote?['publishedAt'] as String?)}',
+                        style: TextStyle(
+                          color: context.palette.muted,
+                          fontSize: 10,
                         ),
-                      ] else ...[
-                        const SizedBox(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'My positions',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'My positions',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                const Text(
-                                  'Total P&L',
-                                  style: TextStyle(fontSize: 10, color: _muted),
-                                ),
-                                Text(
-                                  _signed(s.net),
-                                  style: TextStyle(
-                                    fontSize: 21,
-                                    fontWeight: FontWeight.w600,
-                                    color: _pnlColor(s.net),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 18),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            _metric(
-                              'Invested',
-                              '${_credits(positions.fold<int>(0, (n, p) => n + p.cost))} cr',
-                            ),
-                            _metric(
-                              'Current value',
-                              '${_credits(positions.fold<int>(0, (n, p) => n + p.value))} cr',
-                            ),
-                            _metric(
-                              'Realized',
-                              _signed(s.realized),
-                              color: _pnlColor(s.realized),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        if (positions.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 60),
-                            child: Column(
-                              children: [
-                                const Text(
-                                  'No open positions',
-                                  style: TextStyle(fontSize: 18),
-                                ),
-                                const SizedBox(height: 12),
-                                TextButton(
-                                  onPressed: () =>
-                                      setState(() => _tab = 'Home'),
-                                  child: const Text('Explore match'),
-                                ),
-                              ],
-                            ),
                           ),
-                        ...positions.map(
-                          (p) => Semantics(
-                            label: 'Open ${m.team(p.outcome)} chart',
-                            button: true,
-                            child: InkWell(
-                              key: ValueKey('position-chart-${p.outcome}'),
-                              onTap: () => _openPositionChart(p.outcome),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 22,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                'Total P&L',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: context.palette.muted,
                                 ),
-                                decoration: const BoxDecoration(
-                                  border: Border(
-                                    bottom: BorderSide(
-                                      color: Color(0xff26303d),
-                                    ),
-                                  ),
+                              ),
+                              Text(
+                                _signed(s.net),
+                                style: TextStyle(
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.w600,
+                                  color: _pnlColor(s.net),
                                 ),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                m.team(p.outcome),
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 16,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                '${p.quantity} shares · Avg. ${_credits(p.averagePrice)} cr',
-                                                style: const TextStyle(
-                                                  fontSize: 11,
-                                                  color: _muted,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Column(
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _metric(
+                            'Invested',
+                            '${_credits(positions.fold<int>(0, (n, p) => n + p.cost))} cr',
+                          ),
+                          _metric(
+                            'Current value',
+                            '${_credits(positions.fold<int>(0, (n, p) => n + p.value))} cr',
+                          ),
+                          _metric(
+                            'Realized',
+                            _signed(s.realized),
+                            color: _pnlColor(s.realized),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (positions.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 60),
+                          child: Column(
+                            children: [
+                              const Text(
+                                'No open positions',
+                                style: TextStyle(fontSize: 18),
+                              ),
+                              const SizedBox(height: 12),
+                              TextButton(
+                                onPressed: () => setState(() => _tab = 'Home'),
+                                child: const Text('Explore match'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ...positions.map(
+                        (p) => Semantics(
+                          label: 'Open ${m.team(p.outcome)} chart',
+                          button: true,
+                          child: InkWell(
+                            key: ValueKey('position-chart-${p.outcome}'),
+                            onTap: () => _openPositionChart(p.outcome),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: context.palette.surface,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: context.palette.outline,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
                                           crossAxisAlignment:
-                                              CrossAxisAlignment.end,
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              _signed(p.unrealized),
-                                              style: TextStyle(
-                                                fontSize: 18,
-                                                color: _pnlColor(p.unrealized),
+                                              m.team(p.outcome),
+                                              style: const TextStyle(
                                                 fontWeight: FontWeight.w600,
+                                                fontSize: 16,
                                               ),
                                             ),
-                                            const SizedBox(height: 6),
+                                            const SizedBox(height: 8),
                                             Text(
-                                              '${p.cost == 0 ? '0.00' : (p.unrealized / p.cost * 100).toStringAsFixed(2)}%',
+                                              '${p.quantity} shares · Avg. ${_credits(p.averagePrice)} cr',
                                               style: TextStyle(
                                                 fontSize: 11,
-                                                color: _pnlColor(p.unrealized),
+                                                color: context.palette.muted,
                                               ),
                                             ),
                                           ],
                                         ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 14),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            'LTP ${_credits(m.price(p.outcome))} cr',
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              color: _muted,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          Text(
+                                            _signed(p.unrealized),
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              color: _pnlColor(p.unrealized),
+                                              fontWeight: FontWeight.w600,
                                             ),
                                           ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            '${p.cost == 0 ? '0.00' : (p.unrealized / p.cost * 100).toStringAsFixed(2)}%',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: _pnlColor(p.unrealized),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          'LTP ${_credits(m.price(p.outcome))} cr',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: context.palette.muted,
+                                          ),
                                         ),
-                                        const SizedBox(width: 8),
-                                        OutlinedButton(
-                                          onPressed:
-                                              m.open &&
-                                                  !_busy &&
-                                                  _pending == null
-                                              ? () => _ticket(
-                                                  'SELL',
-                                                  selectedOutcome: p.outcome,
-                                                )
-                                              : null,
-                                          child: const Text('Exit position'),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      OutlinedButton(
+                                        onPressed:
+                                            m.open && !_busy && _pending == null
+                                            ? () => _ticket(
+                                                'SELL',
+                                                selectedOutcome: p.outcome,
+                                              )
+                                            : null,
+                                        child: const Text('Exit position'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                         ),
-                        if (s.receipt != null)
-                          ExpansionTile(
-                            title: const Text(
-                              'Settlement receipt',
-                              style: TextStyle(fontSize: 13),
-                            ),
-                            tilePadding: EdgeInsets.zero,
-                            children: [
-                              Text('${s.receipt!['reason']}'),
-                              _row(
-                                'Principal returned',
-                                _rupees(s.receipt!['principal'] as num),
-                              ),
-                              _row(
-                                'Pool reward',
-                                _rupees(s.receipt!['reward'] as num),
-                              ),
-                              _row(
-                                'Total equivalent',
-                                _rupees(s.receipt!['payout'] as num),
-                              ),
-                            ],
+                      ),
+                      if (s.receipt != null)
+                        ExpansionTile(
+                          title: const Text(
+                            'Settlement receipt',
+                            style: TextStyle(fontSize: 13),
                           ),
-                      ],
+                          tilePadding: EdgeInsets.zero,
+                          children: [
+                            Text('${s.receipt!['reason']}'),
+                            _row(
+                              'Principal returned',
+                              _rupees(s.receipt!['principal'] as num),
+                            ),
+                            _row(
+                              'Pool reward',
+                              _rupees(s.receipt!['reward'] as num),
+                            ),
+                            _row(
+                              'Total equivalent',
+                              _rupees(s.receipt!['payout'] as num),
+                            ),
+                          ],
+                        ),
                     ],
                   ],
-                ),
+                ],
               ),
-        bottomNavigationBar: m == null || _tab != 'Home'
-            ? null
-            : SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                  child: FilledButton(
-                    onPressed: m.canEnter && !_busy && _pending == null
-                        ? () => _ticket('BUY')
-                        : null,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _green,
-                      foregroundColor: const Color(0xff062e23),
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                    ),
-                    child: Text(
-                      !m.open
-                          ? 'Trading paused'
-                          : m.entryClosed
-                          ? 'New buys paused'
-                          : 'Buy ${m.team(_outcome)}',
-                    ),
+            ),
+      bottomNavigationBar: m == null || _tab != 'Home'
+          ? null
+          : SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                child: FilledButton(
+                  onPressed: m.canEnter && !_busy && _pending == null
+                      ? () => _ticket('BUY')
+                      : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.emerald700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
+                  child: Text(
+                    !m.open
+                        ? 'Trading paused'
+                        : m.entryClosed
+                        ? 'New buys paused'
+                        : 'Buy ${m.team(_outcome)}',
                   ),
                 ),
               ),
-      ),
+            ),
     );
   }
 
-  Widget _metric(String name, String value, {Color color = Colors.white}) =>
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(name, style: const TextStyle(fontSize: 10, color: _muted)),
-          const SizedBox(height: 7),
-          Text(value, style: TextStyle(fontSize: 12, color: color)),
-        ],
-      );
+  Widget _card(Widget child) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: context.palette.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: context.palette.outline),
+    ),
+    child: child,
+  );
+
+  Widget _metric(String name, String value, {Color? color}) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(name, style: TextStyle(fontSize: 10, color: context.palette.muted)),
+      const SizedBox(height: 7),
+      Text(
+        value,
+        style: TextStyle(fontSize: 12, color: color ?? context.palette.ink),
+      ),
+    ],
+  );
 }

@@ -191,7 +191,7 @@ export class GameManager {
 
       const full = room.players.length + 1 === room.maxPlayers;
       if (full) {
-        const isCardGame = ['TEEN_PATTI', 'TWENTY_NINE'].includes(room.gameType);
+        const isCardGame = ['TEEN_PATTI', 'TWENTY_NINE', 'SEEP'].includes(room.gameType);
         const nextStatus = room.gameType === 'GUESS_NUMBER' || isCardGame ? 'COUNTDOWN' : 'PLAYING';
         await tx.room.update({ where: { id: room.id }, data: {
           status: nextStatus,
@@ -208,7 +208,7 @@ export class GameManager {
 
     // Trigger engine hooks if table is full or for ongoing sports pool tracking
     if (result.full) {
-      if (['TEEN_PATTI', 'TWENTY_NINE'].includes(result.gameType)) {
+      if (['TEEN_PATTI', 'TWENTY_NINE', 'SEEP'].includes(result.gameType)) {
         this.startCardCountdown(result.id, updatedRoom!.customConfig!.countdownEndsAt);
       } else if (result.gameType === 'GUESS_NUMBER') {
         const legacyEngine = gameRegistry.get('GUESS_NUMBER');
@@ -233,7 +233,7 @@ export class GameManager {
     if (!room) throw new Error('Room not found');
 
     const engine = gameRegistry.get(room.gameType);
-    if (room.gameType === 'TWENTY_NINE' && (!Number.isInteger(payload?.expectedSequence) || typeof payload?.actionId !== 'string' || payload.actionId.length < 8 || payload.actionId.length > 100)) {
+    if (['TWENTY_NINE', 'SEEP'].includes(room.gameType) && (!Number.isInteger(payload?.expectedSequence) || typeof payload?.actionId !== 'string' || payload.actionId.length < 8 || payload.actionId.length > 100)) {
       return { success: false, message: 'Refresh the table before acting (sequence and action ID required)' };
     }
     return engine.handleAction(roomId, userId, action, payload, this.io);
@@ -481,8 +481,8 @@ export class GameManager {
     });
     for (const room of rooms) {
       try {
-        if (room.gameType === 'TWENTY_NINE' && room.status === 'PLAYING') {
-          const engine = gameRegistry.get('TWENTY_NINE');
+        if (['TWENTY_NINE', 'SEEP'].includes(room.gameType) && room.status === 'PLAYING') {
+          const engine = gameRegistry.get(room.gameType);
           if (engine && typeof (engine as any).restoreRoom === 'function') {
             const restored = await (engine as any).restoreRoom(room.id, this.io);
             if (restored) continue;
@@ -532,7 +532,7 @@ export class GameManager {
     }
 
     const engine = gameRegistry.get(room.gameType);
-    if (room.gameType === 'TWENTY_NINE' && !engine.getClientState(roomId) && room.status === 'COMPLETED') {
+    if (['TWENTY_NINE', 'SEEP'].includes(room.gameType) && !engine.getClientState(roomId) && room.status === 'COMPLETED') {
       await (engine as any).restoreRoom(roomId, null);
     }
     const gameState = engine ? engine.getClientState(roomId, forUserId) : null;
@@ -629,8 +629,8 @@ export class GameManager {
       occupiedSeats: room.players.length,
       status: room.status,
       isPrivate: room.isPrivate,
-      rulesVersion: room.gameType === 'TWENTY_NINE' ? 'single-deal-v1' : undefined,
-      rulesSummary: room.gameType === 'TWENTY_NINE' ? 'Single deal · 8 tricks · bids 16–28 · 28 card points · hidden trump · 20s turns · 30s disconnect grace once per player · equal team payout, odd paise to lower seat' : undefined,
+      rulesVersion: room.gameType === 'SEEP' ? 'seep-single-deal-v1' : room.gameType === 'TWENTY_NINE' ? 'single-deal-v1' : undefined,
+      rulesSummary: room.gameType === 'SEEP' ? 'Single deal · 2 players or 2v2 · houses 9–13 · 100 card points · sweeps 25/50/0 · 30s turns · draw refunds · team payouts after commission' : room.gameType === 'TWENTY_NINE' ? 'Single deal · 8 tricks · bids 16–28 · 28 card points · hidden trump · 20s turns · 30s disconnect grace once per player · equal team payout, odd paise to lower seat' : undefined,
       takenNumbers: room.gameType === 'GUESS_NUMBER' ? room.players.map(p => p.guessNumber).filter(n => n !== null) : undefined,
       teams: room.gameType === 'SPORTS_MATCH' ? [publicRoomConfig(room.customConfig)?.team1?.name || 'Team 1', publicRoomConfig(room.customConfig)?.team2?.name || 'Team 2'] : undefined,
       host: {
@@ -723,7 +723,7 @@ export class GameManager {
     return this.getRoomDetails(roomId, userId);
   }
 
-  private async broadcastRoomUpdate(roomId: string) {
+  async broadcastRoomUpdate(roomId: string) {
     if (!this.io) return;
     const room = await prisma.room.findUnique({ where: { id: roomId }, include: {
       players: { include: { user: { select: { id: true, username: true, displayName: true, avatar: true } } }, orderBy: { seatIndex: 'asc' } },
